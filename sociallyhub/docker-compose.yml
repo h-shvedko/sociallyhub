@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: sociallyhub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sociallyhub
+      POSTGRES_PASSWORD: sociallyhub_dev_password
+      POSTGRES_DB: sociallyhub
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sociallyhub -d sociallyhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and job queues
+  redis:
+    image: redis:7-alpine
+    container_name: sociallyhub-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Next.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: sociallyhub-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://sociallyhub:sociallyhub_dev_password@postgres:5432/sociallyhub
+      - REDIS_URL=redis://redis:6379
+      - NEXTAUTH_SECRET=dev-secret-key-change-in-production
+      - NEXTAUTH_URL=http://localhost:3000
+      - JWT_SECRET=dev-jwt-secret-change-in-production
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./prisma:/app/prisma
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+      - ./next.config.ts:/app/next.config.ts
+      - ./tailwind.config.ts:/app/tailwind.config.ts
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./components.json:/app/components.json
+      - ./.env.local:/app/.env.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+
+  # Prisma Studio (Database GUI)
+  prisma-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: sociallyhub-prisma-studio
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    environment:
+      - DATABASE_URL=postgresql://sociallyhub:sociallyhub_dev_password@postgres:5432/sociallyhub
+    volumes:
+      - ./prisma:/app/prisma
+      - ./package.json:/app/package.json
+      - ./.env.local:/app/.env.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npx prisma studio --hostname 0.0.0.0
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+  redis_data:
