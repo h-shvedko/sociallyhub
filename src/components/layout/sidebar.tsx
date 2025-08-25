@@ -18,6 +18,7 @@ import {
   Settings,
   HelpCircle,
   Zap,
+  Palette,
 } from "lucide-react"
 
 const navigation = [
@@ -39,6 +40,7 @@ const system = [
   { name: "Accounts", href: "/dashboard/accounts", icon: Zap },
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "Material Showcase", href: "/dashboard/showcase", icon: Palette },
   { name: "Help", href: "/dashboard/help", icon: HelpCircle },
 ]
 
