@@ -44,7 +44,12 @@ const themes = [
   },
 ]
 
-export function ThemeSwitcher() {
+interface ThemeSwitcherProps {
+  variant?: "full" | "compact"
+  className?: string
+}
+
+export function ThemeSwitcher({ variant = "full", className }: ThemeSwitcherProps) {
   const [currentTheme, setCurrentTheme] = React.useState("professional-ocean")
 
   React.useEffect(() => {
@@ -56,11 +61,20 @@ export function ThemeSwitcher() {
 
   const handleThemeChange = (theme: string) => {
     const root = document.documentElement
+    
+    // Add transition class for smooth theme switching
+    root.classList.add("theme-transitioning")
+    
     root.setAttribute("data-theme", theme)
     setCurrentTheme(theme)
     
     // Store theme preference
     localStorage.setItem("theme", theme)
+    
+    // Remove transition class after animation
+    setTimeout(() => {
+      root.classList.remove("theme-transitioning")
+    }, 300)
   }
 
   React.useEffect(() => {
@@ -73,33 +87,81 @@ export function ThemeSwitcher() {
 
   const currentThemeData = themes.find(t => t.value === currentTheme)
 
+  // Compact variant for mobile dropdown
+  if (variant === "compact") {
+    return (
+      <div className={cn("flex flex-col space-y-1", className)}>
+        {themes.map((theme) => (
+          <button
+            key={theme.value}
+            onClick={() => handleThemeChange(theme.value)}
+            className={cn(
+              "flex items-center justify-between w-full p-2 text-sm rounded-md transition-all duration-200",
+              "hover:bg-muted/50 active:scale-95",
+              currentTheme === theme.value && "bg-primary/10 text-primary"
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <div 
+                  className="w-2 h-2 rounded-full border border-border/50"
+                  style={{ backgroundColor: theme.colors.primary }}
+                />
+                <div 
+                  className="w-2 h-2 rounded-full border border-border/50"
+                  style={{ backgroundColor: theme.colors.secondary }}
+                />
+              </div>
+              <span>{theme.name}</span>
+            </div>
+            {currentTheme === theme.value && (
+              <Check className="h-3 w-3" />
+            )}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  // Full variant for desktop
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" className="relative">
-          <Palette className="h-4 w-4" />
+        <Button 
+          variant="outline" 
+          size="icon" 
+          className={cn(
+            "relative hover:bg-primary/10 hover:border-primary/20 transition-all duration-200 active:scale-95",
+            className
+          )}
+        >
+          <Palette className="h-4 w-4 transition-transform hover:rotate-12" />
           <span className="sr-only">Switch theme</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
+      <DropdownMenuContent align="end" className="w-64 animate-in slide-in-from-top-2 duration-200">
         <div className="p-2">
           <div className="text-sm font-medium text-muted-foreground mb-2">
             Material Design Themes
           </div>
-          {themes.map((theme) => (
+          {themes.map((theme, index) => (
             <DropdownMenuItem
               key={theme.value}
               onClick={() => handleThemeChange(theme.value)}
               className={cn(
-                "flex flex-col items-start gap-2 p-3 cursor-pointer rounded-md",
-                currentTheme === theme.value && "bg-accent"
+                "flex flex-col items-start gap-2 p-3 cursor-pointer rounded-md transition-all duration-200",
+                "hover:bg-primary/10 active:scale-98",
+                currentTheme === theme.value && "bg-primary/10 border border-primary/20"
               )}
+              style={{
+                animationDelay: `${index * 50}ms`
+              }}
             >
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
                   <div className="font-medium text-sm">{theme.name}</div>
                   {currentTheme === theme.value && (
-                    <Check className="h-4 w-4 text-primary" />
+                    <Check className="h-4 w-4 text-primary animate-in zoom-in-50 duration-200" />
                   )}
                 </div>
               </div>
@@ -108,15 +170,15 @@ export function ThemeSwitcher() {
               </div>
               <div className="flex items-center gap-1">
                 <div 
-                  className="w-3 h-3 rounded-full border border-border"
+                  className="w-3 h-3 rounded-full border border-border/50 transition-transform hover:scale-110"
                   style={{ backgroundColor: theme.colors.primary }}
                 />
                 <div 
-                  className="w-3 h-3 rounded-full border border-border"
+                  className="w-3 h-3 rounded-full border border-border/50 transition-transform hover:scale-110"
                   style={{ backgroundColor: theme.colors.secondary }}
                 />
                 <div 
-                  className="w-3 h-3 rounded-full border border-border"
+                  className="w-3 h-3 rounded-full border border-border/50 transition-transform hover:scale-110"
                   style={{ backgroundColor: theme.colors.accent }}
                 />
               </div>

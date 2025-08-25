@@ -1,10 +1,15 @@
 import Link from "next/link"
-import { ArrowRight, CheckCircle, Star, MessageCircle, Calendar, BarChart3, Users, PenTool, Shield, Zap, Target, Globe, TrendingUp, Clock, Award, PlayCircle, ChevronRight } from "lucide-react"
+import { ArrowRight, CheckCircle, Star, MessageCircle, Calendar, BarChart3, Users, PenTool, Shield, Zap, Target, Globe, TrendingUp, Clock, Award, PlayCircle, ChevronRight, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
+"use client"
+
+import { useState } from "react"
+
 export default function LandingPage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const features = [
     {
       icon: MessageCircle,
@@ -199,8 +204,70 @@ export default function LandingPage() {
                 </Button>
               </Link>
             </div>
+
+            {/* Mobile Menu Button */}
+            <div className="md:hidden">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 hover:bg-primary/10 transition-all duration-200 active:scale-95"
+              >
+                {mobileMenuOpen ? (
+                  <X className="h-5 w-5 text-foreground" />
+                ) : (
+                  <Menu className="h-5 w-5 text-foreground" />
+                )}
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden bg-background/95 backdrop-blur-xl border-b border-border/50 animate-in slide-in-from-top-2 duration-300">
+            <div className="px-4 py-6 space-y-4">
+              <Link
+                href="#features"
+                className="block py-2 text-base text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Features
+              </Link>
+              <Link
+                href="#pricing"
+                className="block py-2 text-base text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Pricing
+              </Link>
+              <Link
+                href="#testimonials"
+                className="block py-2 text-base text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Reviews
+              </Link>
+              <div className="border-t border-border/50 pt-4 space-y-3">
+                <Link href="/auth/signin" className="block">
+                  <Button variant="ghost" className="w-full justify-start text-base py-3" onClick={() => setMobileMenuOpen(false)}>
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/auth/signup" className="block">
+                  <Button 
+                    className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-base py-3"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Start Free Trial
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Hero Section */}

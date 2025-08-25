@@ -3,6 +3,7 @@
 import { ReactNode } from "react"
 import { Sidebar } from "./sidebar"
 import { Header } from "./header"
+import { PageTransition } from "@/components/ui/page-transition"
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -21,7 +22,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-6">
-          {children}
+          <PageTransition className="animate-fade-in">
+            {children}
+          </PageTransition>
         </main>
       </div>
     </div>

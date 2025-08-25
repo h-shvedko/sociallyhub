@@ -1,8 +1,10 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { LoadingSpinner, LoadingState } from "@/components/ui/loading-spinner"
 import { 
   BarChart3, 
   Calendar, 
@@ -16,6 +18,26 @@ import {
 } from "lucide-react"
 
 export default function DashboardPage() {
+  const [loading, setLoading] = useState(true)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [postsLoading, setPostsLoading] = useState(true)
+  const [inboxLoading, setInboxLoading] = useState(true)
+
+  // Simulate API loading
+  useEffect(() => {
+    // Simulate initial page load
+    setTimeout(() => setLoading(false), 1000)
+    
+    // Simulate stats loading
+    setTimeout(() => setStatsLoading(false), 800)
+    
+    // Simulate posts loading
+    setTimeout(() => setPostsLoading(false), 1200)
+    
+    // Simulate inbox loading
+    setTimeout(() => setInboxLoading(false), 1500)
+  }, [])
+
   // Mock data - will be replaced with real data from API
   const stats = [
     {
@@ -102,6 +124,17 @@ export default function DashboardPage() {
     },
   ]
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-4">
+          <LoadingSpinner size="lg" />
+          <p className="text-sm text-muted-foreground animate-pulse">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8 p-6">
       {/* Material Design Header with proper typography */}
@@ -122,26 +155,42 @@ export default function DashboardPage() {
 
       {/* Material Design Stats Cards with Elevation */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, index) => (
-          <Card key={index} className="bg-md-surface-container rounded-md-medium shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border-md-outline-variant/20 animate-fade-in">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-title-medium font-medium text-md-on-surface">
-                {stat.title}
-              </CardTitle>
-              <stat.icon className="h-5 w-5 text-md-primary" />
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="text-headline-small font-normal text-md-on-surface">{stat.value}</div>
-              <p className={`text-label-medium ${
-                stat.trend === 'up' ? 'text-md-tertiary' :
-                stat.trend === 'warning' ? 'text-md-error' :
-                'text-md-on-surface-variant'
-              }`}>
-                {stat.change}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {statsLoading ? (
+          // Loading skeleton for stats
+          Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index} className="bg-md-surface-container rounded-md-medium shadow-md-level1 border-md-outline-variant/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                <div className="h-4 bg-muted animate-pulse rounded w-24"></div>
+                <LoadingSpinner size="sm" />
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="h-8 bg-muted animate-pulse rounded w-16"></div>
+                <div className="h-3 bg-muted animate-pulse rounded w-20"></div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          stats.map((stat, index) => (
+            <Card key={index} className="bg-md-surface-container rounded-md-medium shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border-md-outline-variant/20 animate-fade-in">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                <CardTitle className="text-title-medium font-medium text-md-on-surface">
+                  {stat.title}
+                </CardTitle>
+                <stat.icon className="h-5 w-5 text-md-primary" />
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-headline-small font-normal text-md-on-surface">{stat.value}</div>
+                <p className={`text-label-medium ${
+                  stat.trend === 'up' ? 'text-md-tertiary' :
+                  stat.trend === 'warning' ? 'text-md-error' :
+                  'text-md-on-surface-variant'
+                }`}>
+                  {stat.change}
+                </p>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       {/* Main Content Grid */}
