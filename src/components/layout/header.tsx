@@ -1,6 +1,7 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useSession, signOut } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { Bell, ChevronDown, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { ThemeSwitcher } from "@/components/ui/theme-switcher"
 
 interface HeaderProps {
   className?: string
@@ -21,6 +23,11 @@ interface HeaderProps {
 
 export function Header({ className }: HeaderProps) {
   const { data: session } = useSession()
+  const router = useRouter()
+
+  const handleLogout = () => {
+    signOut({ callbackUrl: '/auth/signin' })
+  }
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-6">
@@ -41,6 +48,11 @@ export function Header({ className }: HeaderProps) {
         <Button variant="outline" size="sm">
           Compose
         </Button>
+
+        {/* Theme Switcher */}
+        <div className="flex items-center">
+          <ThemeSwitcher />
+        </div>
 
         {/* Notifications */}
         <Button variant="ghost" size="sm" className="relative">
@@ -77,20 +89,20 @@ export function Header({ className }: HeaderProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/dashboard/profile')}>
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/dashboard/workspace')}>
               Switch Workspace
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/dashboard/billing')}>
               Billing
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout}>
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

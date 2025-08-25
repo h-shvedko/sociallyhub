@@ -1,0 +1,144 @@
+/* Professional Ocean - Material Design Theme */
+:root[data-theme="professional-ocean"] {
+  /* Material Design 3.0 Color Tokens */
+  
+  /* Primary Colors */
+  --md-sys-color-primary: 214 88% 51%;
+  --md-sys-color-on-primary: 0 0% 100%;
+  --md-sys-color-primary-container: 214 100% 95%;
+  --md-sys-color-on-primary-container: 214 100% 10%;
+
+  /* Secondary Colors */
+  --md-sys-color-secondary: 43 74% 66%;
+  --md-sys-color-on-secondary: 43 74% 6%;
+  --md-sys-color-secondary-container: 43 74% 90%;
+  --md-sys-color-on-secondary-container: 43 74% 16%;
+
+  /* Tertiary Colors */
+  --md-sys-color-tertiary: 260 24% 57%;
+  --md-sys-color-on-tertiary: 0 0% 100%;
+  --md-sys-color-tertiary-container: 260 24% 90%;
+  --md-sys-color-on-tertiary-container: 260 24% 17%;
+
+  /* Error Colors */
+  --md-sys-color-error: 0 84% 60%;
+  --md-sys-color-on-error: 0 0% 100%;
+  --md-sys-color-error-container: 0 84% 95%;
+  --md-sys-color-on-error-container: 0 84% 20%;
+
+  /* Surface Colors */
+  --md-sys-color-surface: 214 20% 98%;
+  --md-sys-color-on-surface: 214 20% 11%;
+  --md-sys-color-surface-variant: 214 20% 94%;
+  --md-sys-color-on-surface-variant: 214 20% 35%;
+  --md-sys-color-surface-container-lowest: 0 0% 100%;
+  --md-sys-color-surface-container-low: 214 20% 96%;
+  --md-sys-color-surface-container: 214 20% 94%;
+  --md-sys-color-surface-container-high: 214 20% 92%;
+  --md-sys-color-surface-container-highest: 214 20% 90%;
+
+  /* Background */
+  --md-sys-color-background: 214 20% 99%;
+  --md-sys-color-on-background: 214 20% 11%;
+
+  /* Outline */
+  --md-sys-color-outline: 214 20% 65%;
+  --md-sys-color-outline-variant: 214 20% 82%;
+
+  /* Inverse Colors */
+  --md-sys-color-inverse-surface: 214 20% 17%;
+  --md-sys-color-inverse-on-surface: 214 20% 95%;
+  --md-sys-color-inverse-primary: 214 88% 80%;
+
+  /* Legacy shadcn/ui mapping for compatibility */
+  --background: var(--md-sys-color-background);
+  --foreground: var(--md-sys-color-on-background);
+  --card: var(--md-sys-color-surface-container);
+  --card-foreground: var(--md-sys-color-on-surface);
+  --popover: var(--md-sys-color-surface-container-high);
+  --popover-foreground: var(--md-sys-color-on-surface);
+  --primary: var(--md-sys-color-primary);
+  --primary-foreground: var(--md-sys-color-on-primary);
+  --secondary: var(--md-sys-color-secondary-container);
+  --secondary-foreground: var(--md-sys-color-on-secondary-container);
+  --muted: var(--md-sys-color-surface-variant);
+  --muted-foreground: var(--md-sys-color-on-surface-variant);
+  --accent: var(--md-sys-color-tertiary-container);
+  --accent-foreground: var(--md-sys-color-on-tertiary-container);
+  --destructive: var(--md-sys-color-error);
+  --destructive-foreground: var(--md-sys-color-on-error);
+  --border: var(--md-sys-color-outline-variant);
+  --input: var(--md-sys-color-surface-variant);
+  --ring: var(--md-sys-color-primary);
+
+  /* Material Design Elevation & State */
+  --md-sys-elevation-level0: 0px 0px 0px 0px rgba(0,0,0,0);
+  --md-sys-elevation-level1: 0px 1px 3px 1px rgba(0,0,0,0.15), 0px 1px 2px 0px rgba(0,0,0,0.3);
+  --md-sys-elevation-level2: 0px 2px 6px 2px rgba(0,0,0,0.15), 0px 1px 2px 0px rgba(0,0,0,0.3);
+  --md-sys-elevation-level3: 0px 4px 8px 3px rgba(0,0,0,0.15), 0px 1px 3px 0px rgba(0,0,0,0.3);
+  --md-sys-elevation-level4: 0px 6px 10px 4px rgba(0,0,0,0.15), 0px 2px 3px 0px rgba(0,0,0,0.3);
+  --md-sys-elevation-level5: 0px 8px 12px 6px rgba(0,0,0,0.15), 0px 4px 4px 0px rgba(0,0,0,0.3);
+
+  /* Material Design Shape */
+  --md-sys-shape-corner-none: 0px;
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 9999px;
+
+  /* Update radius for Material Design */
+  --radius: var(--md-sys-shape-corner-medium);
+}
+
+/* Dark Mode for Professional Ocean */
+:root[data-theme="professional-ocean"].dark {
+  /* Primary Colors - Dark */
+  --md-sys-color-primary: 214 88% 80%;
+  --md-sys-color-on-primary: 214 88% 20%;
+  --md-sys-color-primary-container: 214 88% 30%;
+  --md-sys-color-on-primary-container: 214 100% 95%;
+
+  /* Secondary Colors - Dark */
+  --md-sys-color-secondary: 43 74% 80%;
+  --md-sys-color-on-secondary: 43 74% 20%;
+  --md-sys-color-secondary-container: 43 74% 30%;
+  --md-sys-color-on-secondary-container: 43 74% 90%;
+
+  /* Tertiary Colors - Dark */
+  --md-sys-color-tertiary: 260 24% 80%;
+  --md-sys-color-on-tertiary: 260 24% 20%;
+  --md-sys-color-tertiary-container: 260 24% 30%;
+  --md-sys-color-on-tertiary-container: 260 24% 90%;
+
+  /* Error Colors - Dark */
+  --md-sys-color-error: 0 84% 80%;
+  --md-sys-color-on-error: 0 84% 20%;
+  --md-sys-color-error-container: 0 84% 30%;
+  --md-sys-color-on-error-container: 0 84% 90%;
+
+  /* Surface Colors - Dark */
+  --md-sys-color-surface: 214 20% 6%;
+  --md-sys-color-on-surface: 214 20% 90%;
+  --md-sys-color-surface-variant: 214 20% 12%;
+  --md-sys-color-on-surface-variant: 214 20% 70%;
+  --md-sys-color-surface-container-lowest: 214 20% 4%;
+  --md-sys-color-surface-container-low: 214 20% 8%;
+  --md-sys-color-surface-container: 214 20% 10%;
+  --md-sys-color-surface-container-high: 214 20% 14%;
+  --md-sys-color-surface-container-highest: 214 20% 17%;
+
+  /* Background - Dark */
+  --md-sys-color-background: 214 20% 4%;
+  --md-sys-color-on-background: 214 20% 90%;
+
+  /* Outline - Dark */
+  --md-sys-color-outline: 214 20% 45%;
+  --md-sys-color-outline-variant: 214 20% 25%;
+
+  /* Inverse Colors - Dark */
+  --md-sys-color-inverse-surface: 214 20% 95%;
+  --md-sys-color-inverse-on-surface: 214 20% 17%;
+  --md-sys-color-inverse-primary: 214 88% 51%;
+}
