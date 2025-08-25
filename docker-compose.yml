@@ -63,6 +63,7 @@ services:
       - ./tsconfig.json:/app/tsconfig.json
       - ./components.json:/app/components.json
       - ./.env.local:/app/.env.local
+      - next_cache:/app/.next
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,3 +96,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  next_cache:

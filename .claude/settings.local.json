@@ -14,7 +14,14 @@
       "Bash(taskkill:*)",
       "Bash(wmic process where processid=46780 delete:*)",
       "Bash(git add:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(timeout 10 docker-compose logs -f app)",
+      "Bash(timeout 15 docker-compose logs -f app)",
+      "Bash(if [ -d \".next\" ])",
+      "Bash(fi)",
+      "Bash(timeout 20 docker-compose logs -f app)",
+      "Bash(curl:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

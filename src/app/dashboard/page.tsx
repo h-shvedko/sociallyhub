@@ -103,39 +103,39 @@ export default function DashboardPage() {
   ]
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
+    <div className="space-y-8 p-6">
+      {/* Material Design Header with proper typography */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">
+        <div className="space-y-1">
+          <h1 className="text-display-small font-normal text-md-on-background">Dashboard</h1>
+          <p className="text-body-large text-md-on-surface-variant">
             Welcome back! Here's what's happening with your social media.
           </p>
         </div>
         <div className="flex space-x-3">
-          <Button>
+          <Button className="bg-md-primary text-md-on-primary hover:bg-md-primary/90 shadow-md-level2 rounded-md-large transition-all duration-300 hover:shadow-md-level3">
             <PenTool className="mr-2 h-4 w-4" />
             Compose Post
           </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Material Design Stats Cards with Elevation */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
+          <Card key={index} className="bg-md-surface-container rounded-md-medium shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border-md-outline-variant/20 animate-fade-in">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-title-medium font-medium text-md-on-surface">
                 {stat.title}
               </CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
+              <stat.icon className="h-5 w-5 text-md-primary" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <p className={`text-xs ${
-                stat.trend === 'up' ? 'text-green-600' :
-                stat.trend === 'warning' ? 'text-yellow-600' :
-                'text-muted-foreground'
+            <CardContent className="space-y-2">
+              <div className="text-headline-small font-normal text-md-on-surface">{stat.value}</div>
+              <p className={`text-label-medium ${
+                stat.trend === 'up' ? 'text-md-tertiary' :
+                stat.trend === 'warning' ? 'text-md-error' :
+                'text-md-on-surface-variant'
               }`}>
                 {stat.change}
               </p>
@@ -146,42 +146,39 @@ export default function DashboardPage() {
 
       {/* Main Content Grid */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Recent Posts */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Posts</CardTitle>
-            <CardDescription>
+        {/* Recent Posts with Material Design */}
+        <Card className="bg-md-surface-container rounded-md-large shadow-md-level2 border-md-outline-variant/20 animate-slide-up">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-headline-small font-normal text-md-on-surface">Recent Posts</CardTitle>
+            <CardDescription className="text-body-medium text-md-on-surface-variant">
               Your latest social media activity
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {recentPosts.map((post) => (
-              <div key={post.id} className="flex items-start space-x-4 rounded-lg border p-4">
-                <div className="flex-1 space-y-2">
-                  <p className="text-sm">{post.content}</p>
-                  <div className="flex items-center space-x-2">
-                    <div className="flex space-x-1">
+            {recentPosts.map((post, index) => (
+              <div key={post.id} className="flex items-start space-x-4 rounded-md-medium bg-md-surface-container-high p-4 shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border border-md-outline-variant/10" style={{animationDelay: `${index * 100}ms`}}>
+                <div className="flex-1 space-y-3">
+                  <p className="text-body-medium text-md-on-surface">{post.content}</p>
+                  <div className="flex items-center space-x-2 flex-wrap gap-2">
+                    <div className="flex space-x-1 flex-wrap gap-1">
                       {post.platforms.map((platform) => (
-                        <Badge key={platform} variant="secondary" className="text-xs">
+                        <Badge key={platform} className="bg-md-secondary-container text-md-on-secondary-container text-label-small rounded-md-small px-2 py-1">
                           {platform}
                         </Badge>
                       ))}
                     </div>
-                    <Badge 
-                      variant={
-                        post.status === 'published' ? 'default' :
-                        post.status === 'scheduled' ? 'secondary' :
-                        'outline'
-                      }
-                      className="text-xs"
-                    >
-                      {post.status === 'published' && <CheckCircle2 className="mr-1 h-3 w-3" />}
-                      {post.status === 'scheduled' && <Clock className="mr-1 h-3 w-3" />}
-                      {post.status === 'draft' && <AlertCircle className="mr-1 h-3 w-3" />}
+                    <Badge className={`text-label-small rounded-md-small px-2 py-1 flex items-center gap-1 ${
+                      post.status === 'published' ? 'bg-md-tertiary-container text-md-on-tertiary-container' :
+                      post.status === 'scheduled' ? 'bg-md-primary-container text-md-on-primary-container' :
+                      'bg-md-surface-variant text-md-on-surface-variant'
+                    }`}>
+                      {post.status === 'published' && <CheckCircle2 className="h-3 w-3" />}
+                      {post.status === 'scheduled' && <Clock className="h-3 w-3" />}
+                      {post.status === 'draft' && <AlertCircle className="h-3 w-3" />}
                       {post.status}
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-label-medium text-md-on-surface-variant">
                     {post.status === 'published' ? 
                       `${post.publishedAt} • ${post.engagement}` :
                       post.status === 'scheduled' ?
@@ -192,42 +189,42 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
-            <Button variant="outline" className="w-full">
+            <Button className="w-full bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-medium border border-md-outline-variant transition-all duration-300 hover:shadow-md-level1">
               <Calendar className="mr-2 h-4 w-4" />
               View Calendar
             </Button>
           </CardContent>
         </Card>
 
-        {/* Inbox */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Inbox</CardTitle>
-            <CardDescription>
+        {/* Inbox with Material Design */}
+        <Card className="bg-md-surface-container rounded-md-large shadow-md-level2 border-md-outline-variant/20 animate-slide-up" style={{animationDelay: '200ms'}}>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-headline-small font-normal text-md-on-surface">Inbox</CardTitle>
+            <CardDescription className="text-body-medium text-md-on-surface-variant">
               Recent comments, mentions, and messages
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {inboxItems.map((item) => (
-              <div key={item.id} className="flex items-start space-x-4 rounded-lg border p-4">
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <p className="text-sm font-medium">{item.author}</p>
-                      <Badge variant="outline" className="text-xs">
+            {inboxItems.map((item, index) => (
+              <div key={item.id} className="flex items-start space-x-4 rounded-md-medium bg-md-surface-container-high p-4 shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border border-md-outline-variant/10 animate-fade-in" style={{animationDelay: `${(index + 3) * 100}ms`}}>
+                <div className="flex-1 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center space-x-2 flex-wrap gap-2">
+                      <p className="text-title-medium font-medium text-md-on-surface">{item.author}</p>
+                      <Badge className="bg-md-primary-container text-md-on-primary-container text-label-small rounded-md-small px-2 py-1">
                         {item.platform}
                       </Badge>
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge className="bg-md-secondary-container text-md-on-secondary-container text-label-small rounded-md-small px-2 py-1">
                         {item.type}
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">{item.time}</p>
+                    <p className="text-label-medium text-md-on-surface-variant">{item.time}</p>
                   </div>
-                  <p className="text-sm text-muted-foreground">{item.content}</p>
+                  <p className="text-body-medium text-md-on-surface-variant">{item.content}</p>
                 </div>
               </div>
             ))}
-            <Button variant="outline" className="w-full">
+            <Button className="w-full bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-medium border border-md-outline-variant transition-all duration-300 hover:shadow-md-level1">
               <MessageCircle className="mr-2 h-4 w-4" />
               View All Messages
             </Button>
@@ -235,31 +232,31 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>
+      {/* Quick Actions with Material Design */}
+      <Card className="bg-md-surface-container rounded-md-large shadow-md-level2 border-md-outline-variant/20 animate-scale-in" style={{animationDelay: '400ms'}}>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-headline-small font-normal text-md-on-surface">Quick Actions</CardTitle>
+          <CardDescription className="text-body-medium text-md-on-surface-variant">
             Get things done faster
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
-            <Button variant="outline" className="h-20 flex-col space-y-2">
+            <Button className="h-24 flex-col space-y-3 bg-md-primary-container text-md-on-primary-container hover:bg-md-primary-container/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant/10">
               <PenTool className="h-6 w-6" />
-              <span>New Post</span>
+              <span className="text-label-large">New Post</span>
             </Button>
-            <Button variant="outline" className="h-20 flex-col space-y-2">
+            <Button className="h-24 flex-col space-y-3 bg-md-secondary-container text-md-on-secondary-container hover:bg-md-secondary-container/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant/10">
               <Calendar className="h-6 w-6" />
-              <span>Schedule Post</span>
+              <span className="text-label-large">Schedule Post</span>
             </Button>
-            <Button variant="outline" className="h-20 flex-col space-y-2">
+            <Button className="h-24 flex-col space-y-3 bg-md-tertiary-container text-md-on-tertiary-container hover:bg-md-tertiary-container/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant/10">
               <BarChart3 className="h-6 w-6" />
-              <span>View Analytics</span>
+              <span className="text-label-large">View Analytics</span>
             </Button>
-            <Button variant="outline" className="h-20 flex-col space-y-2">
+            <Button className="h-24 flex-col space-y-3 bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant">
               <Users className="h-6 w-6" />
-              <span>Connect Account</span>
+              <span className="text-label-large">Connect Account</span>
             </Button>
           </div>
         </CardContent>
