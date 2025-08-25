@@ -21,7 +21,9 @@
       "Bash(fi)",
       "Bash(timeout 20 docker-compose logs -f app)",
       "Bash(curl:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(timeout 5 docker-compose logs app)",
+      "Bash(timeout 8 docker-compose logs -f app)"
     ],
     "deny": [],
     "ask": []
