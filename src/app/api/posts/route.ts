@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { withLogging, BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
+import { AppLogger } from '@/lib/logger'
 
 // Schema for post creation/update
 const postSchema = z.object({
@@ -27,7 +29,7 @@ const postSchema = z.object({
 })
 
 // GET /api/posts - Fetch posts
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
@@ -143,7 +145,11 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error fetching posts:', error)
+    const session = await getServerSession(authOptions)
+    ErrorLogger.logUnexpectedError(error as Error, {
+      operation: 'fetch_posts',
+      userId: session?.user?.id
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -151,19 +157,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export const GET = withLogging(getHandler, 'posts-list')
+
 // POST /api/posts - Create new post
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-    console.log('Post creation request body:', JSON.stringify(body, null, 2))
+    const timer = PerformanceLogger.startTimer('post_creation')
     
+    const body = await request.json()
     const validatedData = postSchema.parse(body)
-    console.log('Validated data:', JSON.stringify(validatedData, null, 2))
 
     // Get user's primary workspace with posting permissions
     const userWorkspace = await prisma.userWorkspace.findFirst({
@@ -268,7 +275,7 @@ export async function POST(request: NextRequest) {
                 tags: []
               }
             })
-            console.log('Created placeholder asset:', placeholderAsset.id)
+            BusinessLogger.logMediaUpload(placeholderAsset.id, session.user.id, placeholderAsset.filename, 0)
             assetIds.push(placeholderAsset.id)
           } else {
             assetIds.push(existingAsset.id)
@@ -287,21 +294,33 @@ export async function POST(request: NextRequest) {
             skipDuplicates: true
           })
 
-          console.log('Created asset links:', assetLinks.length)
+          AppLogger.debug(`Created ${assetLinks.length} asset links for post ${post.id}`, {
+            type: 'asset_linking',
+            postId: post.id,
+            assetCount: assetLinks.length
+          })
         }
       }
 
       return post
     })
 
+    // Log business event
+    BusinessLogger.logPostCreated(result.id, session.user.id, validatedData)
+
     // If status is PUBLISHED or SCHEDULED, trigger background job
     if (validatedData.status === 'PUBLISHED') {
-      // TODO: Trigger immediate publishing job
-      console.log('Triggering immediate publish for post:', result.id)
+      BusinessLogger.logWorkspaceAction('publish_post', userWorkspace.workspaceId, session.user.id, {
+        postId: result.id
+      })
     } else if (validatedData.status === 'SCHEDULED' && validatedData.scheduledAt) {
-      // TODO: Schedule background job
-      console.log('Scheduling post for:', validatedData.scheduledAt)
+      BusinessLogger.logWorkspaceAction('schedule_post', userWorkspace.workspaceId, session.user.id, {
+        postId: result.id,
+        scheduledAt: validatedData.scheduledAt
+      })
     }
+
+    timer.end({ postId: result.id, status: validatedData.status })
 
     return NextResponse.json({
       success: true,
@@ -314,22 +333,33 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
 
   } catch (error) {
+    const session = await getServerSession(authOptions)
+    
     if (error instanceof z.ZodError) {
-      console.error('Validation error creating post:', error.errors)
+      ErrorLogger.logValidationError(error, {
+        operation: 'create_post',
+        userId: session?.user?.id,
+        body
+      })
       return NextResponse.json(
         { error: 'Validation error', details: error.errors },
         { status: 400 }
       )
     }
 
-    console.error('Error creating post:', error)
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+    ErrorLogger.logUnexpectedError(error as Error, {
+      operation: 'create_post',
+      userId: session?.user?.id,
+      body
+    })
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
+
+export const POST = withLogging(postHandler, 'posts-create')
 
 // Helper functions
 function customizeContentForPlatform(

@@ -280,6 +280,85 @@ docker-compose exec app npx prisma migrate dev
 docker-compose exec postgres psql -U sociallyhub -d sociallyhub
 ```
 
+## Application Logging System
+
+The application now includes a comprehensive logging system built with Winston that provides structured logging, performance monitoring, error tracking, and business logic logging.
+
+### Logging Architecture
+
+#### Core Logger (`src/lib/logger.ts`)
+- **Winston-based structured logging** with multiple transports
+- **Environment-specific log levels** (debug in development, info in production)
+- **File-based logging** with rotation and size limits
+- **Console logging** for development with colorized output
+- **Exception and rejection handling** with dedicated log files
+
+#### Specialized Loggers (`src/lib/middleware/logging.ts`)
+- **AppLogger**: Core logging methods with service context
+- **DatabaseLogger**: Database query and error logging
+- **AuthLogger**: Authentication events and security monitoring
+- **BusinessLogger**: Business logic events (posts, campaigns, workspaces)
+- **PerformanceLogger**: Performance monitoring with thresholds
+- **ErrorLogger**: Categorized error tracking (validation, database, external services)
+- **SecurityLogger**: Security events and suspicious activity tracking
+
+#### Request/Response Middleware
+- **Automatic API logging** with request/response details
+- **Performance monitoring** with slow request detection (>1000ms)
+- **User context tracking** with session information
+- **Error handling** with structured error responses
+
+### Log Categories
+
+#### API Events
+- Request/response logging with method, URL, status, duration
+- User context (userId, IP, user-agent)
+- Route-specific naming for better categorization
+- Automatic error response generation
+
+#### Business Events
+- Post creation, updates, and deletion
+- Media upload tracking
+- Campaign and workspace actions
+- Bulk operations monitoring
+
+#### Performance Monitoring
+- API response times with configurable thresholds
+- Database query performance
+- External service call monitoring
+- Performance warnings for slow operations
+
+#### Security Events
+- Authentication success/failure
+- Unauthorized access attempts
+- Rate limiting violations
+- Suspicious activity detection
+
+### Log Storage
+- **Error logs**: `logs/error.log` (errors only, 5MB rotation, 5 files)
+- **Combined logs**: `logs/combined.log` (all events, 5MB rotation, 5 files)  
+- **HTTP logs**: `logs/http.log` (API requests, 5MB rotation, 5 files)
+- **Exception logs**: `logs/exceptions.log` (uncaught exceptions)
+- **Rejection logs**: `logs/rejections.log` (unhandled promises)
+
+### Usage Examples
+
+```typescript
+// API route with logging middleware
+export const GET = withLogging(getHandler, 'posts-list')
+
+// Business logic logging
+BusinessLogger.logPostCreated(postId, userId, platforms)
+
+// Error categorization
+ErrorLogger.logValidationError(zodError, { operation: 'create_post' })
+
+// Performance monitoring
+const timer = PerformanceLogger.startTimer('post_creation')
+// ... operation ...
+timer.end({ postId, status })
+```
+
 ## Recent Implementation Status
 
 ✅ **Completed Features**:
@@ -310,6 +389,11 @@ docker-compose exec postgres psql -U sociallyhub -d sociallyhub
 - **Touch-friendly interactions for mobile devices**
 - **Enhanced accessibility with focus states**
 - **Responsive typography scaling**
+- **Comprehensive application logging system with Winston**
+- **Structured logging middleware for all API routes**
+- **Performance monitoring and error categorization**
+- **Business logic event tracking**
+- **Security event logging and monitoring**
 - **Media upload system with file validation and storage**
 - **Post creation with media attachment support**
 - **Workspace permissions system for posting and uploads**
@@ -497,11 +581,15 @@ docker-compose exec postgres psql -U sociallyhub -d sociallyhub
 - [ ] Build deployment automation
 
 #### Monitoring & Logging
-- [ ] Implement application logging
-- [ ] Set up error tracking
-- [ ] Create performance monitoring
+- [x] **Implement application logging with Winston**
+- [x] **Set up structured logging architecture**
+- [x] **Create specialized logging middleware**  
+- [x] **Add request/response logging**
+- [x] **Implement error tracking and categorization**
+- [x] **Create performance monitoring**
+- [x] **Add business logic logging**
+- [x] **Implement security event logging**
 - [ ] Build user analytics
-- [ ] Add security monitoring
 - [ ] Implement alerting system
 - [ ] Create monitoring dashboards
 

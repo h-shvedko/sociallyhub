@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { withLogging, BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
+import { AppLogger } from '@/lib/logger'
 
 const updatePostSchema = z.object({
   title: z.string().optional(),
@@ -26,7 +28,7 @@ const updatePostSchema = z.object({
 })
 
 // GET /api/posts/[id] - Get single post
-export async function GET(
+async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -125,7 +127,12 @@ export async function GET(
     return NextResponse.json({ post: transformedPost })
 
   } catch (error) {
-    console.error('Error fetching post:', error)
+    const session = await getServerSession(authOptions)
+    ErrorLogger.logUnexpectedError(error as Error, {
+      operation: 'fetch_single_post',
+      userId: session?.user?.id,
+      postId: (await params).id
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -133,8 +140,10 @@ export async function GET(
   }
 }
 
+export const GET = withLogging(getHandler, 'posts-get-single')
+
 // PUT /api/posts/[id] - Update post
-export async function PUT(
+async function putHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -147,6 +156,8 @@ export async function PUT(
     const { id: postId } = await params
     const body = await request.json()
     const validatedData = updatePostSchema.parse(body)
+    
+    const timer = PerformanceLogger.startTimer('post_update')
 
     // Get user's workspaces with posting permissions
     const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -285,6 +296,15 @@ export async function PUT(
       }
     }
 
+    // Log the update
+    BusinessLogger.logPostUpdated(updatedPost.id, session.user.id, {
+      fieldsChanged: Object.keys(validatedData),
+      newStatus: validatedData.status,
+      contentUpdated: !!contentText
+    })
+    
+    timer.end({ postId: updatedPost.id, status: updatedPost.status })
+
     return NextResponse.json({
       success: true,
       post: {
@@ -296,14 +316,27 @@ export async function PUT(
     })
 
   } catch (error) {
+    const session = await getServerSession(authOptions)
+    
     if (error instanceof z.ZodError) {
+      ErrorLogger.logValidationError(error, {
+        operation: 'update_post',
+        userId: session?.user?.id,
+        postId: (await params).id,
+        body
+      })
       return NextResponse.json(
         { error: 'Validation error', details: error.errors },
         { status: 400 }
       )
     }
 
-    console.error('Error updating post:', error)
+    ErrorLogger.logUnexpectedError(error as Error, {
+      operation: 'update_post',
+      userId: session?.user?.id,
+      postId: (await params).id,
+      body
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -311,8 +344,10 @@ export async function PUT(
   }
 }
 
+export const PUT = withLogging(putHandler, 'posts-update')
+
 // DELETE /api/posts/[id] - Delete post
-export async function DELETE(
+async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -355,6 +390,9 @@ export async function DELETE(
       )
     }
 
+    // Log the deletion before deleting
+    BusinessLogger.logPostDeleted(postId, session.user.id)
+    
     // Delete post (variants and other related records will be cascade deleted)
     await prisma.post.delete({
       where: { id: postId }
@@ -366,13 +404,20 @@ export async function DELETE(
     })
 
   } catch (error) {
-    console.error('Error deleting post:', error)
+    const session = await getServerSession(authOptions)
+    ErrorLogger.logUnexpectedError(error as Error, {
+      operation: 'delete_post',
+      userId: session?.user?.id,
+      postId: (await params).id
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
+
+export const DELETE = withLogging(deleteHandler, 'posts-delete')
 
 // Helper functions
 function customizeContentForPlatform(
