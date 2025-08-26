@@ -1,0 +1,389 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/config'
+import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
+
+const updatePostSchema = z.object({
+  title: z.string().optional(),
+  content: z.object({
+    text: z.string(),
+    media: z.array(z.object({
+      id: z.string(),
+      type: z.enum(['image', 'video']),
+      url: z.string(),
+      alt: z.string().optional()
+    })).optional(),
+    link: z.string().optional(),
+    hashtags: z.array(z.string()).optional(),
+    mentions: z.array(z.string()).optional()
+  }).optional(),
+  baseContent: z.string().optional(), // For backward compatibility
+  platforms: z.array(z.enum(['TWITTER', 'FACEBOOK', 'INSTAGRAM', 'LINKEDIN', 'YOUTUBE', 'TIKTOK'])).optional(),
+  status: z.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHED', 'ARCHIVED']).optional(),
+  scheduledAt: z.string().optional(),
+  tags: z.array(z.string()).optional()
+})
+
+// GET /api/posts/[id] - Get single post
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id: postId } = await params
+
+    // Get user's workspaces
+    const userWorkspaces = await prisma.userWorkspace.findMany({
+      where: { userId: session.user.id },
+      select: { workspaceId: true }
+    })
+
+    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
+
+    const post = await prisma.post.findFirst({
+      where: {
+        id: postId,
+        workspaceId: { in: workspaceIds }
+      },
+      include: {
+        owner: {
+          select: { id: true, name: true, email: true, image: true }
+        },
+        approver: {
+          select: { id: true, name: true, email: true }
+        },
+        variants: {
+          include: {
+            socialAccount: {
+              select: { 
+                id: true, 
+                provider: true, 
+                handle: true, 
+                displayName: true 
+              }
+            }
+          }
+        },
+        assets: {
+          include: {
+            asset: true
+          }
+        },
+        campaign: {
+          select: { id: true, name: true }
+        },
+        metrics: {
+          select: {
+            metricType: true,
+            value: true,
+            date: true
+          }
+        }
+      }
+    })
+
+    if (!post) {
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    }
+
+    // Transform post for frontend
+    const transformedPost = {
+      id: post.id,
+      title: post.title,
+      baseContent: post.baseContent,
+      status: post.status,
+      ownerId: post.ownerId,
+      owner: post.owner,
+      approver: post.approver,
+      scheduledAt: post.scheduledAt,
+      publishedAt: post.publishedAt,
+      createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
+      tags: post.tags,
+      campaign: post.campaign,
+      platforms: post.variants.map(v => v.socialAccount.provider),
+      variants: post.variants.map(variant => ({
+        id: variant.id,
+        text: variant.text,
+        hashtags: variant.hashtags,
+        status: variant.status,
+        publishedAt: variant.publishedAt,
+        failureReason: variant.failureReason,
+        socialAccount: variant.socialAccount,
+        platformData: variant.platformData
+      })),
+      media: post.assets.map(pa => pa.asset),
+      metrics: post.metrics
+    }
+
+    return NextResponse.json({ post: transformedPost })
+
+  } catch (error) {
+    console.error('Error fetching post:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// PUT /api/posts/[id] - Update post
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id: postId } = await params
+    const body = await request.json()
+    const validatedData = updatePostSchema.parse(body)
+
+    // Get user's workspaces with posting permissions
+    const userWorkspaces = await prisma.userWorkspace.findMany({
+      where: { 
+        userId: session.user.id,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
+      },
+      select: { workspaceId: true }
+    })
+
+    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
+
+    // Find the post and verify ownership/permissions
+    const existingPost = await prisma.post.findFirst({
+      where: {
+        id: postId,
+        workspaceId: { in: workspaceIds }
+      }
+    })
+
+    if (!existingPost) {
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    }
+
+    // Check if post can be edited (allow archiving/unarchiving published posts)
+    if (existingPost.status === 'PUBLISHED' && validatedData.status !== 'ARCHIVED') {
+      return NextResponse.json(
+        { error: 'Cannot edit published posts except to archive them' },
+        { status: 400 }
+      )
+    }
+
+    // Extract content text from either new format or legacy format
+    const contentText = validatedData.content?.text || validatedData.baseContent
+
+    // Update post
+    const updatedPost = await prisma.post.update({
+      where: { id: postId },
+      data: {
+        ...(validatedData.title !== undefined && { title: validatedData.title }),
+        ...(contentText !== undefined && { baseContent: contentText }),
+        ...(validatedData.status !== undefined && { status: validatedData.status as any }),
+        ...(validatedData.scheduledAt !== undefined && { 
+          scheduledAt: validatedData.scheduledAt ? new Date(validatedData.scheduledAt) : null 
+        }),
+        ...(validatedData.tags !== undefined && { tags: validatedData.tags }),
+        updatedAt: new Date()
+      }
+    })
+
+    // If updating content or platforms, update variants
+    if (contentText || validatedData.platforms) {
+      if (validatedData.platforms && validatedData.platforms.length > 0) {
+        // Get social accounts for selected platforms
+        const socialAccounts = await prisma.socialAccount.findMany({
+          where: {
+            workspaceId: { in: workspaceIds },
+            provider: { in: validatedData.platforms },
+            status: 'ACTIVE'
+          }
+        })
+
+        // Delete existing variants and create new ones
+        await prisma.postVariant.deleteMany({
+          where: { postId: postId }
+        })
+
+        // Create new variants for each platform
+        const variantPromises = socialAccounts.map(account => {
+          const platformText = customizeContentForPlatform(
+            contentText || '',
+            account.provider,
+            validatedData.content?.hashtags || []
+          )
+
+          return prisma.postVariant.create({
+            data: {
+              postId: postId,
+              socialAccountId: account.id,
+              text: platformText,
+              hashtags: validatedData.content?.hashtags || [],
+              platformData: getPlatformSpecificData(validatedData.content || {}, account.provider),
+              status: validatedData.status === 'PUBLISHED' ? 'PENDING' : 'PENDING'
+            }
+          })
+        })
+
+        await Promise.all(variantPromises)
+      } else if (contentText) {
+        // Just update existing variants with new text
+        await prisma.postVariant.updateMany({
+          where: { postId: postId },
+          data: {
+            text: contentText,
+            hashtags: validatedData.content?.hashtags || [],
+            updatedAt: new Date()
+          }
+        })
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      post: {
+        id: updatedPost.id,
+        status: updatedPost.status,
+        scheduledAt: updatedPost.scheduledAt,
+        updatedAt: updatedPost.updatedAt
+      }
+    })
+
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation error', details: error.errors },
+        { status: 400 }
+      )
+    }
+
+    console.error('Error updating post:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE /api/posts/[id] - Delete post
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id: postId } = await params
+
+    // Get user's workspaces with delete permissions
+    const userWorkspaces = await prisma.userWorkspace.findMany({
+      where: { 
+        userId: session.user.id,
+        role: { in: ['OWNER', 'ADMIN'] }
+      },
+      select: { workspaceId: true }
+    })
+
+    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
+
+    // Find the post and verify ownership/permissions
+    const existingPost = await prisma.post.findFirst({
+      where: {
+        id: postId,
+        workspaceId: { in: workspaceIds }
+      }
+    })
+
+    if (!existingPost) {
+      return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    }
+
+    // Check if post can be deleted
+    if (existingPost.status === 'PUBLISHED' || existingPost.status === 'ARCHIVED') {
+      return NextResponse.json(
+        { error: 'Cannot delete published or archived posts' },
+        { status: 400 }
+      )
+    }
+
+    // Delete post (variants and other related records will be cascade deleted)
+    await prisma.post.delete({
+      where: { id: postId }
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'Post deleted successfully'
+    })
+
+  } catch (error) {
+    console.error('Error deleting post:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// Helper functions
+function customizeContentForPlatform(
+  baseContent: string,
+  platform: string,
+  hashtags: string[]
+): string {
+  let content = baseContent
+
+  // Platform-specific customizations
+  switch (platform) {
+    case 'TWITTER':
+      // Ensure content fits in character limit
+      const maxLength = 280 - hashtags.join(' #').length - 1
+      if (content.length > maxLength) {
+        content = content.substring(0, maxLength - 3) + '...'
+      }
+      break
+    
+    case 'LINKEDIN':
+      // Add professional tone adjustments if needed
+      break
+    
+    case 'INSTAGRAM':
+      // Instagram-specific hashtag formatting
+      break
+  }
+
+  return content
+}
+
+function getPlatformSpecificData(content: any, platform: string): any {
+  const platformData: any = {}
+
+  switch (platform) {
+    case 'YOUTUBE':
+      platformData.title = content.text?.split('\n')[0] || 'Untitled Video'
+      platformData.description = content.text || ''
+      break
+    
+    case 'LINKEDIN':
+      platformData.isCompanyPost = false
+      break
+    
+    case 'INSTAGRAM':
+      platformData.altText = content.media?.[0]?.alt || ''
+      break
+  }
+
+  return platformData
+}

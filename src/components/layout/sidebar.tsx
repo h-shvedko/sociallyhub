@@ -23,7 +23,7 @@ import {
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Compose", href: "/dashboard/compose", icon: PenTool },
+  { name: "Posts", href: "/dashboard/posts", icon: PenTool },
   { name: "Calendar", href: "/dashboard/calendar", icon: Calendar },
   { name: "Inbox", href: "/dashboard/inbox", icon: Inbox },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },

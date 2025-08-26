@@ -171,7 +171,7 @@ export default function DashboardPage() {
           ))
         ) : (
           stats.map((stat, index) => (
-            <Card key={index} className="bg-md-surface-container rounded-md-medium shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border-md-outline-variant/20 animate-fade-in">
+            <Card key={index} className="bg-md-surface-container rounded-md-medium shadow-md-level1 border-md-outline-variant/20 animate-fade-in">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                 <CardTitle className="text-title-medium font-medium text-md-on-surface">
                   {stat.title}
@@ -205,7 +205,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {recentPosts.map((post, index) => (
-              <div key={post.id} className="flex items-start space-x-4 rounded-md-medium bg-md-surface-container-high p-4 shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border border-md-outline-variant/10" style={{animationDelay: `${index * 100}ms`}}>
+              <div key={post.id} className="flex items-start space-x-4 rounded-md-medium bg-md-surface-container-high p-4 shadow-md-level1 border border-md-outline-variant/10" style={{animationDelay: `${index * 100}ms`}}>
                 <div className="flex-1 space-y-3">
                   <p className="text-body-medium text-md-on-surface">{post.content}</p>
                   <div className="flex items-center space-x-2 flex-wrap gap-2">
@@ -255,7 +255,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {inboxItems.map((item, index) => (
-              <div key={item.id} className="flex items-start space-x-4 rounded-md-medium bg-md-surface-container-high p-4 shadow-md-level1 hover:shadow-md-level2 transition-all duration-300 border border-md-outline-variant/10 animate-fade-in" style={{animationDelay: `${(index + 3) * 100}ms`}}>
+              <div key={item.id} className="flex items-start space-x-4 rounded-md-medium bg-md-surface-container-high p-4 shadow-md-level1 border border-md-outline-variant/10 animate-fade-in" style={{animationDelay: `${(index + 3) * 100}ms`}}>
                 <div className="flex-1 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center space-x-2 flex-wrap gap-2">
@@ -291,19 +291,19 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
-            <Button className="h-24 flex-col space-y-3 bg-md-primary-container text-md-on-primary-container hover:bg-md-primary-container/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant/10">
+            <Button className="h-24 flex-col space-y-3 bg-md-primary-container text-md-on-primary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10">
               <PenTool className="h-6 w-6" />
               <span className="text-label-large">New Post</span>
             </Button>
-            <Button className="h-24 flex-col space-y-3 bg-md-secondary-container text-md-on-secondary-container hover:bg-md-secondary-container/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant/10">
+            <Button className="h-24 flex-col space-y-3 bg-md-secondary-container text-md-on-secondary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10">
               <Calendar className="h-6 w-6" />
               <span className="text-label-large">Schedule Post</span>
             </Button>
-            <Button className="h-24 flex-col space-y-3 bg-md-tertiary-container text-md-on-tertiary-container hover:bg-md-tertiary-container/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant/10">
+            <Button className="h-24 flex-col space-y-3 bg-md-tertiary-container text-md-on-tertiary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10">
               <BarChart3 className="h-6 w-6" />
               <span className="text-label-large">View Analytics</span>
             </Button>
-            <Button className="h-24 flex-col space-y-3 bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-large shadow-md-level1 hover:shadow-md-level3 transition-all duration-300 border border-md-outline-variant">
+            <Button className="h-24 flex-col space-y-3 bg-md-surface-variant text-md-on-surface-variant rounded-md-large shadow-md-level1 border border-md-outline-variant">
               <Users className="h-6 w-6" />
               <span className="text-label-large">Connect Account</span>
             </Button>

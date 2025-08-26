@@ -440,6 +440,7 @@ enum PostStatus {
   PUBLISHED
   FAILED
   CHANGES_REQUESTED
+  ARCHIVED
 }
 
 enum VariantStatus {

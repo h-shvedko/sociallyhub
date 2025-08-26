@@ -26,7 +26,13 @@
       "Bash(timeout 8 docker-compose logs -f app)",
       "Bash(docker:*)",
       "Bash(rm:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(./start-dev.sh:*)",
+      "Bash(timeout 30 docker-compose logs -f app)",
+      "Bash(npm run:*)",
+      "Bash(timeout 3 docker-compose logs app)",
+      "Bash(wmic process where processid=33372 delete:*)",
+      "Bash(wmic process where processid=32056 delete:*)"
     ],
     "deny": [],
     "ask": []

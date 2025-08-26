@@ -50,6 +50,10 @@ services:
       - NEXTAUTH_SECRET=dev-secret-key-change-in-production
       - NEXTAUTH_URL=http://localhost:3099
       - JWT_SECRET=dev-jwt-secret-change-in-production
+      # Enable file watching and hot reload
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=1000
+      - WATCHPACK_POLLING=true
     volumes:
       - ./src:/app/src
       - ./public:/app/public
@@ -62,12 +66,14 @@ services:
       - ./components.json:/app/components.json
       - ./.env.local:/app/.env.local
       - next_cache:/app/.next
+      # Exclude node_modules to avoid conflicts
+      - /app/node_modules
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: npm run dev
+    command: npm run dev:docker
 
   # Prisma Studio (Database GUI)
   prisma-studio:

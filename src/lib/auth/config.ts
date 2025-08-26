@@ -23,7 +23,7 @@ const providers = [
         // Demo account for testing
         if (credentials.email === "demo@sociallyhub.com" && credentials.password === "demo123456") {
           return {
-            id: "demo-user-id",
+            id: "cmesceft00000r6gjl499x7dl",
             email: "demo@sociallyhub.com",
             name: "Demo User",
             image: null,
@@ -72,7 +72,7 @@ const providers = [
         // If database is not available, fall back to demo mode
         if (credentials.email === "demo@sociallyhub.com" && credentials.password === "demo123456") {
           return {
-            id: "demo-user-id",
+            id: "cmesceft00000r6gjl499x7dl",
             email: "demo@sociallyhub.com",
             name: "Demo User",
             image: null,
