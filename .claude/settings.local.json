@@ -32,7 +32,11 @@
       "Bash(npm run:*)",
       "Bash(timeout 3 docker-compose logs app)",
       "Bash(wmic process where processid=33372 delete:*)",
-      "Bash(wmic process where processid=32056 delete:*)"
+      "Bash(wmic process where processid=32056 delete:*)",
+      "Bash(wmic process where:*)",
+      "Bash(timeout 10 docker-compose logs app)",
+      "Bash(timeout 30 docker-compose logs app)",
+      "Bash(timeout 20 docker-compose logs app)"
     ],
     "deny": [],
     "ask": []
