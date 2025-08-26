@@ -263,7 +263,7 @@ export function CalendarExportImport({ isOpen, onClose }: CalendarExportImportPr
             scheduledAt: post.scheduledAt,
             tags: ['imported']
           })
-        )
+        })
       )
     )
   }
