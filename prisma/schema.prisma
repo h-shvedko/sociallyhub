@@ -32,6 +32,7 @@ model Workspace {
   templates      Template[]
   inboxItems     InboxItem[]
   auditEvents    AuditEvent[]
+  analytics      AnalyticsMetric[] @relation("WorkspaceAnalytics")
 
   @@map("workspaces")
 }
@@ -58,6 +59,9 @@ model User {
   auditEvents     AuditEvent[]
   createdPosts    Post[]
   approvedPosts   Post[] @relation("ApprovedBy")
+  analytics       AnalyticsMetric[] @relation("UserAnalytics")
+  userSessions    UserSession[] @relation("UserSessions")
+  userActions     UserAction[] @relation("UserActions")
 
   @@map("users")
 }
@@ -298,25 +302,88 @@ model Conversation {
 // ========================================
 
 model AnalyticsMetric {
-  id              String   @id @default(cuid())
-  workspaceId     String   // For workspace-level filtering
-  socialAccountId String?  // Account-specific metrics
-  postId          String?  // Post-specific metrics
-  date            DateTime @db.Date
-  hour            Int?     // Hour of day (0-23) for hourly metrics
-  platform        SocialProvider
-  metricType      String   // "impressions", "reach", "likes", "comments", etc.
+  id              String         @id @default(cuid())
+  workspaceId     String?        // For workspace-level filtering  
+  userId          String         // User-level analytics
+  socialAccountId String?        // Account-specific metrics
+  postId          String?        // Post-specific metrics
+  date            DateTime       @db.Date
+  hour            Int?           // Hour of day (0-23) for hourly metrics
+  platform        SocialProvider?
+  metricType      String         // "impressions", "reach", "likes", "comments", "page_view", "session", etc.
   value           Float
-  dimensions      Json?    // Additional dimensions (campaign, post_type, etc.)
-  createdAt       DateTime @default(now())
+  dimensions      Json?          // Additional dimensions (campaign, post_type, etc.)
+  metadata        Json?          // Additional metadata
+  createdAt       DateTime       @default(now())
 
+  user          User           @relation("UserAnalytics", fields: [userId], references: [id], onDelete: Cascade)
+  workspace     Workspace?     @relation("WorkspaceAnalytics", fields: [workspaceId], references: [id], onDelete: Cascade)
   socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
   post          Post?          @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  @@unique([socialAccountId, postId, date, hour, metricType])
+  @@unique([userId, socialAccountId, postId, date, hour, metricType])
   @@index([workspaceId, date])
+  @@index([userId, date])
   @@index([postId, metricType])
   @@map("analytics_metrics")
+}
+
+// User sessions for analytics
+model UserSession {
+  id           String    @id @default(cuid())
+  userId       String
+  startTime    DateTime
+  endTime      DateTime?
+  lastActivity DateTime
+  duration     Int?      // Session duration in seconds
+  userAgent    String?
+  ip           String?
+  pages        String[]  // Pages visited during session
+  metadata     Json?     // Additional session data
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startTime])
+  @@index([lastActivity])
+  @@map("user_sessions")
+}
+
+// User actions for detailed analytics
+model UserAction {
+  id         String   @id @default(cuid())
+  userId     String
+  actionType String   // "click", "view", "create", "update", "delete", etc.
+  timestamp  DateTime
+  details    Json?    // Action-specific details
+  duration   Int?     // Time taken for action in milliseconds
+  createdAt  DateTime @default(now())
+
+  user User @relation("UserActions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, timestamp])
+  @@index([actionType, timestamp])
+  @@map("user_actions")
+}
+
+// Alerts for monitoring system
+model Alert {
+  id          String    @id @default(cuid())
+  ruleId      String    // ID of the alert rule that triggered this
+  title       String
+  description String
+  severity    String    // "low", "medium", "high", "critical"
+  timestamp   DateTime
+  resolved    Boolean   @default(false)
+  resolvedAt  DateTime?
+  metadata    Json?     // Alert-specific data
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([resolved, timestamp])
+  @@index([severity, timestamp])
+  @@map("alerts")
 }
 
 // ========================================
