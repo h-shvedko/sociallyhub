@@ -182,19 +182,56 @@ export async function PUT(
     // Extract content text from either new format or legacy format
     const contentText = validatedData.content?.text || validatedData.baseContent
 
-    // Update post
-    const updatedPost = await prisma.post.update({
-      where: { id: postId },
-      data: {
-        ...(validatedData.title !== undefined && { title: validatedData.title }),
-        ...(contentText !== undefined && { baseContent: contentText }),
-        ...(validatedData.status !== undefined && { status: validatedData.status as any }),
-        ...(validatedData.scheduledAt !== undefined && { 
-          scheduledAt: validatedData.scheduledAt ? new Date(validatedData.scheduledAt) : null 
-        }),
-        ...(validatedData.tags !== undefined && { tags: validatedData.tags }),
-        updatedAt: new Date()
+    // Update post in a transaction to handle media
+    const updatedPost = await prisma.$transaction(async (tx) => {
+      // Update the post
+      const post = await tx.post.update({
+        where: { id: postId },
+        data: {
+          ...(validatedData.title !== undefined && { title: validatedData.title }),
+          ...(contentText !== undefined && { baseContent: contentText }),
+          ...(validatedData.status !== undefined && { status: validatedData.status as any }),
+          ...(validatedData.scheduledAt !== undefined && { 
+            scheduledAt: validatedData.scheduledAt ? new Date(validatedData.scheduledAt) : null 
+          }),
+          ...(validatedData.tags !== undefined && { tags: validatedData.tags }),
+          updatedAt: new Date()
+        }
+      })
+
+      // Handle media updates
+      if (validatedData.content?.media !== undefined) {
+        // First, remove all existing media links
+        await tx.postAsset.deleteMany({
+          where: { postId }
+        })
+
+        // Then add new media links if any
+        if (validatedData.content.media.length > 0) {
+          // Verify that the asset IDs exist and belong to the user's workspace
+          const existingAssets = await tx.asset.findMany({
+            where: {
+              id: { in: validatedData.content.media.map((media: any) => media.id) },
+              workspaceId: { in: workspaceIds }
+            },
+            select: { id: true }
+          })
+
+          if (existingAssets.length > 0) {
+            const assetLinks = existingAssets.map(asset => ({
+              postId,
+              assetId: asset.id
+            }))
+            
+            await tx.postAsset.createMany({
+              data: assetLinks,
+              skipDuplicates: true
+            })
+          }
+        }
       }
+
+      return post
     })
 
     // If updating content or platforms, update variants

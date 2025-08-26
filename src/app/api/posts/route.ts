@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
     const validatedData = postSchema.parse(body)
     console.log('Validated data:', JSON.stringify(validatedData, null, 2))
 
-    // Get user's primary workspace
+    // Get user's primary workspace with posting permissions
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { 
         userId: session.user.id,
@@ -240,17 +240,54 @@ export async function POST(request: NextRequest) {
 
       // Handle media assets (if any)
       if (validatedData.content.media && validatedData.content.media.length > 0) {
-        // Link existing uploaded assets to the post
-        const assetLinks = validatedData.content.media.map(media => ({
-          postId: post.id,
-          assetId: media.id
-        }))
+        // Create placeholder assets for media that doesn't exist in database yet
+        const assetIds: string[] = []
         
-        if (assetLinks.length > 0) {
+        for (const media of validatedData.content.media) {
+          // Check if asset already exists
+          let existingAsset = await tx.asset.findUnique({
+            where: { id: media.id },
+            select: { id: true }
+          })
+          
+          if (!existingAsset) {
+            // Create placeholder asset for blob URLs
+            const placeholderAsset = await tx.asset.create({
+              data: {
+                id: media.id, // Use the frontend-provided ID
+                workspaceId: userWorkspace.workspaceId,
+                filename: `placeholder-${media.id}`,
+                originalName: `image.${media.type === 'image' ? 'jpg' : 'mp4'}`,
+                mimeType: media.type === 'image' ? 'image/jpeg' : 'video/mp4',
+                size: 0, // Placeholder size
+                url: media.url, // Keep the blob URL temporarily
+                width: null,
+                height: null,
+                duration: null,
+                metadata: { isPlaceholder: true, originalUrl: media.url },
+                tags: []
+              }
+            })
+            console.log('Created placeholder asset:', placeholderAsset.id)
+            assetIds.push(placeholderAsset.id)
+          } else {
+            assetIds.push(existingAsset.id)
+          }
+        }
+
+        // Create asset links
+        if (assetIds.length > 0) {
+          const assetLinks = assetIds.map(assetId => ({
+            postId: post.id,
+            assetId: assetId
+          }))
+          
           await tx.postAsset.createMany({
             data: assetLinks,
             skipDuplicates: true
           })
+
+          console.log('Created asset links:', assetLinks.length)
         }
       }
 
