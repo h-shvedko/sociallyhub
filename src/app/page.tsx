@@ -1,11 +1,10 @@
+"use client"
+
 import Link from "next/link"
 import { ArrowRight, CheckCircle, Star, MessageCircle, Calendar, BarChart3, Users, PenTool, Shield, Zap, Target, Globe, TrendingUp, Clock, Award, PlayCircle, ChevronRight, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-
-"use client"
-
 import { useState } from "react"
 
 export default function LandingPage() {
