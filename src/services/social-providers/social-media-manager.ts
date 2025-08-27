@@ -77,20 +77,64 @@ export class SocialMediaManager {
     this.providers = new Map()
     this.accounts = new Map()
 
-    // Initialize all providers
-    this.providers.set(Platform.TWITTER, new TwitterProvider())
-    this.providers.set(Platform.FACEBOOK, new FacebookProvider())
-    this.providers.set(Platform.INSTAGRAM, new InstagramProvider())
-    this.providers.set(Platform.LINKEDIN, new LinkedInProvider())
-    this.providers.set(Platform.TIKTOK, new TikTokProvider())
-    this.providers.set(Platform.YOUTUBE, new YouTubeProvider())
+    // Initialize providers with configuration from environment
+    this.initializeProviders()
+  }
+
+  private initializeProviders() {
+    // Only initialize providers if their configuration is available
+    if (process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET) {
+      this.providers.set('twitter', new TwitterProvider({
+        clientId: process.env.TWITTER_CLIENT_ID,
+        clientSecret: process.env.TWITTER_CLIENT_SECRET,
+        apiKey: process.env.TWITTER_API_KEY || process.env.TWITTER_CLIENT_ID,
+        apiSecret: process.env.TWITTER_API_SECRET || process.env.TWITTER_CLIENT_SECRET,
+        bearerToken: process.env.TWITTER_BEARER_TOKEN || ''
+      }))
+    }
+
+    if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
+      this.providers.set('facebook', new FacebookProvider({
+        appId: process.env.FACEBOOK_APP_ID,
+        appSecret: process.env.FACEBOOK_APP_SECRET
+      }))
+    }
+
+    if (process.env.INSTAGRAM_CLIENT_ID && process.env.INSTAGRAM_CLIENT_SECRET) {
+      this.providers.set('instagram', new InstagramProvider({
+        clientId: process.env.INSTAGRAM_CLIENT_ID,
+        clientSecret: process.env.INSTAGRAM_CLIENT_SECRET
+      }))
+    }
+
+    if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
+      this.providers.set('linkedin', new LinkedInProvider({
+        clientId: process.env.LINKEDIN_CLIENT_ID,
+        clientSecret: process.env.LINKEDIN_CLIENT_SECRET
+      }))
+    }
+
+    if (process.env.TIKTOK_CLIENT_ID && process.env.TIKTOK_CLIENT_SECRET) {
+      this.providers.set('tiktok', new TikTokProvider({
+        clientId: process.env.TIKTOK_CLIENT_ID,
+        clientSecret: process.env.TIKTOK_CLIENT_SECRET
+      }))
+    }
+
+    if (process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET) {
+      this.providers.set('youtube', new YouTubeProvider({
+        clientId: process.env.YOUTUBE_CLIENT_ID,
+        clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
+        apiKey: process.env.YOUTUBE_API_KEY || ''
+      }))
+    }
   }
 
   // Provider Management
   getProvider(platform: Platform): SocialMediaProvider {
     const provider = this.providers.get(platform)
     if (!provider) {
-      throw new SocialMediaError(`Provider for ${platform} not found`, 'PROVIDER_NOT_FOUND')
+      throw new SocialMediaError(platform, 'PROVIDER_NOT_FOUND', `Provider for ${platform} not found`)
     }
     return provider
   }
@@ -101,7 +145,7 @@ export class SocialMediaManager {
 
   // Account Management
   addAccount(account: SocialAccount): void {
-    const key = `${account.platform}_${account.accountId}`
+    const key = `${account.platform}_${account.id}`
     this.accounts.set(key, account)
   }
 
@@ -181,7 +225,7 @@ export class SocialMediaManager {
       }
     }
 
-    return provider.getUserProfile(account)
+    return provider.getProfile(account)
   }
 
   async getAnalytics(
@@ -346,7 +390,7 @@ export class SocialMediaManager {
     const promises = accounts.map(async (account) => {
       try {
         const provider = this.getProvider(account.platform)
-        const profileResult = await provider.getUserProfile(account)
+        const profileResult = await provider.getProfile(account)
         
         const status: AccountStatus = {
           platform: account.platform,

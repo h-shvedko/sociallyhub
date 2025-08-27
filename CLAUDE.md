@@ -1019,14 +1019,25 @@ The social media API integration system provides a comprehensive, unified interf
 - **`social-media-manager.ts`**: Unified API abstraction layer that coordinates all providers and provides cross-platform functionality
 - **`index.ts`**: Centralized exports for easy integration
 
+**API Endpoints (`src/app/api/social/`):**
+
+- **`/api/social/connect`**: OAuth 2.0 authentication flow for connecting social media accounts
+- **`/api/social/post`**: Bulk posting to multiple platforms with validation and optimization
+- **`/api/social/post/validate`**: Content validation across platforms with recommendations
+- **`/api/social/analytics`**: Cross-platform analytics aggregation and individual platform metrics
+- **`/api/social/analytics/status`**: Account health monitoring and connection status
+- **`/api/social/media/upload`**: Media upload with platform-specific size limits and validation
+
 **Key Features:**
-- **OAuth 2.0 Authentication**: Complete authentication flows for all platforms
+- **OAuth 2.0 Authentication**: Complete authentication flows for all platforms with PKCE support
 - **Content Publishing**: Create posts with platform-specific optimizations (threads, carousels, videos)
-- **Media Management**: Upload and manage images, videos, and other media assets
+- **Media Management**: Upload and manage images, videos, and other media assets with size validation
 - **Analytics Integration**: Fetch engagement metrics, follower growth, and performance data
 - **Cross-Platform Operations**: Bulk posting, unified analytics, and account health monitoring
 - **Comprehensive Validation**: Platform-specific content validation and error handling
 - **Rate Limiting**: Built-in rate limiting with exponential backoff for all providers
+- **Performance Monitoring**: Request timing, error tracking, and business event logging
+- **Security Features**: Unauthorized access logging, suspicious activity detection
 
 **Supported Platforms:**
 1. **Twitter/X**: v2 API with tweet creation, thread support, media upload, and analytics
@@ -1040,6 +1051,9 @@ The social media API integration system provides a comprehensive, unified interf
 ```
 TWITTER_CLIENT_ID=""
 TWITTER_CLIENT_SECRET=""
+TWITTER_API_KEY=""
+TWITTER_API_SECRET=""
+TWITTER_BEARER_TOKEN=""
 FACEBOOK_APP_ID=""
 FACEBOOK_APP_SECRET=""
 INSTAGRAM_CLIENT_ID=""
@@ -1053,26 +1067,72 @@ TIKTOK_CLIENT_ID=""
 TIKTOK_CLIENT_SECRET=""
 ```
 
-**Usage Example:**
+**Usage Examples:**
+
 ```typescript
-import { socialMediaManager, Platform } from '@/services/social-providers'
+// Connect a social media account
+const response = await fetch('/api/social/connect?platform=twitter&redirectUri=' + encodeURIComponent(redirectUri))
+const { authUrl } = await response.json()
+window.location.href = authUrl
 
 // Bulk post to multiple platforms
-const result = await socialMediaManager.bulkPost({
-  text: "Hello from SociallyHub!",
-  platforms: [Platform.TWITTER, Platform.FACEBOOK, Platform.LINKEDIN],
-  platformSpecificSettings: {
-    twitter: { threadMode: true },
-    facebook: { privacy: 'PUBLIC' }
-  }
+const response = await fetch('/api/social/post', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    text: "Hello from SociallyHub!",
+    platforms: ['twitter', 'facebook', 'linkedin'],
+    platformSpecificSettings: {
+      twitter: { threadMode: true },
+      facebook: { privacySettings: 'PUBLIC' }
+    }
+  })
 })
 
 // Get cross-platform analytics
-const analytics = await socialMediaManager.getCrossPlatformAnalytics(
-  accountIds,
-  { start: new Date('2024-01-01'), end: new Date() }
-)
+const response = await fetch('/api/social/analytics?' + new URLSearchParams({
+  accounts: JSON.stringify([
+    { platform: 'twitter', accountId: 'account1' },
+    { platform: 'facebook', accountId: 'account2' }
+  ]),
+  startDate: new Date('2024-01-01').toISOString(),
+  endDate: new Date().toISOString(),
+  crossPlatform: 'true'
+}))
+
+// Upload media
+const response = await fetch('/api/social/media/upload', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    platform: 'twitter',
+    accountId: 'account1',
+    media: {
+      id: 'media123',
+      type: 'image',
+      url: 'https://example.com/image.jpg',
+      size: 1024000
+    }
+  })
+})
 ```
+
+**Platform-Specific Features:**
+
+- **Twitter**: Thread mode, quote tweets, reply chains, GIF handling, character limits
+- **Facebook**: Privacy settings, page posting, photo albums, event creation
+- **Instagram**: Story posting, IGTV, carousel posts, location tagging
+- **LinkedIn**: Professional targeting, company pages, article publishing
+- **TikTok**: Video effects, privacy controls, duet/stitch permissions
+- **YouTube**: Video scheduling, playlists, community posts, shorts
+
+**Error Handling & Logging:**
+- Structured error responses with detailed error codes
+- Rate limit detection with retry-after headers
+- Authentication error handling with token refresh
+- Comprehensive logging with Winston integration
+- Performance monitoring with timing metrics
+- Security event logging for suspicious activities
 
 #### Background Job Processing
 - [ ] Set up BullMQ job queues

@@ -36,7 +36,8 @@
       "Bash(wmic process where:*)",
       "Bash(timeout 10 docker-compose logs app)",
       "Bash(timeout 30 docker-compose logs app)",
-      "Bash(timeout 20 docker-compose logs app)"
+      "Bash(timeout 20 docker-compose logs app)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

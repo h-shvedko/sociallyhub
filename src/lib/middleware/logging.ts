@@ -356,9 +356,8 @@ function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
-// Export all loggers
+// Export all loggers (AppLogger is already imported and available)
 export {
-  AppLogger,
   DatabaseLogger,
   AuthLogger,
   BusinessLogger,
