@@ -37,7 +37,8 @@
       "Bash(timeout 10 docker-compose logs app)",
       "Bash(timeout 30 docker-compose logs app)",
       "Bash(timeout 20 docker-compose logs app)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []
