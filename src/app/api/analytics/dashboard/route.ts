@@ -131,8 +131,8 @@ async function getHandler(request: NextRequest) {
     const completedSessions = await prisma.userSession.findMany({
       where: {
         startTime: { gte: startDate },
-        endTime: { not: null },
-        duration: { not: null }
+        NOT: { endTime: null },
+        NOT: { duration: null }
       },
       select: { duration: true }
     })

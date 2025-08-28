@@ -228,6 +228,16 @@ export class BusinessLogger {
       timestamp: new Date().toISOString()
     })
   }
+
+  static logClientListViewed(userId: string, workspaceId: string, details?: any) {
+    AppLogger.info(`Client list viewed`, {
+      type: 'client_list_viewed',
+      userId,
+      workspaceId,
+      details,
+      timestamp: new Date().toISOString()
+    })
+  }
 }
 
 /**

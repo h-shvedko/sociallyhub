@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/auth-options'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
 
@@ -220,7 +220,7 @@ async function calculatePerformanceStats(workspaceId: string) {
     const campaignPosts = await prisma.post.findMany({
       where: {
         workspaceId,
-        campaignId: { not: null }
+        NOT: { campaignId: null }
       },
       include: {
         metrics: true

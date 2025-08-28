@@ -1,5 +1,5 @@
 import { OpenAI } from 'openai'
-import { prisma } from '@/lib/db/prisma'
+import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
 const openai = new OpenAI({

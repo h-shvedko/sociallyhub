@@ -444,21 +444,21 @@ export function MonitoringDashboard() {
                   <div className="flex items-center justify-between p-2 border rounded">
                     <div>
                       <div className="font-medium text-sm">High Error Rate</div>
-                      <div className="text-xs text-muted-foreground">Error rate > 5%</div>
+                      <div className="text-xs text-muted-foreground">Error rate &gt; 5%</div>
                     </div>
                     <Badge variant="outline">Active</Badge>
                   </div>
                   <div className="flex items-center justify-between p-2 border rounded">
                     <div>
                       <div className="font-medium text-sm">Slow Response Time</div>
-                      <div className="text-xs text-muted-foreground">Response time > 2s</div>
+                      <div className="text-xs text-muted-foreground">Response time &gt; 2s</div>
                     </div>
                     <Badge variant="outline">Active</Badge>
                   </div>
                   <div className="flex items-center justify-between p-2 border rounded">
                     <div>
                       <div className="font-medium text-sm">Database Connection</div>
-                      <div className="text-xs text-muted-foreground">DB errors > 10</div>
+                      <div className="text-xs text-muted-foreground">DB errors &gt; 10</div>
                     </div>
                     <Badge variant="outline">Active</Badge>
                   </div>

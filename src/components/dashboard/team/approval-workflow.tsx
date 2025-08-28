@@ -119,8 +119,8 @@ export function ApprovalWorkflow({ workspaceId }: ApprovalWorkflowProps) {
   const [reviewDecision, setReviewDecision] = useState<'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED' | null>(null)
   const [reviewFeedback, setReviewFeedback] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
-  const [priorityFilter, setPriorityFilter] = useState("")
-  const [typeFilter, setTypeFilter] = useState("")
+  const [priorityFilter, setPriorityFilter] = useState("all")
+  const [typeFilter, setTypeFilter] = useState("all")
 
   useEffect(() => {
     loadMockData()
@@ -427,8 +427,8 @@ export function ApprovalWorkflow({ workspaceId }: ApprovalWorkflowProps) {
                          request.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          request.requestedBy.name.toLowerCase().includes(searchQuery.toLowerCase())
     
-    const matchesPriority = priorityFilter === "" || request.priority === priorityFilter
-    const matchesType = typeFilter === "" || request.type === typeFilter
+    const matchesPriority = priorityFilter === "all" || request.priority === priorityFilter
+    const matchesType = typeFilter === "all" || request.type === typeFilter
     
     return matchesSearch && matchesPriority && matchesType
   })
@@ -526,7 +526,7 @@ export function ApprovalWorkflow({ workspaceId }: ApprovalWorkflowProps) {
               onChange={(e) => setPriorityFilter(e.target.value)}
               className="flex h-10 w-[150px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <option value="">All Priorities</option>
+              <option value="all">All Priorities</option>
               <option value="URGENT">Urgent</option>
               <option value="HIGH">High</option>
               <option value="MEDIUM">Medium</option>
@@ -538,7 +538,7 @@ export function ApprovalWorkflow({ workspaceId }: ApprovalWorkflowProps) {
               onChange={(e) => setTypeFilter(e.target.value)}
               className="flex h-10 w-[150px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <option value="">All Types</option>
+              <option value="all">All Types</option>
               <option value="POST">Posts</option>
               <option value="CAMPAIGN">Campaigns</option>
               <option value="TEMPLATE">Templates</option>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/auth-options'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
 
@@ -72,7 +72,10 @@ export async function GET(request: NextRequest) {
       // Sentiment breakdown
       prisma.inboxItem.groupBy({
         by: ['sentiment'],
-        where: { workspaceId, sentiment: { not: null } },
+        where: { 
+          workspaceId, 
+          NOT: { sentiment: null }
+        },
         _count: { id: true }
       }),
       
@@ -88,14 +91,13 @@ export async function GET(request: NextRequest) {
     ])
 
     // Calculate response metrics
-    const avgResponseTime = await prisma.inboxItem.aggregate({
+    const responseMetrics = await prisma.inboxItem.aggregate({
       where: {
         workspaceId,
-        status: 'CLOSED',
-        updatedAt: { not: null }
+        status: 'CLOSED'
       },
-      _avg: {
-        id: true // This would need a calculated field for response time
+      _count: {
+        id: true
       }
     })
 

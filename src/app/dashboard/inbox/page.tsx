@@ -1,6 +1,6 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/auth-options'
+import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { InboxDashboard } from '@/components/dashboard/inbox/inbox-dashboard'
 

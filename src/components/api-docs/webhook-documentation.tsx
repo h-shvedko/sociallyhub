@@ -896,13 +896,13 @@ echo json_encode(['received' => true]);
                   <Label>Event Type</Label>
                   <select
                     className="w-full px-3 py-2 border rounded-md"
-                    value={selectedEvent?.name || ''}
+                    value={selectedEvent?.name || 'none'}
                     onChange={(e) => {
                       const event = webhookEvents.find(ev => ev.name === e.target.value)
                       setSelectedEvent(event || null)
                     }}
                   >
-                    <option value="">Select an event type</option>
+                    <option value="none">Select an event type</option>
                     {webhookEvents.map(event => (
                       <option key={event.name} value={event.name}>
                         {event.name}

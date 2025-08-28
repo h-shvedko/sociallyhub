@@ -1,7 +1,7 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions } from '@/lib/auth/auth-options'
 import { ClientDashboard } from '@/components/dashboard/clients/client-dashboard'
 
 export const metadata: Metadata = {

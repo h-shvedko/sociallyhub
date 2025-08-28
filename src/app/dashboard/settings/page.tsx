@@ -1,6 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import { useDictionary } from "@/hooks/use-dictionary"
+import { useLocale } from "@/contexts/locale-context"
+import { LanguageSelector } from "@/components/ui/language-selector"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -62,6 +65,8 @@ const settingsSections: SettingsSection[] = [
 ]
 
 export default function SettingsPage() {
+  const { t, isLoading } = useDictionary()
+  const { locale } = useLocale()
   const [activeSection, setActiveSection] = useState("general")
   const [settings, setSettings] = useState({
     // General
@@ -118,18 +123,11 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="language">Language</Label>
-            <Select value={settings.language} onValueChange={(value) => updateSetting("language", value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="es">Español</SelectItem>
-                <SelectItem value="fr">Français</SelectItem>
-                <SelectItem value="de">Deutsch</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label htmlFor="language">{t('settings.language', 'Language')}</Label>
+            <LanguageSelector />
+            <p className="text-xs text-muted-foreground">
+              {t('settings.languageNote', 'Interface language with automatic translation support')}
+            </p>
           </div>
         </div>
 

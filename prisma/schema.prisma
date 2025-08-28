@@ -15,12 +15,14 @@ datasource db {
 // ========================================
 
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  timezone  String   @default("UTC")
-  branding  Json?    // Store workspace branding (logo, colors, etc.)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String
+  timezone         String   @default("UTC")
+  branding         Json?    // Store workspace branding (logo, colors, etc.)
+  defaultLocale    String   @default("en")
+  supportedLocales String[] @default(["en"])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   // Relations
   users          UserWorkspace[]
@@ -66,6 +68,13 @@ model Workspace {
   calendarOptimizations ContentCalendarOptimization[] @relation("WorkspaceCalendarOptimizations")
   translations          Translation[]               @relation("WorkspaceTranslations")
   responseTemplates     ResponseTemplate[]          @relation("WorkspaceResponseTemplates")
+  
+  // A/B Testing Relations
+  contentABTests        ContentABTest[]             @relation("WorkspaceContentABTests")
+  
+  // Translation Relations
+  translationCache      TranslationCache[]          @relation("WorkspaceTranslationCache")
+  contentTranslations   WorkspaceContentTranslation[] @relation("WorkspaceContentTranslations")
 
   @@map("workspaces")
 }
@@ -98,6 +107,10 @@ model User {
   
   // AI Relations
   aiSuggestions   AIContentSuggestion[] @relation("UserAISuggestions")
+  
+  // Translation Relations
+  languagePreferences  UserLanguagePreference[] @relation("UserLanguagePreferences")
+  translatedContent    WorkspaceContentTranslation[] @relation("ContentTranslatedBy")
   aiUsage         AIUsageTracking[]     @relation("UserAIUsage")
 
   @@map("users")
@@ -993,6 +1006,94 @@ model ImageABTest {
   @@map("image_ab_tests")
 }
 
+model ContentABTest {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  testName        String
+  description     String?
+  
+  // Test Configuration
+  testType        ABTestType       @default(CONTENT)
+  platform        SocialProvider?
+  startDate       DateTime
+  endDate         DateTime?
+  status          ABTestStatus     @default(DRAFT)
+  sampleSize      Int?             // Minimum audience size for statistical significance
+  confidenceLevel Float            @default(0.95) // Statistical confidence threshold
+  
+  // Control Content
+  controlTitle    String?
+  controlContent  String
+  controlHashtags String[]
+  controlMediaIds String[]         // Asset IDs for control version
+  
+  // Variants
+  variants        Json             // Array of variant content objects
+  
+  // Test Parameters
+  trafficSplit    Json             // Traffic allocation per variant (e.g., {"control": 50, "variant1": 50})
+  testDuration    Int?             // Test duration in hours
+  autoOptimize    Boolean          @default(false) // Auto-select winning variant
+  
+  // Results & Metrics
+  totalViews      Int              @default(0)
+  controlMetrics  Json?            // Engagement metrics for control
+  variantMetrics  Json?            // Engagement metrics for all variants
+  winningVariant  String?          // "control" or variant key
+  statisticalSignificance Float?   // P-value or confidence score
+  liftPercentage  Float?           // Performance improvement %
+  
+  // AI-Powered Insights
+  aiRecommendations Json?          // AI analysis of results
+  nextTestSuggestions Json?        // Follow-up test recommendations
+  audienceSegments Json?           // Segment-based performance analysis
+  optimizationInsights Json?       // Content optimization suggestions
+  
+  // Automation
+  autoPublish     Boolean          @default(false)  // Auto-publish winning variant
+  publishedAt     DateTime?        // When winning variant was published
+  scheduledFor    DateTime?        // Scheduled publish time for winner
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  workspace       Workspace        @relation("WorkspaceContentABTests", fields: [workspaceId], references: [id], onDelete: Cascade)
+  executionLogs   ABTestExecution[] @relation("ABTestExecutions")
+
+  @@map("content_ab_tests")
+}
+
+model ABTestExecution {
+  id            String       @id @default(cuid())
+  abTestId      String
+  variant       String       // "control" or variant key
+  userId        String?      // User who saw this variant
+  sessionId     String?      // Session identifier
+  
+  // Interaction Data
+  viewed        Boolean      @default(false)
+  clicked       Boolean      @default(false)
+  engaged       Boolean      @default(false)  // Liked, commented, shared
+  converted     Boolean      @default(false)  // Achieved goal action
+  
+  // Metrics
+  engagementScore Float?     // Calculated engagement score
+  timeSpent     Int?         // Time spent viewing (seconds)
+  interactions  Json?        // Detailed interaction data
+  
+  // Context
+  platform      SocialProvider?
+  deviceType    String?      // mobile, desktop, tablet
+  location      String?      // Geographic location
+  timestamp     DateTime     @default(now())
+  
+  // Relations
+  abTest        ContentABTest @relation("ABTestExecutions", fields: [abTestId], references: [id], onDelete: Cascade)
+  
+  @@map("ab_test_executions")
+}
+
 // ========================================
 // AUDIENCE INTELLIGENCE & SENTIMENT ANALYSIS
 // ========================================
@@ -1880,4 +1981,78 @@ enum ABTestStatus {
   COMPLETED
   PAUSED
   CANCELLED
+}
+
+enum ABTestType {
+  CONTENT      // Content/copy testing
+  TIMING       // Posting time optimization
+  HASHTAGS     // Hashtag strategy testing
+  VISUAL       // Image/video testing
+  AUDIENCE     // Audience targeting testing
+  HYBRID       // Multiple element testing
+}
+
+// ========================================
+// INTERNATIONALIZATION MODELS
+// ========================================
+
+model TranslationCache {
+  id               String    @id @default(cuid())
+  sourceText       String
+  sourceLanguage   String    @default("en")
+  targetLanguage   String
+  translatedText   String
+  context          String?
+  workspaceId      String?
+  quality          Decimal?  @default(0.95)
+  usageCount       Int       @default(1)
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  workspace Workspace? @relation("WorkspaceTranslationCache", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceText, targetLanguage])
+  @@index([workspaceId])
+  @@index([expiresAt])
+  @@map("translation_cache")
+}
+
+model UserLanguagePreference {
+  id           String   @id @default(cuid())
+  userId       String
+  locale       String
+  isDefault    Boolean  @default(false)
+  proficiency  String   @default("native") // native, fluent, intermediate, basic
+  autoTranslate Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation("UserLanguagePreferences", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, locale])
+  @@index([userId])
+  @@index([locale])
+  @@map("user_language_preferences")
+}
+
+model WorkspaceContentTranslation {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  contentType        String   // post_template, campaign_name, etc.
+  contentId          String
+  locale             String
+  translatedContent  Json
+  isHumanTranslated  Boolean  @default(false)
+  translatedBy       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace    Workspace @relation("WorkspaceContentTranslations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  translatedByUser User?     @relation("ContentTranslatedBy", fields: [translatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([contentId, locale])
+  @@index([workspaceId, contentType])
+  @@index([contentId, locale])
+  @@map("workspace_content_translations")
 }

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { ThemeSwitcher } from "@/components/ui/theme-switcher"
+import { LanguageSelector } from "@/components/ui/language-selector"
 import { MobileNavigation } from "./mobile-navigation"
 
 interface HeaderProps {
@@ -79,6 +80,11 @@ export function Header({ className }: HeaderProps) {
           <span className="sr-only">Compose</span>
         </Button>
 
+        {/* Language Selector - Hidden on mobile */}
+        <div className="hidden sm:flex items-center">
+          <LanguageSelector variant="compact" />
+        </div>
+
         {/* Theme Switcher - Hidden on mobile */}
         <div className="hidden sm:flex items-center">
           <ThemeSwitcher />
@@ -132,11 +138,17 @@ export function Header({ className }: HeaderProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             
-            {/* Mobile-only Theme Switcher */}
+            {/* Mobile-only Language & Theme Switcher */}
             <div className="sm:hidden px-2 py-1">
-              <div className="flex flex-col space-y-2">
-                <span className="text-sm font-medium">Theme</span>
-                <ThemeSwitcher variant="compact" />
+              <div className="flex flex-col space-y-3">
+                <div className="flex flex-col space-y-2">
+                  <span className="text-sm font-medium">Language</span>
+                  <LanguageSelector variant="compact" />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <span className="text-sm font-medium">Theme</span>
+                  <ThemeSwitcher variant="compact" />
+                </div>
               </div>
             </div>
             <DropdownMenuSeparator className="sm:hidden" />

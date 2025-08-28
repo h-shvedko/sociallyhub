@@ -1,6 +1,6 @@
 import { OpenAI } from 'openai'
 import { z } from 'zod'
-import { prisma } from '@/lib/db/prisma'
+import { prisma } from '@/lib/prisma'
 
 // Initialize OpenAI client
 const openai = new OpenAI({

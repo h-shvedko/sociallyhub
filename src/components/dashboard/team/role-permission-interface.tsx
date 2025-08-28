@@ -281,7 +281,7 @@ export function RolePermissionInterface({ workspaceId }: RolePermissionInterface
   const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false)
   const [isEditPermissionsOpen, setIsEditPermissionsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedRole, setSelectedRole] = useState<string>("")
+  const [selectedRole, setSelectedRole] = useState<string>("all")
   
   // Create role form state
   const [newRoleName, setNewRoleName] = useState("")
@@ -410,7 +410,7 @@ export function RolePermissionInterface({ workspaceId }: RolePermissionInterface
     member.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     member.role.toLowerCase().includes(searchQuery.toLowerCase())
   ).filter(member => 
-    selectedRole === "" || member.role === selectedRole
+    selectedRole === "all" || member.role === selectedRole
   )
 
   const getRoleIcon = (roleName: string) => {
@@ -709,7 +709,7 @@ export function RolePermissionInterface({ workspaceId }: RolePermissionInterface
                     <SelectValue placeholder="Filter by role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Roles</SelectItem>
+                    <SelectItem value="all">All Roles</SelectItem>
                     {Object.keys(ROLE_TEMPLATES).map(role => (
                       <SelectItem key={role} value={role}>{role}</SelectItem>
                     ))}

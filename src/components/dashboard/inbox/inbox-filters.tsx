@@ -99,7 +99,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
   }
 
   const statusOptions: FilterOption[] = [
-    { value: '', label: 'All Status', icon: Filter },
+    { value: 'all', label: 'All Status', icon: Filter },
     { value: 'OPEN', label: 'Open', icon: AlertCircle, color: 'text-red-600' },
     { value: 'ASSIGNED', label: 'Assigned', icon: UserCheck, color: 'text-yellow-600' },
     { value: 'SNOOZED', label: 'Snoozed', icon: Clock, color: 'text-blue-600' },
@@ -107,7 +107,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
   ]
 
   const typeOptions: FilterOption[] = [
-    { value: '', label: 'All Types', icon: Filter },
+    { value: 'all', label: 'All Types', icon: Filter },
     { value: 'COMMENT', label: 'Comments', icon: MessageSquare },
     { value: 'MENTION', label: 'Mentions', icon: AtSign },
     { value: 'DIRECT_MESSAGE', label: 'Direct Messages', icon: Mail },
@@ -116,27 +116,28 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
   ]
 
   const sentimentOptions: FilterOption[] = [
-    { value: '', label: 'All Sentiment', icon: Filter },
+    { value: 'all', label: 'All Sentiment', icon: Filter },
     { value: 'positive', label: 'Positive', icon: Smile, color: 'text-green-600' },
     { value: 'negative', label: 'Negative', icon: Frown, color: 'text-red-600' },
     { value: 'neutral', label: 'Neutral', icon: Meh, color: 'text-gray-600' }
   ]
 
-  const activeFiltersCount = Object.values(filters).filter(value => value !== '').length
+  const activeFiltersCount = Object.values(filters).filter(value => value !== '' && value !== 'all').length
 
   const clearAllFilters = () => {
     onFiltersChange({
-      status: '',
-      type: '',
-      assigneeId: '',
-      socialAccountId: '',
-      sentiment: '',
+      status: 'all',
+      type: 'all',
+      assigneeId: 'all',
+      socialAccountId: 'all',
+      sentiment: 'all',
       search: ''
     })
   }
 
   const clearFilter = (filterKey: keyof FilterState) => {
-    onFiltersChange({ [filterKey]: '' })
+    const clearValue = filterKey === 'search' ? '' : 'all'
+    onFiltersChange({ [filterKey]: clearValue })
   }
 
   return (
@@ -186,7 +187,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
               })}
             </SelectContent>
           </Select>
-          {filters.status && (
+          {filters.status && filters.status !== 'all' && (
             <div className="flex items-center gap-1">
               <Badge variant="outline" className="text-xs">
                 {statusOptions.find(opt => opt.value === filters.status)?.label}
@@ -224,7 +225,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
               })}
             </SelectContent>
           </Select>
-          {filters.type && (
+          {filters.type && filters.type !== 'all' && (
             <div className="flex items-center gap-1">
               <Badge variant="outline" className="text-xs">
                 {typeOptions.find(opt => opt.value === filters.type)?.label}
@@ -249,7 +250,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
               <SelectValue placeholder="Filter by assignee" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Assignees</SelectItem>
+              <SelectItem value="all">All Assignees</SelectItem>
               <SelectItem value="unassigned">Unassigned</SelectItem>
               {teamMembers.map((member) => (
                 <SelectItem key={member.userId} value={member.userId}>
@@ -261,7 +262,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
               ))}
             </SelectContent>
           </Select>
-          {filters.assigneeId && (
+          {filters.assigneeId && filters.assigneeId !== 'all' && (
             <div className="flex items-center gap-1">
               <Badge variant="outline" className="text-xs">
                 {filters.assigneeId === 'unassigned' 
@@ -289,7 +290,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
               <SelectValue placeholder="Filter by account" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Accounts</SelectItem>
+              <SelectItem value="all">All Accounts</SelectItem>
               {socialAccounts.map((account) => (
                 <SelectItem key={account.id} value={account.id}>
                   <div className="flex items-center gap-2">
@@ -302,7 +303,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
               ))}
             </SelectContent>
           </Select>
-          {filters.socialAccountId && (
+          {filters.socialAccountId && filters.socialAccountId !== 'all' && (
             <div className="flex items-center gap-1">
               <Badge variant="outline" className="text-xs">
                 {socialAccounts.find(a => a.id === filters.socialAccountId)?.displayName || 'Unknown Account'}
@@ -340,7 +341,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
               })}
             </SelectContent>
           </Select>
-          {filters.sentiment && (
+          {filters.sentiment && filters.sentiment !== 'all' && (
             <div className="flex items-center gap-1">
               <Badge variant="outline" className="text-xs">
                 {sentimentOptions.find(opt => opt.value === filters.sentiment)?.label}
@@ -364,7 +365,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
             <Button
               variant={filters.status === 'OPEN' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => onFiltersChange({ status: filters.status === 'OPEN' ? '' : 'OPEN' })}
+              onClick={() => onFiltersChange({ status: filters.status === 'OPEN' ? 'all' : 'OPEN' })}
               className="text-xs h-7"
             >
               <AlertCircle className="h-3 w-3 mr-1" />
@@ -373,7 +374,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
             <Button
               variant={filters.assigneeId === 'unassigned' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => onFiltersChange({ assigneeId: filters.assigneeId === 'unassigned' ? '' : 'unassigned' })}
+              onClick={() => onFiltersChange({ assigneeId: filters.assigneeId === 'unassigned' ? 'all' : 'unassigned' })}
               className="text-xs h-7"
             >
               <Users className="h-3 w-3 mr-1" />
@@ -382,7 +383,7 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
             <Button
               variant={filters.sentiment === 'negative' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => onFiltersChange({ sentiment: filters.sentiment === 'negative' ? '' : 'negative' })}
+              onClick={() => onFiltersChange({ sentiment: filters.sentiment === 'negative' ? 'all' : 'negative' })}
               className="text-xs h-7"
             >
               <Frown className="h-3 w-3 mr-1" />

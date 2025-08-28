@@ -341,14 +341,14 @@ export function CampaignFilters({ filters, onFiltersChange, workspaceId }: Campa
         <div className="space-y-2">
           <Label className="text-sm font-medium">Client</Label>
           <Select 
-            value={filters.clientId || ''} 
-            onValueChange={(value) => onFiltersChange({ ...filters, clientId: value || undefined })}
+            value={filters.clientId || 'all'} 
+            onValueChange={(value) => onFiltersChange({ ...filters, clientId: value === 'all' ? undefined : value })}
           >
             <SelectTrigger>
               <SelectValue placeholder="All clients" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All clients</SelectItem>
+              <SelectItem value="all">All clients</SelectItem>
               {clients.map((client) => (
                 <SelectItem key={client.id} value={client.id}>
                   <div className="flex items-center gap-2">

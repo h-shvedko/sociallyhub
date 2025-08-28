@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { AudienceSegmentation } from '@/lib/audience/audience-segmentation'
-import { prisma } from '@/lib/db/prisma'
+import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
 const createSegmentationSchema = z.object({
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
           where: {
             segmentId: segment.id,
             status: 'IMPLEMENTED',
-            actualPerformance: { not: null }
+            NOT: { actualPerformance: null }
           },
           take: 10,
           orderBy: { createdAt: 'desc' }

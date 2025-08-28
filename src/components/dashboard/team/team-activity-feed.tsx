@@ -367,15 +367,15 @@ export function TeamActivityFeed({
       filtered = filtered.filter(activity => activity.type === filters.type)
     }
     
-    if (filters.actor) {
+    if (filters.actor && filters.actor !== "all") {
       filtered = filtered.filter(activity => activity.actor.id === filters.actor)
     }
     
-    if (filters.importance) {
+    if (filters.importance && filters.importance !== "all") {
       filtered = filtered.filter(activity => activity.importance === filters.importance)
     }
     
-    if (filters.timeRange) {
+    if (filters.timeRange && filters.timeRange !== "all") {
       const now = new Date()
       const ranges = {
         "today": (date: Date) => isToday(date),
@@ -620,14 +620,14 @@ export function TeamActivityFeed({
               </div>
               
               <Select 
-                value={filters.timeRange || ""} 
+                value={filters.timeRange || "all"} 
                 onValueChange={(value) => setFilters(prev => ({ ...prev, timeRange: value }))}
               >
                 <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Time Range" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Time</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
                   <SelectItem value="today">Today</SelectItem>
                   <SelectItem value="yesterday">Yesterday</SelectItem>
                   <SelectItem value="this-week">This Week</SelectItem>
@@ -636,14 +636,14 @@ export function TeamActivityFeed({
               </Select>
               
               <Select 
-                value={filters.actor || ""} 
+                value={filters.actor || "all"} 
                 onValueChange={(value) => setFilters(prev => ({ ...prev, actor: value }))}
               >
                 <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Team Member" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Members</SelectItem>
+                  <SelectItem value="all">All Members</SelectItem>
                   {uniqueActors.map(actor => actor && (
                     <SelectItem key={actor.id} value={actor.id}>{actor.name}</SelectItem>
                   ))}
@@ -651,14 +651,14 @@ export function TeamActivityFeed({
               </Select>
               
               <Select 
-                value={filters.importance || ""} 
+                value={filters.importance || "all"} 
                 onValueChange={(value) => setFilters(prev => ({ ...prev, importance: value }))}
               >
                 <SelectTrigger className="w-[120px]">
                   <SelectValue placeholder="Priority" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Priority</SelectItem>
+                  <SelectItem value="all">All Priority</SelectItem>
                   <SelectItem value="critical">Critical</SelectItem>
                   <SelectItem value="high">High</SelectItem>
                   <SelectItem value="medium">Medium</SelectItem>

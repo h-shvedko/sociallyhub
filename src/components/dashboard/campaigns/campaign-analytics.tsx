@@ -33,7 +33,7 @@ interface CampaignAnalyticsProps {
 }
 
 export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsProps) {
-  const [selectedCampaign, setSelectedCampaign] = useState<string>('')
+  const [selectedCampaign, setSelectedCampaign] = useState<string>('all')
   const [dateRange, setDateRange] = useState<string>('30d')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -95,7 +95,7 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
                 <SelectValue placeholder="All campaigns" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All campaigns</SelectItem>
+                <SelectItem value="all">All campaigns</SelectItem>
                 {campaigns.map((campaign) => (
                   <SelectItem key={campaign.id} value={campaign.id}>
                     {campaign.name}

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { PageTransition } from "@/components/ui/page-transition"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import { NavigationLoader } from "@/components/ui/navigation-loader"
 
 interface LayoutProps {
   children: ReactNode
@@ -36,6 +37,7 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <DashboardLayout>
+      <NavigationLoader />
       <PageTransition>
         {children}
       </PageTransition>

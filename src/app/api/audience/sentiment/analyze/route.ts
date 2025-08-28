@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { SentimentMonitor } from '@/lib/audience/sentiment-monitor'
-import { prisma } from '@/lib/db/prisma'
+import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { ratelimit } from '@/lib/utils/rate-limit'
 

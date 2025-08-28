@@ -323,17 +323,17 @@ export function CampaignDashboard({ workspaceId }: CampaignDashboardProps) {
                   />
                 </div>
                 <Select 
-                  value={filters.status.length === 1 ? filters.status[0] : ''} 
+                  value={filters.status.length === 1 ? filters.status[0] : 'all'} 
                   onValueChange={(value) => handleFilterChange({ 
                     ...filters, 
-                    status: value ? [value as CampaignStatus] : [] 
+                    status: value === 'all' ? [] : [value as CampaignStatus] 
                   })}
                 >
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="ACTIVE">Active</SelectItem>
                     <SelectItem value="DRAFT">Draft</SelectItem>
                     <SelectItem value="SCHEDULED">Scheduled</SelectItem>

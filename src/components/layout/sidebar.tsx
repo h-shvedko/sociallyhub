@@ -19,6 +19,7 @@ import {
   HelpCircle,
   Zap,
   Palette,
+  Bot,
 } from "lucide-react"
 
 const navigation = [
@@ -27,6 +28,7 @@ const navigation = [
   { name: "Calendar", href: "/dashboard/calendar", icon: Calendar },
   { name: "Inbox", href: "/dashboard/inbox", icon: Inbox },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { name: "Automation", href: "/dashboard/automation", icon: Bot },
 ]
 
 const resources = [

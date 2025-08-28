@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/auth-options'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers/social-media-manager'
 import { withLogging } from '@/lib/middleware/logging'

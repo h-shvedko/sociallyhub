@@ -281,7 +281,7 @@ async function getHistoricalAverage(workspaceId: string, platform: SocialProvide
           }
         }
       },
-      actualEngagementRate: { not: null }
+      NOT: { actualEngagementRate: null }
     },
     select: {
       actualEngagementRate: true,

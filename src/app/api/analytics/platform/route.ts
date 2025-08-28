@@ -59,7 +59,7 @@ async function getHandler(request: NextRequest) {
       prisma.userSession.findMany({
         where: {
           startTime: { gte: startDate },
-          endTime: { not: null }
+          NOT: { endTime: null }
         },
         select: {
           duration: true
