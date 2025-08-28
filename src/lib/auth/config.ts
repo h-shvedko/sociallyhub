@@ -20,6 +20,8 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
+          console.log(`Login attempt for email: ${credentials.email}`)
+          
           const user = await prisma.user.findUnique({
             where: {
               email: credentials.email,
@@ -27,8 +29,10 @@ export const authOptions: NextAuthOptions = {
           })
 
           if (!user) {
+            console.log(`User not found in database: ${credentials.email}`)
             // Demo user for development
             if (credentials.email === "demo@sociallyhub.com" && credentials.password === "demo123456") {
+              console.log("Using demo user credentials")
               return {
                 id: "demo-user-id",
                 email: "demo@sociallyhub.com",
@@ -36,10 +40,14 @@ export const authOptions: NextAuthOptions = {
                 image: null,
               }
             }
+            console.log("No demo user match, credentials invalid")
             throw new Error("Invalid credentials")
           }
 
+          console.log(`User found: ${user.email}, has password: ${!!user.password}`)
+
           if (!user.password) {
+            console.log("User exists but has no password (possibly OAuth user)")
             throw new Error("Invalid credentials")
           }
 
