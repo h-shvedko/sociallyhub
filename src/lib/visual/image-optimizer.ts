@@ -175,13 +175,17 @@ export class ImageOptimizer {
       await new Promise(resolve => setTimeout(resolve, 500))
 
       // Return mock successful optimization
+      const loadTimeImprovement = Math.random() * 30 + 20 // 20-50%
+      const sizeReduction = Math.random() * 40 + 30 // 30-70%
+      const qualityRetention = Math.random() * 15 + 85 // 85-100%
+      
       return {
         success: true,
         optimizedImageUrl: imageUrl + '?optimized=true',
         performanceImpact: {
-          loadTimeImprovement: Math.random() * 2 + 1, // 1-3 seconds
-          bandwidthSaved: Math.random() * 500000 + 100000, // 100KB-600KB
-          qualityScore: Math.random() * 0.3 + 0.7 // 0.7-1.0
+          loadTimeImprovement, // Percentage improvement
+          sizeReduction, // Percentage reduction
+          qualityRetention // Percentage quality retained
         },
         qualityScore: Math.random() * 20 + 80 // 80-100
       }

@@ -53,8 +53,6 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    console.log('Image optimization request body:', JSON.stringify(body, null, 2))
-    
     const { imageUrl, platforms, optimizations, brandGuidelineId } = optimizeImageSchema.parse(body)
 
     // Get user's workspace or create one
@@ -135,44 +133,49 @@ export async function POST(request: NextRequest) {
           ...result
         })
 
-        // Create asset record for the original image first
-        const originalAsset = await prisma.asset.create({
-          data: {
-            workspaceId: userWorkspace.workspaceId,
-            filename: `optimization-original-${Date.now()}.jpg`,
-            originalName: `optimization-original-${Date.now()}.jpg`, 
-            mimeType: 'image/jpeg',
-            size: 1024, // Default size since we don't have the actual file
-            url: imageUrl,
-            width: 800, // Default dimensions
-            height: 600,
-            metadata: {
-              source: 'image-optimization',
-              originalUrl: imageUrl
+        // Try to save to database, but don't fail the optimization if database fails
+        try {
+          // Create asset record for the original image first
+          const originalAsset = await prisma.asset.create({
+            data: {
+              workspaceId: userWorkspace.workspaceId,
+              filename: `optimization-original-${Date.now()}.jpg`,
+              originalName: `optimization-original-${Date.now()}.jpg`, 
+              mimeType: 'image/jpeg',
+              size: 1024, // Default size since we don't have the actual file
+              url: imageUrl,
+              width: 800, // Default dimensions
+              height: 600,
+              metadata: {
+                source: 'image-optimization',
+                originalUrl: imageUrl
+              }
             }
-          }
-        })
+          })
 
-        // Save optimization to database (note: correct table name is image_optimizations)
-        await prisma.imageOptimizations.create({
-          data: {
-            originalAssetId: originalAsset.id,
-            workspaceId: userWorkspace.workspaceId,
-            platform: platform as any,
-            sizeBefore: 1024, // Mock original size
-            sizeAfter: 900,   // Mock optimized size
-            compressionLevel: 0.9,
-            format: 'JPEG',
-            cropped: optimizations.includes('crop'),
-            resized: optimizations.includes('resize'),
-            compressed: optimizations.includes('quality'),
-            filtered: optimizations.includes('filter'),
-            textOverlay: optimizations.includes('watermark'),
-            qualityScore: result.qualityScore,
-            loadTimeImprovement: result.performanceImpact?.loadTimeImprovement,
-            engagementPredict: null
-          }
-        })
+          // Save optimization to database (note: correct table name is image_optimizations)
+          await prisma.imageOptimizations.create({
+            data: {
+              originalAssetId: originalAsset.id,
+              workspaceId: userWorkspace.workspaceId,
+              platform: platform as any,
+              sizeBefore: 1024, // Mock original size
+              sizeAfter: 900,   // Mock optimized size
+              compressionLevel: 0.9,
+              format: 'JPEG',
+              cropped: optimizations.includes('crop'),
+              resized: optimizations.includes('resize'),
+              compressed: optimizations.includes('quality'),
+              filtered: optimizations.includes('filter'),
+              textOverlay: optimizations.includes('watermark'),
+              qualityScore: result.qualityScore,
+              loadTimeImprovement: result.performanceImpact?.loadTimeImprovement,
+              engagementPredict: null
+            }
+          })
+        } catch (dbError) {
+          console.error(`Database save failed for platform ${platform}, but optimization succeeded:`, dbError)
+        }
       } catch (error) {
         console.error(`Optimization failed for platform ${platform}:`, error)
         optimizationResults.push({
