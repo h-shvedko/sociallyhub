@@ -1347,6 +1347,503 @@ enum EngagementPatternType {
 }
 
 // ========================================
+// ADVANCED AUTOMATION & INTELLIGENCE
+// ========================================
+
+model TrendAnalysis {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Source Information
+  sourceType      TrendSource // news, social, viral, competitor
+  sourceUrl       String?
+  sourceTitle     String
+  sourceContent   String?
+  
+  // Trend Data
+  trendScore      Float    // 0-1 relevance score
+  viralityScore   Float?   // 0-1 virality potential
+  industryMatch   Float    // 0-1 industry relevance
+  
+  // Content Suggestions
+  suggestedTopics String[]
+  suggestedAngles String[]
+  suggestedFormats String[] // video, image, text, poll
+  
+  // Metadata
+  tags            String[]
+  category        String
+  language        String   @default("en")
+  detectedAt      DateTime @default(now())
+  expiresAt       DateTime? // When trend becomes outdated
+  
+  // AI Analysis
+  aiAnalysis      Json?    // Detailed AI insights
+  opportunityScore Float?  // 0-1 content opportunity score
+  
+  // Status
+  status          TrendStatus @default(ACTIVE)
+  usedInContent   Boolean     @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceTrendAnalysis", fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentSuggestions ContentSuggestion[]
+
+  @@index([workspaceId, status, detectedAt])
+  @@index([trendScore, viralityScore])
+  @@map("trend_analysis")
+}
+
+model ContentGapAnalysis {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Analysis Period
+  analysisStartDate DateTime
+  analysisEndDate   DateTime
+  
+  // Gap Identification
+  missingTopics   String[]
+  underperformingTopics String[]
+  competitorTopics String[] // Topics competitors cover but we don't
+  
+  // Recommendations
+  priorityTopics  Json     // [{topic, priority, reasoning}]
+  suggestedContent Json    // [{topic, contentType, reasoning}]
+  contentCalendarGaps Json // [{date, gap, opportunity}]
+  
+  // Competitive Analysis
+  competitorAdvantages String[]
+  differentiationOpportunities String[]
+  
+  // Performance Predictions
+  expectedImpact  Json?    // Predicted performance if gaps are filled
+  confidenceScore Float    // 0-1 confidence in recommendations
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace @relation("WorkspaceContentGapAnalysis", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, analysisEndDate])
+  @@map("content_gap_analysis")
+}
+
+model CompetitorAnalysis {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Competitor Information
+  competitorName  String
+  competitorHandle String?
+  platforms       SocialProvider[]
+  
+  // Content Analysis
+  contentThemes   String[]
+  postingFrequency Float    // Posts per day
+  avgEngagement   Float
+  topPerformingTypes String[]
+  
+  // Strategy Insights
+  contentStrategy Json     // Detailed strategy analysis
+  strengthsWeaknesses Json // {strengths: [], weaknesses: []}
+  
+  // Differentiation Opportunities
+  differentiationStrategies Json // Specific strategies to stand out
+  contentGaps     String[] // What they're missing
+  overlapAreas    String[] // Where we compete directly
+  
+  // Performance Comparison
+  performanceMetrics Json  // Comparison metrics
+  benchmarkData   Json?    // Historical performance data
+  
+  // Update Tracking
+  lastAnalyzedAt  DateTime @default(now())
+  analysisVersion Int      @default(1)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace @relation("WorkspaceCompetitorAnalysis", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, competitorName])
+  @@index([workspaceId, lastAnalyzedAt])
+  @@map("competitor_analysis")
+}
+
+model ContentSuggestion {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  trendAnalysisId String?
+  
+  // Suggestion Details
+  title           String
+  description     String
+  suggestedContent String?
+  
+  // Content Properties
+  contentType     ContentType
+  platforms       SocialProvider[]
+  topics          String[]
+  hashtags        String[]
+  
+  // AI-Generated Elements
+  aiGeneratedCaption String?
+  suggestedMedia  Json?    // Media suggestions/requirements
+  callToAction    String?
+  
+  // Performance Prediction
+  predictedEngagement Float?
+  predictedReach     Int?
+  viralPotential     Float?  // 0-1 score
+  
+  // Scheduling
+  suggestedPostTime DateTime?
+  timeZone         String?
+  
+  // Status & Tracking
+  status          SuggestionStatus @default(PENDING)
+  priority        Int              @default(3) // 1-5 priority
+  implementedAt   DateTime?
+  resultPostId    String?
+  actualPerformance Json?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace      @relation("WorkspaceContentSuggestions", fields: [workspaceId], references: [id], onDelete: Cascade)
+  trendAnalysis   TrendAnalysis? @relation(fields: [trendAnalysisId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, priority])
+  @@index([suggestedPostTime])
+  @@map("content_suggestions")
+}
+
+model SmartResponse {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Context Information
+  sourceType      ResponseSource // comment, dm, mention, review
+  sourceId        String         // Original message ID
+  sourcePlatform  SocialProvider
+  originalMessage String
+  
+  // Response Generation
+  suggestedResponse String
+  responseType    ResponseType   // answer, acknowledge, escalate, custom
+  tone           ResponseTone    // friendly, professional, casual, empathetic
+  
+  // Context Analysis
+  sentiment      Float?          // Sentiment of original message
+  intent         String?         // Detected user intent
+  category       String?         // Support, complaint, compliment, question
+  urgency        ResponseUrgency // low, medium, high, critical
+  
+  // AI Confidence & Metadata
+  confidenceScore Float          // 0-1 confidence in response
+  languageDetected String        // Detected language
+  requiresHuman   Boolean        @default(false)
+  
+  // Status & Usage
+  status         ResponseStatus  @default(PENDING)
+  usedAt         DateTime?
+  feedback       String?         // Human feedback on response quality
+  rating         Int?            // 1-5 rating of response quality
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  // Relations
+  workspace      Workspace       @relation("WorkspaceSmartResponses", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, urgency])
+  @@index([sourcePlatform, responseType])
+  @@map("smart_responses")
+}
+
+model AutomationRule {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Rule Definition
+  name            String
+  description     String?
+  ruleType        AutomationType
+  
+  // Trigger Conditions
+  triggers        Json     // Complex trigger conditions
+  conditions      Json     // Additional conditions to check
+  
+  // Actions
+  actions         Json     // Actions to perform when triggered
+  
+  // Settings
+  isActive        Boolean  @default(true)
+  priority        Int      @default(3) // 1-5 priority
+  
+  // Execution Tracking
+  executionCount  Int      @default(0)
+  successCount    Int      @default(0)
+  lastExecutedAt  DateTime?
+  lastError       String?
+  
+  // Rate Limiting
+  maxExecutionsPerHour Int? @default(10)
+  maxExecutionsPerDay  Int? @default(100)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace         @relation("WorkspaceAutomationRules", fields: [workspaceId], references: [id], onDelete: Cascade)
+  executions      AutomationExecution[]
+
+  @@index([workspaceId, isActive, ruleType])
+  @@map("automation_rules")
+}
+
+model AutomationExecution {
+  id              String   @id @default(cuid())
+  ruleId          String
+  workspaceId     String
+  
+  // Execution Details
+  triggeredBy     String?  // What triggered this execution
+  triggerData     Json?    // Data that triggered the execution
+  
+  // Execution Results
+  status          ExecutionStatus
+  executedActions Json?    // Actions that were executed
+  results         Json?    // Results of the execution
+  
+  // Error Handling
+  errorMessage    String?
+  retryCount      Int      @default(0)
+  maxRetries      Int      @default(3)
+  
+  // Timing
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  duration        Int?     // Execution time in milliseconds
+  
+  createdAt       DateTime @default(now())
+
+  // Relations
+  rule            AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  workspace       Workspace      @relation("WorkspaceAutomationExecutions", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, status])
+  @@index([workspaceId, startedAt])
+  @@map("automation_executions")
+}
+
+model ContentCalendarOptimization {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Optimization Period
+  startDate       DateTime
+  endDate         DateTime
+  
+  // Current State Analysis
+  currentSchedule Json     // Current posting schedule analysis
+  performanceGaps Json     // Identified performance gaps
+  
+  // AI Recommendations
+  optimizedSchedule Json   // AI-optimized posting schedule
+  improvementPredictions Json // Expected improvements
+  
+  // Implementation
+  suggestedChanges Json    // Specific changes to make
+  implementationPlan Json  // Step-by-step implementation
+  
+  // Performance Tracking
+  baselineMetrics Json?    // Performance before optimization
+  projectedMetrics Json?   // Projected performance after
+  actualResults   Json?    // Actual results after implementation
+  
+  // Status
+  status          OptimizationStatus @default(PENDING)
+  implementedAt   DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace @relation("WorkspaceCalendarOptimizations", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, startDate])
+  @@map("content_calendar_optimizations")
+}
+
+model Translation {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Content Information
+  originalContent String
+  originalLanguage String
+  targetLanguage  String
+  contentType     String   // post, comment, dm, etc.
+  
+  // Translation
+  translatedContent String
+  translationService String // openai, google, azure
+  
+  // Quality & Confidence
+  confidenceScore Float    // 0-1 translation confidence
+  qualityScore    Float?   // 0-1 human-rated quality
+  
+  // Context & Metadata
+  context         Json?    // Additional context for translation
+  culturalAdaptation Boolean @default(false) // Whether cultural adaptation was applied
+  
+  // Usage Tracking
+  usageCount      Int      @default(0)
+  lastUsedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace @relation("WorkspaceTranslations", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, originalContent, targetLanguage])
+  @@index([originalLanguage, targetLanguage])
+  @@map("translations")
+}
+
+// Add relations to existing models
+model Workspace {
+  // ... existing fields ...
+  
+  // Advanced Automation Relations
+  trendAnalysis         TrendAnalysis[]             @relation("WorkspaceTrendAnalysis")
+  contentGapAnalysis    ContentGapAnalysis[]        @relation("WorkspaceContentGapAnalysis")
+  competitorAnalysis    CompetitorAnalysis[]        @relation("WorkspaceCompetitorAnalysis")
+  contentSuggestions    ContentSuggestion[]         @relation("WorkspaceContentSuggestions")
+  smartResponses        SmartResponse[]             @relation("WorkspaceSmartResponses")
+  automationRules       AutomationRule[]            @relation("WorkspaceAutomationRules")
+  automationExecutions  AutomationExecution[]       @relation("WorkspaceAutomationExecutions")
+  calendarOptimizations ContentCalendarOptimization[] @relation("WorkspaceCalendarOptimizations")
+  translations          Translation[]               @relation("WorkspaceTranslations")
+}
+
+// ========================================
+// ADVANCED AUTOMATION ENUMS
+// ========================================
+
+enum TrendSource {
+  NEWS
+  SOCIAL
+  VIRAL
+  COMPETITOR
+  INDUSTRY
+  HASHTAG
+}
+
+enum TrendStatus {
+  ACTIVE
+  DECLINING
+  EXPIRED
+  USED
+}
+
+enum ContentType {
+  TEXT
+  IMAGE
+  VIDEO
+  CAROUSEL
+  STORY
+  REEL
+  POLL
+  LIVE
+  THREAD
+}
+
+enum SuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  IMPLEMENTED
+  EXPIRED
+}
+
+enum ResponseSource {
+  COMMENT
+  DM
+  MENTION
+  REVIEW
+  CHAT
+}
+
+enum ResponseType {
+  ANSWER
+  ACKNOWLEDGE
+  ESCALATE
+  CUSTOM
+  AUTO_RESOLVE
+}
+
+enum ResponseTone {
+  FRIENDLY
+  PROFESSIONAL
+  CASUAL
+  EMPATHETIC
+  FORMAL
+  HUMOROUS
+}
+
+enum ResponseUrgency {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ResponseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SENT
+  FAILED
+}
+
+enum AutomationType {
+  CONTENT_SUGGESTION
+  SMART_RESPONSE
+  CRISIS_MANAGEMENT
+  ENGAGEMENT_FOLLOW_UP
+  SCHEDULING_OPTIMIZATION
+  TREND_MONITORING
+  COMPETITOR_TRACKING
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+  RETRY
+}
+
+enum OptimizationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ========================================
 // VISUAL ANALYTICS ENUMS
 // ========================================
 
