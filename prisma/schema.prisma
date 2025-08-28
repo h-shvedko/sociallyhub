@@ -54,6 +54,18 @@ model Workspace {
   contentRecommendations ContentRecommendation[]   @relation("WorkspaceContentRecommendations")
   postingRecommendations PostingTimeRecommendation[] @relation("WorkspacePostingRecommendations")
   engagementPatterns    EngagementPattern[]        @relation("WorkspaceEngagementPatterns")
+  
+  // Advanced Automation Relations
+  trendAnalysis         TrendAnalysis[]             @relation("WorkspaceTrendAnalysis")
+  contentGapAnalysis    ContentGapAnalysis[]        @relation("WorkspaceContentGapAnalysis")
+  competitorAnalysis    CompetitorAnalysis[]        @relation("WorkspaceCompetitorAnalysis")
+  contentSuggestions    ContentSuggestion[]         @relation("WorkspaceContentSuggestions")
+  smartResponses        SmartResponse[]             @relation("WorkspaceSmartResponses")
+  automationRules       AutomationRule[]            @relation("WorkspaceAutomationRules")
+  automationExecutions  AutomationExecution[]       @relation("WorkspaceAutomationExecutions")
+  calendarOptimizations ContentCalendarOptimization[] @relation("WorkspaceCalendarOptimizations")
+  translations          Translation[]               @relation("WorkspaceTranslations")
+  responseTemplates     ResponseTemplate[]          @relation("WorkspaceResponseTemplates")
 
   @@map("workspaces")
 }
@@ -1568,6 +1580,36 @@ model SmartResponse {
   @@map("smart_responses")
 }
 
+model ResponseTemplate {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Template Information
+  category        String           // greeting, support, faq, etc.
+  keywords        String[]         // Keywords that trigger this template
+  template        String           // Template text with variables
+  tone            ResponseTone
+  platform        SocialProvider?
+  language        String           @default("en")
+  
+  // Usage Statistics
+  usageCount      Int              @default(0)
+  lastUsed        DateTime?
+  
+  // Meta Information
+  isActive        Boolean          @default(true)
+  createdBy       String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  
+  // Relations
+  workspace       Workspace        @relation("WorkspaceResponseTemplates", fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  @@index([workspaceId, category, isActive])
+  @@index([keywords])
+  @@map("response_templates")
+}
+
 model AutomationRule {
   id              String   @id @default(cuid())
   workspaceId     String
@@ -1720,21 +1762,6 @@ model Translation {
   @@map("translations")
 }
 
-// Add relations to existing models
-model Workspace {
-  // ... existing fields ...
-  
-  // Advanced Automation Relations
-  trendAnalysis         TrendAnalysis[]             @relation("WorkspaceTrendAnalysis")
-  contentGapAnalysis    ContentGapAnalysis[]        @relation("WorkspaceContentGapAnalysis")
-  competitorAnalysis    CompetitorAnalysis[]        @relation("WorkspaceCompetitorAnalysis")
-  contentSuggestions    ContentSuggestion[]         @relation("WorkspaceContentSuggestions")
-  smartResponses        SmartResponse[]             @relation("WorkspaceSmartResponses")
-  automationRules       AutomationRule[]            @relation("WorkspaceAutomationRules")
-  automationExecutions  AutomationExecution[]       @relation("WorkspaceAutomationExecutions")
-  calendarOptimizations ContentCalendarOptimization[] @relation("WorkspaceCalendarOptimizations")
-  translations          Translation[]               @relation("WorkspaceTranslations")
-}
 
 // ========================================
 // ADVANCED AUTOMATION ENUMS

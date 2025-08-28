@@ -3,8 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
-import { aiService } from '@/lib/ai/ai-service'
-import { authOptions } from '@/lib/auth/config'
+import { simpleAIService } from '@/lib/ai/simple-ai-service'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const analyzeToneSchema = z.object({
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now()
 
     try {
-      const result = await aiService.analyzeTone(
+      const result = await simpleAIService.analyzeTone(
         validatedData.content,
         userWorkspace.workspaceId,
         session.user.id,
