@@ -26,9 +26,17 @@ import {
   Instagram,
   Linkedin,
   Youtube,
-  Music
+  Music,
+  Sparkles,
+  Brain
 } from "lucide-react"
 import { EmojiPicker } from "@/components/ui/emoji-picker"
+import { AIContentGenerator } from "@/components/ai/ai-content-generator"
+import { HashtagSuggestions } from "@/components/ai/hashtag-suggestions"
+import { ToneAnalyzer } from "@/components/ai/tone-analyzer"
+import { PerformancePredictor } from "@/components/ai/performance-predictor"
+import { ImageAnalyzer } from "@/components/ai/visual/image-analyzer"
+import { ImageOptimizer } from "@/components/ai/visual/image-optimizer"
 import { cn } from "@/lib/utils"
 
 // Social platform configurations
@@ -157,6 +165,11 @@ export default function PostComposer({
   const [scheduledTime, setScheduledTime] = useState<Date | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // AI Features State
+  const [showAIAssistant, setShowAIAssistant] = useState(false)
+  const [showAIAnalysis, setShowAIAnalysis] = useState(false)
+  const [showVisualOptimization, setShowVisualOptimization] = useState(false)
 
   // Character count for selected platforms
   const getCharacterCounts = () => {
@@ -313,6 +326,19 @@ export default function PostComposer({
       ...prev,
       link
     }))
+  }
+
+  // AI Handlers
+  const handleAIContentGenerated = (generatedContent: string) => {
+    updateTextContent(generatedContent)
+  }
+
+  const handleHashtagAdd = (hashtag: string) => {
+    addHashtag(hashtag)
+  }
+
+  const handleHashtagRemove = (hashtag: string) => {
+    removeHashtag(hashtag)
   }
 
   // Handle save draft
@@ -602,7 +628,7 @@ export default function PostComposer({
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 justify-between">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <EmojiPicker onEmojiSelect={handleEmojiSelect} />
               <Button
                 type="button"
@@ -633,6 +659,42 @@ export default function PostComposer({
                     ✓
                   </Badge>
                 )}
+              </Button>
+              
+              {/* AI Assistant Buttons */}
+              <Button
+                type="button"
+                variant={showAIAssistant ? "default" : "outline"}
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={() => setShowAIAssistant(!showAIAssistant)}
+              >
+                <Sparkles className="h-4 w-4" />
+                AI Assistant
+              </Button>
+              
+              <Button
+                type="button"
+                variant={showAIAnalysis ? "default" : "outline"}
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={() => setShowAIAnalysis(!showAIAnalysis)}
+              >
+                <Brain className="h-4 w-4" />
+                AI Analysis
+              </Button>
+              
+              <Button
+                type="button"
+                variant={showVisualOptimization ? "default" : "outline"}
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={() => setShowVisualOptimization(!showVisualOptimization)}
+                disabled={content.media.length === 0}
+                title={content.media.length === 0 ? "Add images to use visual optimization" : ""}
+              >
+                <Image className="h-4 w-4" />
+                Visual AI
               </Button>
             </div>
 
@@ -693,6 +755,62 @@ export default function PostComposer({
           )}
         </CardContent>
       </Card>
+
+      {/* AI Assistant Section */}
+      {showAIAssistant && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <AIContentGenerator
+            onContentGenerated={handleAIContentGenerated}
+            selectedPlatforms={Array.from(selectedPlatforms)}
+            initialPrompt=""
+          />
+          
+          <HashtagSuggestions
+            content={content.text}
+            selectedPlatforms={Array.from(selectedPlatforms)}
+            currentHashtags={content.hashtags}
+            onHashtagAdd={handleHashtagAdd}
+            onHashtagRemove={handleHashtagRemove}
+          />
+        </div>
+      )}
+
+      {/* AI Analysis Section */}
+      {showAIAnalysis && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ToneAnalyzer
+            content={content.text}
+            postId={postId}
+          />
+          
+          <PerformancePredictor
+            content={content.text}
+            selectedPlatforms={Array.from(selectedPlatforms)}
+            postId={postId}
+          />
+        </div>
+      )}
+
+      {/* Visual Optimization Section */}
+      {showVisualOptimization && content.media.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ImageAnalyzer
+            imageUrl={content.media.find(item => item.type === 'image')?.url}
+            selectedPlatforms={Array.from(selectedPlatforms)}
+            onAnalysisComplete={(analysis) => {
+              console.log('Image analysis completed:', analysis)
+            }}
+          />
+          
+          <ImageOptimizer
+            imageUrl={content.media.find(item => item.type === 'image')?.url}
+            selectedPlatforms={Array.from(selectedPlatforms)}
+            onOptimizationComplete={(results) => {
+              console.log('Image optimization completed:', results)
+            }}
+          />
+        </div>
+      )}
 
       {/* Platform Previews */}
       {selectedPlatforms.size > 0 && hasContent && (

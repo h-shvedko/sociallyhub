@@ -33,6 +33,27 @@ model Workspace {
   inboxItems     InboxItem[]
   auditEvents    AuditEvent[]
   analytics      AnalyticsMetric[] @relation("WorkspaceAnalytics")
+  
+  // AI Relations
+  aiSuggestions     AIContentSuggestion[] @relation("WorkspaceAISuggestions")
+  aiUsage           AIUsageTracking[]     @relation("WorkspaceAIUsage")
+  hashtagSuggestions HashtagSuggestion[]  @relation("WorkspaceHashtagSuggestions")
+  
+  // Visual Analytics Relations
+  imageAnalysis     ImageAnalysis[]       @relation("WorkspaceImageAnalysis")
+  imageOptimizations ImageOptimization[]  @relation("WorkspaceImageOptimization")
+  visualMetrics     VisualPerformanceMetric[] @relation("WorkspaceVisualMetrics")
+  brandGuidelines   BrandVisualGuideline[] @relation("WorkspaceBrandGuidelines")
+  imageABTests      ImageABTest[]         @relation("WorkspaceImageABTests")
+  
+  // Audience Intelligence Relations
+  sentimentAnalysis     SentimentAnalysis[]        @relation("WorkspaceSentimentAnalysis")
+  sentimentTrends       SentimentTrend[]           @relation("WorkspaceSentimentTrends")
+  crisisAlerts          CrisisAlert[]              @relation("WorkspaceCrisisAlerts")
+  audienceSegments      AudienceSegment[]          @relation("WorkspaceAudienceSegments")
+  contentRecommendations ContentRecommendation[]   @relation("WorkspaceContentRecommendations")
+  postingRecommendations PostingTimeRecommendation[] @relation("WorkspacePostingRecommendations")
+  engagementPatterns    EngagementPattern[]        @relation("WorkspaceEngagementPatterns")
 
   @@map("workspaces")
 }
@@ -62,6 +83,10 @@ model User {
   analytics       AnalyticsMetric[] @relation("UserAnalytics")
   userSessions    UserSession[] @relation("UserSessions")
   userActions     UserAction[] @relation("UserActions")
+  
+  // AI Relations
+  aiSuggestions   AIContentSuggestion[] @relation("UserAISuggestions")
+  aiUsage         AIUsageTracking[]     @relation("UserAIUsage")
 
   @@map("users")
 }
@@ -158,6 +183,17 @@ model Post {
   variants     PostVariant[]
   assets       PostAsset[]
   metrics      AnalyticsMetric[]
+  
+  // AI Relations
+  aiSuggestions          AIContentSuggestion[]       @relation("PostAISuggestions")
+  performancePrediction  ContentPerformancePrediction? @relation("PostPerformancePrediction")
+  toneAnalysis          ContentToneAnalysis?        @relation("PostToneAnalysis")
+  
+  // Visual Analytics Relations
+  visualMetrics         VisualPerformanceMetric[]   @relation("PostVisualMetrics")
+  
+  // Audience Intelligence Relations
+  sentimentAnalysis     SentimentAnalysis[]         @relation("PostSentimentAnalysis")
 
   @@map("posts")
 }
@@ -214,6 +250,13 @@ model Asset {
 
   workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   posts     PostAsset[]
+  
+  // Visual Analytics Relations
+  imageAnalysis     ImageAnalysis?      @relation("AssetImageAnalysis")
+  performanceMetrics VisualPerformanceMetric[] @relation("AssetPerformanceMetrics")
+  originalOptimizations ImageOptimization[] @relation("OriginalAsset")
+  optimizedVersions     ImageOptimization[] @relation("OptimizedAsset")
+  abTestControl         ImageABTest[]       @relation("ABTestControlAsset")
 
   @@map("assets")
 }
@@ -554,4 +597,763 @@ enum NotificationStatus {
   UNREAD
   READ
   DISMISSED
+}
+
+// ========================================
+// AI FEATURES
+// ========================================
+
+model AIContentSuggestion {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  userId          String
+  originalContent String?
+  suggestedContent String
+  suggestionType  AISuggestionType
+  platform        SocialProvider?
+  confidenceScore Float?
+  used            Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace Workspace @relation("WorkspaceAISuggestions", fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation("UserAISuggestions", fields: [userId], references: [id], onDelete: Cascade)
+  post      Post?     @relation("PostAISuggestions", fields: [postId], references: [id], onDelete: Cascade)
+  postId    String?
+
+  @@map("ai_content_suggestions")
+}
+
+model ContentPerformancePrediction {
+  id                         String   @id @default(cuid())
+  postId                     String   @unique
+  predictedEngagementRate    Float?
+  predictedReach             Int?
+  predictedImpressions       Int?
+  predictedLikes             Int?
+  predictedComments          Int?
+  predictedShares            Int?
+  confidenceScore            Float?
+  actualEngagementRate       Float?
+  actualReach                Int?
+  actualImpressions          Int?
+  actualLikes                Int?
+  actualComments             Int?
+  actualShares               Int?
+  predictionAccuracy         Float?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  // Relations
+  post Post @relation("PostPerformancePrediction", fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("content_performance_predictions")
+}
+
+model AIUsageTracking {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  userId        String
+  featureType   AIFeatureType
+  tokensUsed    Int?
+  costCents     Int?
+  responseTimeMs Int?
+  model         String?
+  successful    Boolean  @default(true)
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  // Relations
+  workspace Workspace @relation("WorkspaceAIUsage", fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation("UserAIUsage", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ai_usage_tracking")
+}
+
+model AIModelVersion {
+  id          String   @id @default(cuid())
+  name        String
+  version     String
+  provider    AIProvider
+  isActive    Boolean  @default(true)
+  configuration Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, version])
+  @@map("ai_model_versions")
+}
+
+model HashtagSuggestion {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  hashtag         String
+  platform        SocialProvider
+  trendingScore   Float?
+  performanceScore Float?
+  category        String?
+  isBlocked       Boolean  @default(false)
+  lastUpdated     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  // Relations
+  workspace Workspace @relation("WorkspaceHashtagSuggestions", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, hashtag, platform])
+  @@map("hashtag_suggestions")
+}
+
+model ContentToneAnalysis {
+  id          String   @id @default(cuid())
+  postId      String   @unique
+  tone        ContentTone
+  confidence  Float?
+  sentiment   Float?    // -1 to 1 (negative to positive)
+  formality   Float?    // 0 to 1 (informal to formal)
+  energy      Float?    // 0 to 1 (low to high energy)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  post Post @relation("PostToneAnalysis", fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("content_tone_analysis")
+}
+
+// ========================================
+// AI ENUMS
+// ========================================
+
+enum AISuggestionType {
+  HASHTAGS
+  CAPTION
+  TONE_ADJUSTMENT
+  OPTIMIZATION
+  TRANSLATION
+}
+
+enum AIFeatureType {
+  CONTENT_GENERATION
+  HASHTAG_SUGGESTION
+  TONE_ANALYSIS
+  PERFORMANCE_PREDICTION
+  IMAGE_ANALYSIS
+  TRANSLATION
+}
+
+enum AIProvider {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+  AZURE
+}
+
+enum ContentTone {
+  PROFESSIONAL
+  CASUAL
+  HUMOROUS
+  INSPIRATIONAL
+  EDUCATIONAL
+  PROMOTIONAL
+  CONVERSATIONAL
+  FORMAL
+}
+
+// ========================================
+// VISUAL CONTENT ANALYTICS
+// ========================================
+
+model ImageAnalysis {
+  id               String   @id @default(cuid())
+  assetId          String   @unique
+  workspaceId      String
+  
+  // Image Properties
+  width            Int
+  height           Int
+  format           String
+  fileSize         Int
+  dominantColors   Json     // Array of hex colors
+  colorPalette     Json     // Full color analysis
+  
+  // AI Analysis
+  labels           Json     // Detected objects/concepts
+  faces            Json     // Face detection results
+  text             Json     // OCR results
+  safeSearch       Json     // Safe search annotations
+  landmarks        Json     // Landmark detection
+  
+  // Brand Analysis
+  brandScore       Float?   // Brand consistency score (0-1)
+  logoDetected     Boolean  @default(false)
+  brandColors      Json?    // Detected brand colors
+  fontAnalysis     Json?    // Text overlay analysis
+  
+  // Performance Metrics
+  aestheticScore   Float?   // Aesthetic quality score (0-1)
+  compositonScore  Float?   // Composition analysis score (0-1)
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  asset       Asset     @relation("AssetImageAnalysis", fields: [assetId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation("WorkspaceImageAnalysis", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("image_analysis")
+}
+
+model ImageOptimization {
+  id               String   @id @default(cuid())
+  originalAssetId  String
+  optimizedAssetId String?
+  workspaceId      String
+  platform         SocialProvider
+  
+  // Optimization Settings
+  targetWidth      Int?
+  targetHeight     Int?
+  compressionLevel Float?   // 0-1
+  format           String?  // jpg, png, webp
+  
+  // Applied Optimizations
+  cropped          Boolean  @default(false)
+  resized          Boolean  @default(false)
+  compressed       Boolean  @default(false)
+  filtered         Boolean  @default(false)
+  textOverlay      Boolean  @default(false)
+  
+  // Optimization Results
+  sizeBefore       Int
+  sizeAfter        Int?
+  qualityScore     Float?   // Quality assessment after optimization
+  
+  // Performance Impact
+  loadTimeImprovement Float? // Seconds saved
+  engagementPredict   Float? // Predicted engagement improvement
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  originalAsset  Asset     @relation("OriginalAsset", fields: [originalAssetId], references: [id], onDelete: Cascade)
+  optimizedAsset Asset?    @relation("OptimizedAsset", fields: [optimizedAssetId], references: [id], onDelete: SetNull)
+  workspace      Workspace @relation("WorkspaceImageOptimization", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("image_optimizations")
+}
+
+model VisualPerformanceMetric {
+  id              String   @id @default(cuid())
+  assetId         String
+  postId          String?
+  workspaceId     String
+  platform        SocialProvider?
+  
+  // Visual Metrics
+  viewDuration    Float?   // Average view time in seconds
+  clickThroughRate Float?  // CTR for images with links
+  saveRate        Float?   // Rate of saves/downloads
+  shareRate       Float?   // Rate of shares
+  
+  // Engagement Correlation
+  likesPerView    Float?
+  commentsPerView Float?
+  engagementRate  Float?
+  
+  // Visual Factors
+  colorScore      Float?   // Color harmony score
+  compositionScore Float?  // Rule of thirds, balance, etc.
+  contrastScore   Float?   // Visual contrast analysis
+  
+  // A/B Testing
+  testVariant     String?  // A/B test variant identifier
+  testGroup       String?  // Control/test group
+  
+  recordedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  // Relations
+  asset     Asset      @relation("AssetPerformanceMetrics", fields: [assetId], references: [id], onDelete: Cascade)
+  post      Post?      @relation("PostVisualMetrics", fields: [postId], references: [id], onDelete: Cascade)
+  workspace Workspace  @relation("WorkspaceVisualMetrics", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("visual_performance_metrics")
+}
+
+model BrandVisualGuideline {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  name            String
+  
+  // Brand Colors
+  primaryColors   Json     // Primary brand colors (hex)
+  secondaryColors Json     // Secondary colors
+  accentColors    Json     // Accent colors
+  
+  // Typography
+  primaryFonts    Json     // Primary font stack
+  secondaryFonts  Json     // Secondary fonts
+  fontSizes       Json     // Approved font sizes
+  
+  // Logo Guidelines
+  logoVariants    Json     // Different logo versions
+  logoMinSize     Json     // Minimum size requirements
+  logoClearSpace  Json     // Clear space requirements
+  
+  // Visual Style
+  filterSettings  Json?    // Approved filters/effects
+  overlayStyles   Json?    // Text overlay styles
+  compositionRules Json?   // Composition guidelines
+  
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace Workspace @relation("WorkspaceBrandGuidelines", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("brand_visual_guidelines")
+}
+
+model VisualTrend {
+  id              String   @id @default(cuid())
+  platform        SocialProvider
+  category        String   // e.g., "color", "composition", "style"
+  trendName       String
+  description     String?
+  
+  // Trend Data
+  popularity      Float    // Popularity score (0-1)
+  growthRate      Float?   // Week-over-week growth
+  peakDate        DateTime?
+  
+  // Visual Characteristics
+  characteristics Json     // Key visual characteristics
+  examples        Json?    // Example image URLs or descriptions
+  
+  // Geographic/Demographic Data
+  regions         Json?    // Popular regions
+  demographics    Json?    // Age groups, interests
+  
+  detectedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([platform, category, trendName])
+  @@map("visual_trends")
+}
+
+model ImageABTest {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  testName        String
+  description     String?
+  
+  // Test Configuration
+  platform        SocialProvider?
+  startDate       DateTime
+  endDate         DateTime?
+  status          ABTestStatus @default(RUNNING)
+  
+  // Test Assets
+  controlAssetId  String
+  variantAssetIds Json     // Array of variant asset IDs
+  
+  // Results
+  totalViews      Int      @default(0)
+  controlViews    Int      @default(0)
+  controlEngagement Float?
+  winningVariant  String?  // Asset ID of winning variant
+  confidenceLevel Float?   // Statistical confidence (0-1)
+  
+  // Insights
+  insights        Json?    // AI-generated insights
+  recommendations Json?    // Optimization recommendations
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace     Workspace @relation("WorkspaceImageABTests", fields: [workspaceId], references: [id], onDelete: Cascade)
+  controlAsset  Asset     @relation("ABTestControlAsset", fields: [controlAssetId], references: [id], onDelete: Cascade)
+
+  @@map("image_ab_tests")
+}
+
+// ========================================
+// AUDIENCE INTELLIGENCE & SENTIMENT ANALYSIS
+// ========================================
+
+model SentimentAnalysis {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  postId          String?
+  sourceType      SentimentSource // comment, mention, dm, review
+  sourceId        String   // Original comment/mention ID
+  content         String   // Text content being analyzed
+  
+  // Sentiment Scores
+  overallScore    Float    // -1 to 1 (negative to positive)
+  positiveScore   Float    // 0 to 1
+  negativeScore   Float    // 0 to 1
+  neutralScore    Float    // 0 to 1
+  confidenceScore Float    // 0 to 1
+  
+  // Emotion Analysis
+  emotions        Json?    // {joy: 0.8, anger: 0.1, fear: 0.1}
+  
+  // Context
+  platform        SocialProvider
+  authorId        String?  // Social platform user ID
+  authorHandle    String?  // @username
+  
+  // Metadata
+  language        String?
+  detectedTopics  String[] // Keywords/topics detected
+  isInfluencer    Boolean @default(false)
+  followerCount   Int?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace   Workspace @relation("WorkspaceSentimentAnalysis", fields: [workspaceId], references: [id], onDelete: Cascade)
+  post        Post?     @relation("PostSentimentAnalysis", fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([postId, overallScore])
+  @@index([platform, createdAt])
+  @@map("sentiment_analysis")
+}
+
+model SentimentTrend {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Time Period
+  date            DateTime // Daily aggregation
+  platform        SocialProvider?
+  
+  // Aggregated Metrics
+  totalMentions   Int      @default(0)
+  avgSentiment    Float    // Average sentiment score
+  positiveCount   Int      @default(0)
+  negativeCount   Int      @default(0)
+  neutralCount    Int      @default(0)
+  
+  // Trend Analysis
+  sentimentChange Float?   // Change from previous period
+  volumeChange    Float?   // Change in mention volume
+  
+  // Top Topics/Keywords
+  topPositiveTopics String[]
+  topNegativeTopics String[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace   Workspace @relation("WorkspaceSentimentTrends", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, date, platform])
+  @@map("sentiment_trends")
+}
+
+model CrisisAlert {
+  id              String      @id @default(cuid())
+  workspaceId     String
+  
+  // Alert Details
+  alertType       CrisisType
+  severity        AlertSeverity
+  title           String
+  description     String
+  
+  // Trigger Data
+  triggerMetric   String      // sentiment_spike, volume_surge, negative_trend
+  currentValue    Float
+  thresholdValue  Float
+  timeframe       String      // 1h, 6h, 24h
+  
+  // Context
+  platform        SocialProvider?
+  affectedPosts   String[]    // Post IDs
+  keyMentions     String[]    // Critical mention IDs
+  
+  // Status
+  status          AlertStatus @default(ACTIVE)
+  acknowledgedBy  String?     // User ID who acknowledged
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  
+  // Escalation
+  notificationsSent Json?     // {email: true, slack: false, sms: true}
+  escalationLevel   Int       @default(1)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  workspace   Workspace @relation("WorkspaceCrisisAlerts", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([severity, createdAt])
+  @@map("crisis_alerts")
+}
+
+model AudienceSegment {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Segment Details
+  name            String
+  description     String?
+  
+  // Segmentation Criteria
+  segmentType     SegmentType // behavioral, demographic, psychographic, platform
+  criteria        Json        // Flexible criteria object
+  
+  // Size & Metrics
+  estimatedSize   Int      @default(0)
+  actualSize      Int      @default(0)
+  
+  // Engagement Patterns
+  avgEngagementRate Float?
+  preferredPlatforms SocialProvider[]
+  activeHours     Json?    // [{hour: 9, score: 0.8}]
+  topContentTypes String[] // image, video, text, link
+  
+  // AI Insights
+  personalityTraits Json?  // {openness: 0.7, conscientiousness: 0.5}
+  interests         String[]
+  demographicProfile Json? // {age_range: "25-34", location: "US"}
+  
+  // Performance
+  conversionRate  Float?
+  avgOrderValue   Float?
+  lifetimeValue   Float?
+  
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace           Workspace               @relation("WorkspaceAudienceSegments", fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentRecommendations ContentRecommendation[]
+  postingRecommendations PostingTimeRecommendation[]
+
+  @@index([workspaceId, isActive])
+  @@map("audience_segments")
+}
+
+model ContentRecommendation {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  segmentId       String
+  
+  // Recommendation Details
+  title           String
+  description     String
+  recommendationType RecommendationType
+  
+  // Content Suggestions
+  suggestedTopics String[]
+  suggestedTone   ContentTone?
+  suggestedFormats String[]  // image, video, carousel, story
+  suggestedHashtags String[]
+  
+  // Platform Optimization
+  platforms       SocialProvider[]
+  
+  // Performance Prediction
+  predictedEngagement Float?
+  predictedReach      Int?
+  confidenceScore     Float?
+  
+  // Status
+  status          RecommendationStatus @default(PENDING)
+  usedAt          DateTime?
+  resultPostId    String?
+  actualPerformance Json?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace Workspace       @relation("WorkspaceContentRecommendations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  segment   AudienceSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([segmentId, createdAt])
+  @@map("content_recommendations")
+}
+
+model PostingTimeRecommendation {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  segmentId       String
+  
+  // Time Recommendations
+  platform        SocialProvider
+  dayOfWeek       Int      // 0-6 (Sunday-Saturday)
+  hour            Int      // 0-23
+  timezone        String   // UTC offset or timezone name
+  
+  // Confidence & Performance
+  confidenceScore Float    // 0-1
+  expectedEngagement Float // Predicted engagement rate
+  audienceSize    Int      // Expected audience size at this time
+  
+  // Supporting Data
+  historicalData  Json?    // Historical performance data
+  competitorData  Json?    // Competitor posting patterns
+  
+  // Metadata
+  dataPoints      Int      // Number of posts used for analysis
+  lastUpdated     DateTime @default(now())
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace Workspace       @relation("WorkspacePostingRecommendations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  segment   AudienceSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@unique([segmentId, platform, dayOfWeek, hour])
+  @@index([workspaceId, platform])
+  @@map("posting_time_recommendations")
+}
+
+model EngagementPattern {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  
+  // Pattern Identification
+  patternType     EngagementPatternType
+  patternName     String
+  description     String
+  
+  // Pattern Data
+  triggers        Json     // What triggers this pattern
+  behaviors       Json     // Behavioral characteristics
+  timeline        Json     // When this pattern occurs
+  
+  // Audience Characteristics
+  audienceSize    Int      @default(0)
+  demographics    Json?    // Age, location, interests
+  platforms       SocialProvider[]
+  
+  // Performance Metrics
+  avgEngagementRate Float?
+  avgReach         Int?
+  conversionRate   Float?
+  
+  // Confidence & Validity
+  confidenceScore Float    // Statistical confidence
+  dataPoints      Int      // Number of observations
+  
+  // Insights
+  insights        Json?    // AI-generated insights
+  actionableItems Json?    // Recommended actions
+  
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace   Workspace @relation("WorkspaceEngagementPatterns", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patternType])
+  @@index([isActive, createdAt])
+  @@map("engagement_patterns")
+}
+
+// Relations added to existing models:
+// - Workspace: Added audience intelligence relations
+// - Post: Added sentiment analysis relation
+
+// ========================================
+// AUDIENCE INTELLIGENCE ENUMS
+// ========================================
+
+enum SentimentSource {
+  COMMENT
+  MENTION
+  DIRECT_MESSAGE
+  REVIEW
+  SHARE
+  REPLY
+}
+
+enum CrisisType {
+  SENTIMENT_SPIKE
+  VOLUME_SURGE
+  NEGATIVE_TREND
+  BRAND_ATTACK
+  PR_CRISIS
+  VIRAL_NEGATIVE
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  INVESTIGATING
+  RESOLVED
+  FALSE_POSITIVE
+}
+
+enum SegmentType {
+  BEHAVIORAL
+  DEMOGRAPHIC
+  PSYCHOGRAPHIC
+  PLATFORM
+  ENGAGEMENT
+  LIFECYCLE
+}
+
+enum RecommendationType {
+  CONTENT_TOPIC
+  CONTENT_FORMAT
+  POSTING_TIME
+  HASHTAG
+  TONE
+  PLATFORM
+}
+
+enum RecommendationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  IMPLEMENTED
+  TESTING
+}
+
+enum EngagementPatternType {
+  SEASONAL
+  WEEKLY
+  DAILY
+  EVENT_BASED
+  CONTENT_TYPE
+  PLATFORM_SPECIFIC
+  DEMOGRAPHIC
+}
+
+// ========================================
+// VISUAL ANALYTICS ENUMS
+// ========================================
+
+enum ABTestStatus {
+  DRAFT
+  RUNNING
+  COMPLETED
+  PAUSED
+  CANCELLED
 }

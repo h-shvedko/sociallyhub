@@ -38,7 +38,10 @@
       "Bash(timeout 30 docker-compose logs app)",
       "Bash(timeout 20 docker-compose logs app)",
       "Bash(npx tsc:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(npm i)",
+      "Bash(npm view:*)",
+      "Bash(set DATABASE_URL=postgresql://sociallyhub:sociallyhub_dev_password@localhost:5432/sociallyhub)"
     ],
     "deny": [],
     "ask": []
