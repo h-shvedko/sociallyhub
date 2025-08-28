@@ -106,7 +106,8 @@ export async function POST(request: NextRequest) {
             data: {
               userId: session.user.id,
               workspaceId: demoWorkspace.id,
-              role: 'OWNER'
+              role: 'OWNER',
+              permissions: {}
             }
           })
         }
