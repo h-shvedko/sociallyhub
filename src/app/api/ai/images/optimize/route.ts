@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
           })
 
           // Save optimization to database (note: correct table name is image_optimizations)
-          await prisma.imageOptimizations.create({
+          await prisma.imageOptimization.create({
             data: {
               originalAssetId: originalAsset.id,
               workspaceId: userWorkspace.workspaceId,
@@ -249,7 +249,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Get recent optimizations for user (note: correct table name)
-    const optimizations = await prisma.imageOptimizations.findMany({
+    const optimizations = await prisma.imageOptimization.findMany({
       where: {
         workspaceId: userWorkspace.workspaceId,
         ...(platform && { platform: platform as any })

@@ -58,6 +58,9 @@ export interface PlatformOptimizationSuggestions {
 export class AIImageAnalyzer {
   async analyzeImage(imageUrl: string, platform?: string): Promise<ImageAnalysisResult> {
     try {
+      // Convert local URLs to full URLs for OpenAI API
+      const fullImageUrl = this.getFullImageUrl(imageUrl)
+      console.log(`Image URL conversion: ${imageUrl} -> ${fullImageUrl}`)
       const prompt = `Analyze this image comprehensively for social media use${platform ? ` specifically for ${platform}` : ''}. 
       
       Please provide a detailed JSON response with the following structure:
@@ -111,7 +114,7 @@ export class AIImageAnalyzer {
               {
                 type: "image_url",
                 image_url: {
-                  url: imageUrl,
+                  url: fullImageUrl,
                   detail: "high"
                 }
               }
@@ -158,6 +161,9 @@ export class AIImageAnalyzer {
     currentAnalysis?: ImageAnalysisResult
   ): Promise<PlatformOptimizationSuggestions> {
     try {
+      // Convert local URLs to full URLs for OpenAI API
+      const fullImageUrl = this.getFullImageUrl(imageUrl)
+      console.log(`Optimization URL conversion: ${imageUrl} -> ${fullImageUrl}`)
       const platformSpecs = this.getPlatformSpecs(platform)
       
       const prompt = `Analyze this image for ${platform} optimization. 
@@ -211,7 +217,7 @@ export class AIImageAnalyzer {
               {
                 type: "image_url",
                 image_url: {
-                  url: imageUrl,
+                  url: fullImageUrl,
                   detail: "high"
                 }
               }
@@ -390,5 +396,28 @@ export class AIImageAnalyzer {
 
   private clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(value, min), max)
+  }
+
+  private getFullImageUrl(imageUrl: string): string {
+    // If it's already a full URL, return as-is
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return imageUrl
+    }
+    
+    // If it's a blob or data URL, return as-is
+    if (imageUrl.startsWith('blob:') || imageUrl.startsWith('data:')) {
+      return imageUrl
+    }
+    
+    // For local paths, convert to full URL
+    if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('uploads/')) {
+      // Try to construct full URL
+      // In production, this would be your actual domain
+      const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3099'
+      return `${baseUrl}${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`
+    }
+    
+    // Default: return as-is and let OpenAI handle the error
+    return imageUrl
   }
 }
