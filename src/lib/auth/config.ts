@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
           if (credentials.email === "demo@sociallyhub.com" && credentials.password === "demo123456") {
             console.log("Demo user login detected")
             return {
-              id: "demo-user-id",
+              id: "cmesceft00000r6gjl499x7dl",
               email: "demo@sociallyhub.com",
               name: "Demo User",
               image: null,

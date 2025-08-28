@@ -28,9 +28,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's workspace
+    // Get user's workspace (handle demo user ID compatibility)
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       include: { workspace: true }
     })
 
@@ -60,7 +65,7 @@ export async function POST(request: NextRequest) {
           targetAudience: validatedData.targetAudience
         },
         userWorkspace.workspaceId,
-        session.user.id
+        userId
       )
 
       return NextResponse.json({
@@ -81,7 +86,7 @@ export async function POST(request: NextRequest) {
       // Track failed usage
       await aiService['trackUsage']({
         workspaceId: userWorkspace.workspaceId,
-        userId: session.user.id,
+        userId: userId,
         featureType: 'CONTENT_GENERATION',
         responseTimeMs: Date.now() - startTime,
         successful: false,
@@ -130,8 +135,14 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const platform = searchParams.get('platform') as SocialProvider | null
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       include: { workspace: true }
     })
 

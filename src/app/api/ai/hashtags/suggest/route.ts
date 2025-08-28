@@ -24,8 +24,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       include: { workspace: true }
     })
 
@@ -48,7 +54,7 @@ export async function POST(request: NextRequest) {
           maxHashtags: validatedData.maxHashtags
         },
         userWorkspace.workspaceId,
-        session.user.id
+        userId
       )
 
       // Store hashtag suggestions in the database for trending analysis
@@ -97,7 +103,7 @@ export async function POST(request: NextRequest) {
       await prisma.aIUsageTracking.create({
         data: {
           workspaceId: userWorkspace.workspaceId,
-          userId: session.user.id,
+          userId: userId,
           featureType: 'HASHTAG_SUGGESTION',
           responseTimeMs: Date.now() - startTime,
           successful: false,
@@ -146,8 +152,14 @@ export async function GET(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       include: { workspace: true }
     })
 

@@ -22,15 +22,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       include: { workspace: true }
     })
 
     if (!userWorkspace) {
       return NextResponse.json({ 
         error: 'No workspace found', 
-        debug: { userId: session.user.id },
+        debug: { userId: session.user.id, mappedUserId: userId },
         help: 'Make sure you are logged in with the demo account: demo@sociallyhub.com / demo123456'
       }, { status: 404 })
     }
@@ -61,7 +67,7 @@ export async function POST(request: NextRequest) {
         validatedData.content,
         validatedData.platform,
         userWorkspace.workspaceId,
-        session.user.id,
+        userId,
         validatedData.postId
       )
 
@@ -109,7 +115,7 @@ export async function POST(request: NextRequest) {
       await prisma.aIUsageTracking.create({
         data: {
           workspaceId: userWorkspace.workspaceId,
-          userId: session.user.id,
+          userId: userId,
           featureType: 'PERFORMANCE_PREDICTION',
           responseTimeMs: Date.now() - startTime,
           successful: false,
@@ -152,8 +158,14 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
     const offset = parseInt(searchParams.get('offset') || '0')
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId },
       include: { workspace: true }
     })
 
