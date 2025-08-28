@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sociallyhub
+  labels:
+    name: sociallyhub
+    app: sociallyhub
+    tier: production

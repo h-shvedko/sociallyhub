@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sociallyhub-config
+  namespace: sociallyhub
+data:
+  NODE_ENV: "production"
+  PORT: "3099"
+  DATABASE_HOST: "postgres-service"
+  DATABASE_PORT: "5432"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  NEXT_TELEMETRY_DISABLED: "1"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: sociallyhub
+data:
+  POSTGRES_DB: "sociallyhub"
+  POSTGRES_USER: "sociallyhub"
+  PGDATA: "/var/lib/postgresql/data/pgdata"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: sociallyhub
+data:
+  redis.conf: |
+    appendonly yes
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+    save 900 1
+    save 300 10
+    save 60 10000
