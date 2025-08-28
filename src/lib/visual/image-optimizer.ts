@@ -1,6 +1,6 @@
 // AI-Powered Image Optimization Service
 
-import Jimp from 'jimp'
+import { Jimp } from 'jimp'
 import { prisma } from '@/lib/prisma'
 import { SocialProvider } from '@prisma/client'
 

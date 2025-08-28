@@ -35,14 +35,37 @@ export async function POST(request: NextRequest) {
     })
     
     if (!existingUser) {
-      existingUser = await prisma.user.create({
-        data: {
-          id: session.user.id,
-          email: session.user.email || 'unknown@sociallyhub.com',
-          name: session.user.name || 'User',
-          emailVerified: new Date()
-        }
+      // Check if user exists by email (in case of ID mismatch)
+      const userByEmail = await prisma.user.findUnique({
+        where: { email: session.user.email }
       })
+      
+      if (userByEmail) {
+        console.log(`User exists by email but different ID. Session ID: ${session.user.id}, DB ID: ${userByEmail.id}`)
+        existingUser = userByEmail
+      } else {
+        // Create user record if it doesn't exist
+        try {
+          existingUser = await prisma.user.create({
+            data: {
+              id: session.user.id,
+              email: session.user.email || 'unknown@sociallyhub.com',
+              name: session.user.name || 'User',
+              emailVerified: new Date()
+            }
+          })
+        } catch (error) {
+          // If creation fails due to duplicate email, try to find by email again
+          if (error instanceof Error && error.message.includes('Unique constraint failed')) {
+            existingUser = await prisma.user.findUnique({
+              where: { email: session.user.email }
+            })
+          }
+          if (!existingUser) {
+            throw error
+          }
+        }
+      }
     }
 
     // Rate limiting
