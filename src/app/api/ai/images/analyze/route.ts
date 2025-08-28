@@ -166,20 +166,46 @@ export async function POST(request: NextRequest) {
       brandGuidelineId
     })
 
-    // Save analysis to database
-    const imageAnalysis = await prisma.imageAnalysis.create({
+    // Create asset record first (required for image_analysis)
+    const asset = await prisma.asset.create({
       data: {
         workspaceId: userWorkspace.workspaceId,
-        userId: session.user.id,
-        imageUrl,
-        platform: platform || null,
-        analysisData: analysis as any,
+        filename: `analysis-${Date.now()}.jpg`,
+        originalName: `analysis-${Date.now()}.jpg`, 
+        mimeType: 'image/jpeg',
+        size: 1024, // Default size since we don't have the actual file
+        url: imageUrl,
+        width: 800, // Default dimensions
+        height: 600,
+        metadata: {
+          source: 'image-analysis',
+          originalUrl: imageUrl
+        }
+      }
+    })
+
+    // Save analysis to database with required fields
+    const imageAnalysis = await prisma.imageAnalysis.create({
+      data: {
+        assetId: asset.id,
+        workspaceId: userWorkspace.workspaceId,
+        width: 800, // Default width since we don't have the actual dimensions
+        height: 600, // Default height since we don't have the actual dimensions
+        format: 'JPEG',
+        fileSize: 1024, // Default size
+        dominantColors: analysis.colorAnalysis?.dominantColors || [],
         colorPalette: analysis.colorAnalysis?.dominantColors || [],
-        tags: analysis.tags || [],
-        aestheticScore: analysis.aestheticScore,
-        brandConsistencyScore: analysis.brandConsistency?.overallScore,
-        safetyScore: analysis.safetyAnalysis?.overallScore,
-        textReadabilityScore: analysis.textOverlayAnalysis?.readabilityScore
+        labels: analysis.tags || [],
+        faces: [],
+        text: [],
+        safeSearch: { adult: 'UNLIKELY', violence: 'UNLIKELY', racy: 'UNLIKELY' },
+        landmarks: [],
+        brandScore: analysis.brandConsistency?.overallScore || null,
+        logoDetected: false,
+        brandColors: analysis.colorAnalysis?.dominantColors || null,
+        fontAnalysis: analysis.textOverlayAnalysis || null,
+        aestheticScore: analysis.aestheticScore || null,
+        compositonScore: analysis.compositionAnalysis?.balance || null
       }
     })
 
