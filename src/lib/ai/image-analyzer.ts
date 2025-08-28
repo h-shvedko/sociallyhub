@@ -1,4 +1,6 @@
 import { openai } from './openai-client'
+import fs from 'fs'
+import path from 'path'
 
 export interface ImageAnalysisResult {
   aestheticScore: number
@@ -58,9 +60,9 @@ export interface PlatformOptimizationSuggestions {
 export class AIImageAnalyzer {
   async analyzeImage(imageUrl: string, platform?: string): Promise<ImageAnalysisResult> {
     try {
-      // Convert local URLs to full URLs for OpenAI API
-      const fullImageUrl = this.getFullImageUrl(imageUrl)
-      console.log(`Image URL conversion: ${imageUrl} -> ${fullImageUrl}`)
+      // Convert local paths to data URLs or ensure external URLs for OpenAI API
+      const processedImageUrl = await this.getImageForOpenAI(imageUrl)
+      console.log(`Image processing: ${imageUrl} -> ${processedImageUrl.substring(0, 50)}${processedImageUrl.length > 50 ? '...' : ''}`)
       const prompt = `Analyze this image comprehensively for social media use${platform ? ` specifically for ${platform}` : ''}. 
       
       Please provide a detailed JSON response with the following structure:
@@ -114,7 +116,7 @@ export class AIImageAnalyzer {
               {
                 type: "image_url",
                 image_url: {
-                  url: fullImageUrl,
+                  url: processedImageUrl,
                   detail: "high"
                 }
               }
@@ -161,9 +163,9 @@ export class AIImageAnalyzer {
     currentAnalysis?: ImageAnalysisResult
   ): Promise<PlatformOptimizationSuggestions> {
     try {
-      // Convert local URLs to full URLs for OpenAI API
-      const fullImageUrl = this.getFullImageUrl(imageUrl)
-      console.log(`Optimization URL conversion: ${imageUrl} -> ${fullImageUrl}`)
+      // Convert local paths to data URLs or ensure external URLs for OpenAI API
+      const processedImageUrl = await this.getImageForOpenAI(imageUrl)
+      console.log(`Optimization image processing: ${imageUrl} -> ${processedImageUrl.substring(0, 50)}${processedImageUrl.length > 50 ? '...' : ''}`)
       const platformSpecs = this.getPlatformSpecs(platform)
       
       const prompt = `Analyze this image for ${platform} optimization. 
@@ -217,7 +219,7 @@ export class AIImageAnalyzer {
               {
                 type: "image_url",
                 image_url: {
-                  url: fullImageUrl,
+                  url: processedImageUrl,
                   detail: "high"
                 }
               }
@@ -398,9 +400,12 @@ export class AIImageAnalyzer {
     return Math.min(Math.max(value, min), max)
   }
 
-  private getFullImageUrl(imageUrl: string): string {
-    // If it's already a full URL, return as-is
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+  private async getImageForOpenAI(imageUrl: string): Promise<string> {
+    // If it's already a full external URL, return as-is
+    if (imageUrl.startsWith('http://') && !imageUrl.includes('localhost')) {
+      return imageUrl
+    }
+    if (imageUrl.startsWith('https://')) {
       return imageUrl
     }
     
@@ -409,12 +414,42 @@ export class AIImageAnalyzer {
       return imageUrl
     }
     
-    // For local paths, convert to full URL
+    // For local paths, read the file and convert to base64
     if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('uploads/')) {
-      // Try to construct full URL
-      // In production, this would be your actual domain
-      const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3099'
-      return `${baseUrl}${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`
+      try {
+        // Convert to file system path
+        const relativePath = imageUrl.startsWith('/') ? imageUrl.slice(1) : imageUrl
+        const filePath = path.join(process.cwd(), 'public', relativePath)
+        
+        console.log(`Reading local image file: ${filePath}`)
+        
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+          console.error(`Image file not found: ${filePath}`)
+          throw new Error(`Image file not found: ${filePath}`)
+        }
+        
+        // Read file as base64
+        const imageBuffer = fs.readFileSync(filePath)
+        const base64Image = imageBuffer.toString('base64')
+        
+        // Determine MIME type from file extension
+        const ext = path.extname(filePath).toLowerCase()
+        const mimeType = ext === '.png' ? 'image/png' : 
+                        ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 
+                        ext === '.webp' ? 'image/webp' :
+                        ext === '.gif' ? 'image/gif' : 'image/jpeg'
+        
+        const dataUrl = `data:${mimeType};base64,${base64Image}`
+        console.log(`Converted to data URL, size: ${Math.round(base64Image.length / 1024)}KB`)
+        
+        return dataUrl
+      } catch (error) {
+        console.error('Failed to read local image file:', error)
+        // Fallback to URL (will fail, but let OpenAI give us the error)
+        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3099'
+        return `${baseUrl}${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`
+      }
     }
     
     // Default: return as-is and let OpenAI handle the error
