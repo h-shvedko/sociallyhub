@@ -7,7 +7,16 @@ import { z } from 'zod'
 import { ratelimit } from '@/lib/utils/rate-limit'
 
 const optimizeImageSchema = z.object({
-  imageUrl: z.string().url('Invalid image URL'),
+  imageUrl: z.string().min(1, 'Image URL is required').refine((url) => {
+    // More flexible URL validation - allow blob URLs, data URLs, and regular URLs
+    return url.startsWith('http://') || 
+           url.startsWith('https://') || 
+           url.startsWith('blob:') || 
+           url.startsWith('data:') ||
+           url.includes('/uploads/') // Allow local upload paths
+  }, {
+    message: 'Invalid image URL format'
+  }),
   platforms: z.array(z.enum(['TWITTER', 'FACEBOOK', 'INSTAGRAM', 'LINKEDIN', 'YOUTUBE', 'TIKTOK'])),
   optimizations: z.array(z.enum(['resize', 'crop', 'filter', 'watermark', 'quality'])).default(['resize']),
   brandGuidelineId: z.string().optional()
@@ -44,6 +53,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    console.log('Image optimization request body:', JSON.stringify(body, null, 2))
+    
     const { imageUrl, platforms, optimizations, brandGuidelineId } = optimizeImageSchema.parse(body)
 
     // Get user's workspace or create one
