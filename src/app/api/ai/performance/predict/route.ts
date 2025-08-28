@@ -28,7 +28,11 @@ export async function POST(request: NextRequest) {
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
+      return NextResponse.json({ 
+        error: 'No workspace found', 
+        debug: { userId: session.user.id },
+        help: 'Make sure you are logged in with the demo account: demo@sociallyhub.com / demo123456'
+      }, { status: 404 })
     }
 
     const body = await request.json()

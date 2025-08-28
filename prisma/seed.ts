@@ -209,6 +209,7 @@ async function main() {
           data: [
             {
               workspaceId: demoWorkspace.id,
+              userId: demoUser.id,
               socialAccountId: account.id,
               postId: post.id,
               date: new Date(),
@@ -218,6 +219,7 @@ async function main() {
             },
             {
               workspaceId: demoWorkspace.id,
+              userId: demoUser.id,
               socialAccountId: account.id,
               postId: post.id,
               date: new Date(),
@@ -227,6 +229,7 @@ async function main() {
             },
             {
               workspaceId: demoWorkspace.id,
+              userId: demoUser.id,
               socialAccountId: account.id,
               postId: post.id,
               date: new Date(),
