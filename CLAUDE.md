@@ -1141,6 +1141,16 @@ This comprehensive audience intelligence system establishes SociallyHub as the m
   - Files: `src/lib/auth/config.ts`, `src/app/api/ai/*/route.ts`
   - Impact: All AI content features now work properly for demo users
 
+- ✅ **Post/Draft Saving Permission Errors** - Fixed "No workspace with posting permissions" errors
+  - Affected APIs: Posts creation, media upload, draft saving
+  - Root Cause: Same session ID mismatch affecting workspace permission lookups
+  - Solutions:
+    - Added demo user ID compatibility mapping to posts API (GET and POST endpoints)
+    - Added compatibility mapping to media upload API for consistent behavior
+    - Updated all userId references in post creation, media upload, and business logging
+  - Files: `src/app/api/posts/route.ts`, `src/app/api/media/upload/route.ts`
+  - Impact: Post creation and draft saving now work while preserving AI functionality
+
 ### **Technical Debt Reduction**
 - ✅ **Prisma Schema Compatibility** - Aligned API calls with actual database schema
 - ✅ **Error Handling Enhancement** - Added graceful fallbacks for API failures
