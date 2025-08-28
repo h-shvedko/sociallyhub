@@ -71,6 +71,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Ensure user exists in database (handles both demo and regular users)
+    let existingUser = await prisma.user.findUnique({
+      where: { id: session.user.id }
+    })
+    
+    if (!existingUser) {
+      // Create user record if it doesn't exist
+      existingUser = await prisma.user.create({
+        data: {
+          id: session.user.id,
+          email: session.user.email || 'unknown@sociallyhub.com',
+          name: session.user.name || 'User',
+          emailVerified: new Date()
+        }
+      })
+    }
+
     // Rate limiting
     const identifier = session.user.id
     const { success } = await ratelimit.limit(identifier)
@@ -88,40 +105,53 @@ export async function POST(request: NextRequest) {
     })
 
     if (!userWorkspace) {
-      // For demo users or users without workspaces, create a default workspace
+      // Create a default workspace for any user without one
+      let defaultWorkspace
+      
       if (session.user.email === 'demo@sociallyhub.com' || session.user.id === 'demo-user-id') {
-        // Try to find or create a demo workspace
-        let demoWorkspace = await prisma.workspace.findFirst({
+        // For demo users, use shared Demo Workspace
+        defaultWorkspace = await prisma.workspace.findFirst({
           where: { name: 'Demo Workspace' }
         })
         
-        if (!demoWorkspace) {
-          demoWorkspace = await prisma.workspace.create({
-            data: {
-              name: 'Demo Workspace'
-            }
-          })
-          
-          await prisma.userWorkspace.create({
-            data: {
-              userId: session.user.id,
-              workspaceId: demoWorkspace.id,
-              role: 'OWNER',
-              permissions: {}
-            }
+        if (!defaultWorkspace) {
+          defaultWorkspace = await prisma.workspace.create({
+            data: { name: 'Demo Workspace' }
           })
         }
-        
-        userWorkspace = await prisma.userWorkspace.findFirst({
-          where: { 
-            userId: session.user.id,
-            workspaceId: demoWorkspace.id 
-          },
-          include: { workspace: true }
-        })
       } else {
-        return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+        // For regular users, create personal workspace
+        defaultWorkspace = await prisma.workspace.create({
+          data: { name: `${session.user.name || session.user.email}'s Workspace` }
+        })
       }
+      
+      // Always ensure UserWorkspace relationship exists
+      let existingUserWorkspace = await prisma.userWorkspace.findFirst({
+        where: {
+          userId: session.user.id,
+          workspaceId: defaultWorkspace.id
+        }
+      })
+      
+      if (!existingUserWorkspace) {
+        await prisma.userWorkspace.create({
+          data: {
+            userId: session.user.id,
+            workspaceId: defaultWorkspace.id,
+            role: 'OWNER',
+            permissions: {}
+          }
+        })
+      }
+      
+      userWorkspace = await prisma.userWorkspace.findFirst({
+        where: { 
+          userId: session.user.id,
+          workspaceId: defaultWorkspace.id 
+        },
+        include: { workspace: true }
+      })
     }
 
     if (!userWorkspace) {
@@ -181,6 +211,23 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Ensure user exists in database (handles both demo and regular users)
+    let existingUser = await prisma.user.findUnique({
+      where: { id: session.user.id }
+    })
+    
+    if (!existingUser) {
+      // Create user record if it doesn't exist
+      existingUser = await prisma.user.create({
+        data: {
+          id: session.user.id,
+          email: session.user.email || 'unknown@sociallyhub.com',
+          name: session.user.name || 'User',
+          emailVerified: new Date()
+        }
+      })
     }
 
     const { searchParams } = new URL(request.url)
