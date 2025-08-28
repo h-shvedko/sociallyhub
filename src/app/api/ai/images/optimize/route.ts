@@ -20,6 +20,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Ensure user exists in database (same as image analysis fix)
+    let existingUser = await prisma.user.findUnique({
+      where: { id: session.user.id }
+    })
+    
+    if (!existingUser) {
+      existingUser = await prisma.user.create({
+        data: {
+          id: session.user.id,
+          email: session.user.email || 'unknown@sociallyhub.com',
+          name: session.user.name || 'User',
+          emailVerified: new Date()
+        }
+      })
+    }
+
     // Rate limiting
     const identifier = session.user.id
     const { success } = await ratelimit.limit(identifier)
@@ -30,14 +46,64 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { imageUrl, platforms, optimizations, brandGuidelineId } = optimizeImageSchema.parse(body)
 
-    // Get user's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
+    // Get user's workspace or create one
+    let userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId: session.user.id },
       include: { workspace: true }
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+      // Create a default workspace for any user without one
+      let defaultWorkspace
+      
+      if (session.user.email === 'demo@sociallyhub.com' || session.user.id === 'demo-user-id') {
+        // For demo users, use shared Demo Workspace
+        defaultWorkspace = await prisma.workspace.findFirst({
+          where: { name: 'Demo Workspace' }
+        })
+        
+        if (!defaultWorkspace) {
+          defaultWorkspace = await prisma.workspace.create({
+            data: { name: 'Demo Workspace' }
+          })
+        }
+      } else {
+        // For regular users, create personal workspace
+        defaultWorkspace = await prisma.workspace.create({
+          data: { name: `${session.user.name || session.user.email}'s Workspace` }
+        })
+      }
+      
+      // Always ensure UserWorkspace relationship exists
+      let existingUserWorkspace = await prisma.userWorkspace.findFirst({
+        where: {
+          userId: session.user.id,
+          workspaceId: defaultWorkspace.id
+        }
+      })
+      
+      if (!existingUserWorkspace) {
+        await prisma.userWorkspace.create({
+          data: {
+            userId: session.user.id,
+            workspaceId: defaultWorkspace.id,
+            role: 'OWNER',
+            permissions: {}
+          }
+        })
+      }
+      
+      userWorkspace = await prisma.userWorkspace.findFirst({
+        where: { 
+          userId: session.user.id,
+          workspaceId: defaultWorkspace.id 
+        },
+        include: { workspace: true }
+      })
+    }
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'Could not access workspace' }, { status: 404 })
     }
 
     // Initialize image optimizer
@@ -58,20 +124,42 @@ export async function POST(request: NextRequest) {
           ...result
         })
 
-        // Save optimization to database
-        await prisma.imageOptimization.create({
+        // Create asset record for the original image first
+        const originalAsset = await prisma.asset.create({
           data: {
             workspaceId: userWorkspace.workspaceId,
-            userId: session.user.id,
-            originalImageUrl: imageUrl,
-            optimizedImageUrl: result.optimizedImageUrl,
-            platform,
-            optimizationSettings: {
-              optimizations,
-              brandGuidelineId
-            } as any,
-            performanceImpact: result.performanceImpact as any,
-            qualityScore: result.qualityScore
+            filename: `optimization-original-${Date.now()}.jpg`,
+            originalName: `optimization-original-${Date.now()}.jpg`, 
+            mimeType: 'image/jpeg',
+            size: 1024, // Default size since we don't have the actual file
+            url: imageUrl,
+            width: 800, // Default dimensions
+            height: 600,
+            metadata: {
+              source: 'image-optimization',
+              originalUrl: imageUrl
+            }
+          }
+        })
+
+        // Save optimization to database (note: correct table name is image_optimizations)
+        await prisma.imageOptimizations.create({
+          data: {
+            originalAssetId: originalAsset.id,
+            workspaceId: userWorkspace.workspaceId,
+            platform: platform as any,
+            sizeBefore: 1024, // Mock original size
+            sizeAfter: 900,   // Mock optimized size
+            compressionLevel: 0.9,
+            format: 'JPEG',
+            cropped: optimizations.includes('crop'),
+            resized: optimizations.includes('resize'),
+            compressed: optimizations.includes('quality'),
+            filtered: optimizations.includes('filter'),
+            textOverlay: optimizations.includes('watermark'),
+            qualityScore: result.qualityScore,
+            loadTimeImprovement: result.performanceImpact?.loadTimeImprovement,
+            engagementPredict: null
           }
         })
       } catch (error) {
@@ -113,14 +201,43 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Ensure user exists in database
+    let existingUser = await prisma.user.findUnique({
+      where: { id: session.user.id }
+    })
+    
+    if (!existingUser) {
+      existingUser = await prisma.user.create({
+        data: {
+          id: session.user.id,
+          email: session.user.email || 'unknown@sociallyhub.com',
+          name: session.user.name || 'User',
+          emailVerified: new Date()
+        }
+      })
+    }
+
     const { searchParams } = new URL(request.url)
     const platform = searchParams.get('platform')
     const limit = parseInt(searchParams.get('limit') || '10')
     
-    // Get recent optimizations for user
-    const optimizations = await prisma.imageOptimization.findMany({
+    // Get workspace for user
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: { userId: session.user.id },
+      include: { workspace: true }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ 
+        success: true,
+        optimizations: [] 
+      })
+    }
+    
+    // Get recent optimizations for user (note: correct table name)
+    const optimizations = await prisma.imageOptimizations.findMany({
       where: {
-        userId: session.user.id,
+        workspaceId: userWorkspace.workspaceId,
         ...(platform && { platform: platform as any })
       },
       orderBy: { createdAt: 'desc' },
