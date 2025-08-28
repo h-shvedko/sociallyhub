@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
       // Always ensure UserWorkspace relationship exists
       let existingUserWorkspace = await prisma.userWorkspace.findFirst({
         where: {
-          userId: session.user.id,
+          userId: existingUser.id,
           workspaceId: defaultWorkspace.id
         }
       })
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
       if (!existingUserWorkspace) {
         await prisma.userWorkspace.create({
           data: {
-            userId: session.user.id,
+            userId: existingUser.id,
             workspaceId: defaultWorkspace.id,
             role: 'OWNER',
             permissions: {}
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
       
       userWorkspace = await prisma.userWorkspace.findFirst({
         where: { 
-          userId: session.user.id,
+          userId: existingUser.id,
           workspaceId: defaultWorkspace.id 
         },
         include: { workspace: true }
@@ -287,15 +287,25 @@ export async function GET(request: NextRequest) {
     })
     
     if (!existingUser) {
-      // Create user record if it doesn't exist
-      existingUser = await prisma.user.create({
-        data: {
-          id: session.user.id,
-          email: session.user.email || 'unknown@sociallyhub.com',
-          name: session.user.name || 'User',
-          emailVerified: new Date()
-        }
+      // Try finding by email (handles demo user case)
+      const userByEmail = await prisma.user.findUnique({
+        where: { email: session.user.email || 'demo@sociallyhub.com' }
       })
+      
+      if (userByEmail) {
+        console.log(`User exists by email but different ID. Session ID: ${session.user.id}, DB ID: ${userByEmail.id}`)
+        existingUser = userByEmail
+      } else {
+        // Create user record if it doesn't exist
+        existingUser = await prisma.user.create({
+          data: {
+            id: session.user.id,
+            email: session.user.email || 'unknown@sociallyhub.com',
+            name: session.user.name || 'User',
+            emailVerified: new Date()
+          }
+        })
+      }
     }
 
     const { searchParams } = new URL(request.url)
@@ -309,7 +319,7 @@ export async function GET(request: NextRequest) {
     const analysis = await prisma.imageAnalysis.findFirst({
       where: {
         id: analysisId,
-        userId: session.user.id
+        userId: existingUser.id
       }
     })
 

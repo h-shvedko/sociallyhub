@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Get user's workspace or create one
     let userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId: existingUser.id },
       include: { workspace: true }
     })
 
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       // Always ensure UserWorkspace relationship exists
       let existingUserWorkspace = await prisma.userWorkspace.findFirst({
         where: {
-          userId: session.user.id,
+          userId: existingUser.id,
           workspaceId: defaultWorkspace.id
         }
       })
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       if (!existingUserWorkspace) {
         await prisma.userWorkspace.create({
           data: {
-            userId: session.user.id,
+            userId: existingUser.id,
             workspaceId: defaultWorkspace.id,
             role: 'OWNER',
             permissions: {}
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       
       userWorkspace = await prisma.userWorkspace.findFirst({
         where: { 
-          userId: session.user.id,
+          userId: existingUser.id,
           workspaceId: defaultWorkspace.id 
         },
         include: { workspace: true }
@@ -260,7 +260,7 @@ export async function GET(request: NextRequest) {
     
     // Get workspace for user
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId: session.user.id },
+      where: { userId: existingUser.id },
       include: { workspace: true }
     })
 
