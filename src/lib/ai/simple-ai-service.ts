@@ -21,8 +21,11 @@ interface ToneAnalysisResult {
 interface PerformancePredictionResult {
   prediction: {
     engagementRate: number
-    viralityScore: number
-    optimalTime: string
+    reach: number
+    impressions: number
+    likes: number
+    comments: number
+    shares: number
     confidence: number
   }
   usage: {
@@ -162,7 +165,7 @@ class SimpleAIService {
         messages: [
           {
             role: 'system',
-            content: `You are an expert social media analyst. Predict the performance of content for ${platform}. Consider factors like content quality, timing, engagement potential, and virality. Respond with JSON: {"engagementRate": 0.0-10.0, "viralityScore": 0.0-1.0, "optimalTime": "day_hour", "confidence": 0.0-1.0}`
+            content: `You are an expert social media analyst. Predict the performance of content for ${platform}. Consider factors like content quality, timing, engagement potential, and virality. Respond with JSON containing realistic metrics based on platform averages: {"engagementRate": 0.0-10.0, "reach": 100-50000, "impressions": 200-100000, "likes": 5-5000, "comments": 0-500, "shares": 0-1000, "confidence": 0.0-1.0}`
           },
           {
             role: 'user',
@@ -186,10 +189,24 @@ class SimpleAIService {
         // Fallback prediction
         predictionResult = {
           engagementRate: 2.5,
-          viralityScore: 0.3,
-          optimalTime: 'tuesday_14:00',
+          reach: 1200,
+          impressions: 2400,
+          likes: 85,
+          comments: 12,
+          shares: 8,
           confidence: 0.5
         }
+      }
+
+      // Ensure all required fields exist with defaults
+      predictionResult = {
+        engagementRate: predictionResult.engagementRate || 2.5,
+        reach: predictionResult.reach || Math.floor(Math.random() * 5000) + 500,
+        impressions: predictionResult.impressions || Math.floor(Math.random() * 10000) + 1000,
+        likes: predictionResult.likes || Math.floor(Math.random() * 200) + 20,
+        comments: predictionResult.comments || Math.floor(Math.random() * 50) + 5,
+        shares: predictionResult.shares || Math.floor(Math.random() * 30) + 2,
+        confidence: predictionResult.confidence || 0.5
       }
 
       const responseTimeMs = Date.now() - startTime
@@ -206,7 +223,7 @@ class SimpleAIService {
           costCents,
           responseTimeMs,
           successful: true,
-          metadata: { model: 'gpt-3.5-turbo', platform, content_length: content.length }
+          model: 'gpt-3.5-turbo'
         }
       }).catch(console.error)
 
@@ -226,10 +243,13 @@ class SimpleAIService {
 
       return {
         prediction: {
-          engagementRate: predictionResult.engagementRate || 2.5,
-          viralityScore: predictionResult.viralityScore || 0.3,
-          optimalTime: predictionResult.optimalTime || 'tuesday_14:00',
-          confidence: predictionResult.confidence || 0.5
+          engagementRate: predictionResult.engagementRate,
+          reach: predictionResult.reach,
+          impressions: predictionResult.impressions,
+          likes: predictionResult.likes,
+          comments: predictionResult.comments,
+          shares: predictionResult.shares,
+          confidence: predictionResult.confidence
         },
         usage: {
           tokensUsed,

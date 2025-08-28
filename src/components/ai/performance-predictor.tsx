@@ -132,7 +132,12 @@ export function PerformancePredictor({
     }
   }
 
-  const formatNumber = (num: number): string => {
+  const formatNumber = (num: number | undefined | null): string => {
+    // Handle invalid numbers
+    if (num === undefined || num === null || isNaN(num) || num < 0) {
+      return "0"
+    }
+    
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
     if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
     return Math.round(num).toString()
@@ -214,9 +219,9 @@ export function PerformancePredictor({
                 {predictions[platform] && (
                   <Badge 
                     variant="secondary" 
-                    className={cn("ml-2 text-xs", getConfidenceColor(predictions[platform].prediction.confidence))}
+                    className={cn("ml-2 text-xs", getConfidenceColor(predictions[platform].prediction.confidence || 0))}
                   >
-                    {Math.round(predictions[platform].prediction.confidence * 100)}%
+                    {Math.round((predictions[platform].prediction.confidence || 0) * 100)}%
                   </Badge>
                 )}
               </Button>
@@ -287,7 +292,7 @@ export function PerformancePredictor({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-lg font-bold text-indigo-900">
-                    {currentPrediction.prediction.engagementRate.toFixed(1)}%
+                    {(currentPrediction.prediction.engagementRate || 0).toFixed(1)}%
                   </span>
                   {currentPrediction.comparison?.engagementRateChange !== undefined && (
                     <Badge className={cn("text-xs", getChangeColor(currentPrediction.comparison.engagementRateChange))}>
@@ -298,7 +303,7 @@ export function PerformancePredictor({
                 </div>
               </div>
               <Progress 
-                value={Math.min(currentPrediction.prediction.engagementRate * 10, 100)} 
+                value={Math.min((currentPrediction.prediction.engagementRate || 0) * 10, 100)} 
                 className="h-3" 
               />
               <div className="flex justify-between text-xs text-muted-foreground">
@@ -315,13 +320,13 @@ export function PerformancePredictor({
                 <span className="text-sm font-medium">Prediction Confidence</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className={cn("text-sm font-bold", getConfidenceColor(currentPrediction.prediction.confidence))}>
-                  {Math.round(currentPrediction.prediction.confidence * 100)}%
+                <span className={cn("text-sm font-bold", getConfidenceColor(currentPrediction.prediction.confidence || 0))}>
+                  {Math.round((currentPrediction.prediction.confidence || 0) * 100)}%
                 </span>
                 <Badge variant="outline" className="text-xs">
-                  {currentPrediction.prediction.confidence >= 0.8 ? 'High' :
-                   currentPrediction.prediction.confidence >= 0.6 ? 'Good' :
-                   currentPrediction.prediction.confidence >= 0.4 ? 'Fair' : 'Low'}
+                  {(currentPrediction.prediction.confidence || 0) >= 0.8 ? 'High' :
+                   (currentPrediction.prediction.confidence || 0) >= 0.6 ? 'Good' :
+                   (currentPrediction.prediction.confidence || 0) >= 0.4 ? 'Fair' : 'Low'}
                 </Badge>
               </div>
             </div>
