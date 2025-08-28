@@ -1,0 +1,260 @@
+name: Scheduled Tests
+
+on:
+  schedule:
+    # Run tests daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+  NEXTAUTH_URL: http://localhost:3099
+  NEXTAUTH_SECRET: test-secret-for-cron
+  DATABASE_URL: postgresql://sociallyhub:password@localhost:5432/sociallyhub_test
+  REDIS_URL: redis://localhost:6379/1
+
+jobs:
+  # Full test suite
+  full-test-suite:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: sociallyhub_test
+          POSTGRES_USER: sociallyhub
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Setup test database
+        run: |
+          npx prisma migrate deploy
+          npx prisma generate
+
+      - name: Run all tests
+        run: npm run test:all
+
+      - name: Upload comprehensive test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: comprehensive-test-results
+          path: |
+            coverage/
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # Performance benchmarking
+  performance-benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: sociallyhub_test
+          POSTGRES_USER: sociallyhub
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Setup test database
+        run: |
+          npx prisma migrate deploy
+          npx prisma generate
+
+      - name: Run performance benchmarks
+        run: npm run test:performance
+
+      - name: Store benchmark results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'customBiggerIsBetter'
+          output-file-path: test-results/performance-benchmark.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+
+  # Dependency check
+  dependency-check:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Check for outdated dependencies
+        run: npm outdated --json > outdated.json || true
+
+      - name: Check for security vulnerabilities
+        run: npm audit --json > audit.json || true
+
+      - name: Upload dependency reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-reports
+          path: |
+            outdated.json
+            audit.json
+          retention-days: 30
+
+  # Cross-browser testing
+  cross-browser-test:
+    name: Cross-Browser Testing
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: sociallyhub_test
+          POSTGRES_USER: sociallyhub
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Setup test database
+        run: |
+          npx prisma migrate deploy
+          npx prisma generate
+
+      - name: Run cross-browser tests
+        run: npx playwright test --project=${{ matrix.browser }}
+
+      - name: Upload browser-specific results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: ${{ matrix.browser }}-test-results
+          path: test-results/
+          retention-days: 7
+
+  # Notification
+  notify-results:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [full-test-suite, performance-benchmark, dependency-check, cross-browser-test]
+    
+    steps:
+      - name: Send comprehensive report
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+          channel: '#test-reports'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,commit,author,took,workflow
+          text: |
+            📊 Daily Test Report
+            Full Test Suite: ${{ needs.full-test-suite.result }}
+            Performance: ${{ needs.performance-benchmark.result }}
+            Dependencies: ${{ needs.dependency-check.result }}
+            Cross-Browser: ${{ needs.cross-browser-test.result }}
