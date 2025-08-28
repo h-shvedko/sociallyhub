@@ -56,6 +56,43 @@ export function ImageOptimizer({ imageUrl, selectedPlatforms, onOptimizationComp
   const [error, setError] = useState<string | null>(null)
   const [selectedOptimizations, setSelectedOptimizations] = useState<string[]>(['resize', 'quality'])
 
+  // Helper function to upload blob URLs to get a real URL
+  const uploadBlobIfNeeded = async (url: string): Promise<string> => {
+    if (!url.startsWith('blob:')) {
+      return url // Not a blob URL, return as-is
+    }
+
+    try {
+      // Fetch the blob data
+      const response = await fetch(url)
+      const blob = await response.blob()
+      
+      // Create FormData for upload
+      const formData = new FormData()
+      formData.append('files', blob, 'image.jpg')
+
+      // Upload to our media API
+      const uploadResponse = await fetch('/api/media/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload image')
+      }
+
+      const uploadResult = await uploadResponse.json()
+      if (uploadResult.assets && uploadResult.assets[0]) {
+        return uploadResult.assets[0].url // Return the uploaded image URL
+      }
+      
+      throw new Error('No uploaded asset returned')
+    } catch (error) {
+      console.error('Error uploading blob:', error)
+      throw new Error('Failed to process image for optimization')
+    }
+  }
+
   const handleOptimize = async () => {
     if (!imageUrl) {
       setError('Please upload an image first')
@@ -72,13 +109,16 @@ export function ImageOptimizer({ imageUrl, selectedPlatforms, onOptimizationComp
     setResults([])
 
     try {
+      // Convert blob URL to real URL if needed
+      const processedImageUrl = await uploadBlobIfNeeded(imageUrl)
+
       const response = await fetch('/api/ai/images/optimize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          imageUrl,
+          imageUrl: processedImageUrl,
           platforms: selectedPlatforms,
           optimizations: selectedOptimizations
         }),

@@ -409,9 +409,14 @@ export class AIImageAnalyzer {
       return imageUrl
     }
     
-    // If it's a blob or data URL, return as-is
-    if (imageUrl.startsWith('blob:') || imageUrl.startsWith('data:')) {
+    // If it's a data URL, return as-is
+    if (imageUrl.startsWith('data:')) {
       return imageUrl
+    }
+    
+    // If it's a blob URL, we can't process it server-side
+    if (imageUrl.startsWith('blob:')) {
+      throw new Error('Blob URLs cannot be processed server-side. Please upload the image first.')
     }
     
     // For local paths, read the file and convert to base64

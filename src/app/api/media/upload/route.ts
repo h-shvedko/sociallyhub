@@ -25,10 +25,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Ensure user exists in database (handles both demo and regular users)
+    let existingUser = await prisma.user.findUnique({
+      where: { id: session.user.id }
+    })
+    
+    if (!existingUser) {
+      // Try finding by email (handles demo user case)
+      const userByEmail = await prisma.user.findUnique({
+        where: { email: session.user.email || 'demo@sociallyhub.com' }
+      })
+      
+      if (userByEmail) {
+        console.log(`User exists by email but different ID. Session ID: ${session.user.id}, DB ID: ${userByEmail.id}`)
+        existingUser = userByEmail
+      } else {
+        // Create user record if it doesn't exist
+        existingUser = await prisma.user.create({
+          data: {
+            id: session.user.id,
+            email: session.user.email || 'unknown@sociallyhub.com',
+            name: session.user.name || 'User',
+            emailVerified: new Date()
+          }
+        })
+      }
+    }
+
     // Get user's primary workspace
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { 
-        userId: session.user.id,
+        userId: existingUser.id,
         role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
       }
     })
@@ -116,7 +143,7 @@ export async function POST(request: NextRequest) {
             height,
             duration,
             metadata: {
-              uploadedBy: session.user.id,
+              uploadedBy: existingUser.id,
               uploadedAt: new Date().toISOString()
             },
             tags: []
@@ -174,7 +201,7 @@ export async function GET(request: NextRequest) {
 
     // Get user's workspaces
     const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: { userId: session.user.id },
+      where: { userId: existingUser.id },
       select: { workspaceId: true }
     })
 
