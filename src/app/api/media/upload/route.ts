@@ -25,9 +25,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+
     // Ensure user exists in database (handles both demo and regular users)
     let existingUser = await prisma.user.findUnique({
-      where: { id: session.user.id }
+      where: { id: userId }
     })
     
     if (!existingUser) {
@@ -43,7 +49,7 @@ export async function POST(request: NextRequest) {
         // Create user record if it doesn't exist
         existingUser = await prisma.user.create({
           data: {
-            id: session.user.id,
+            id: userId,
             email: session.user.email || 'unknown@sociallyhub.com',
             name: session.user.name || 'User',
             emailVerified: new Date()

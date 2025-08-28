@@ -42,9 +42,15 @@ async function getHandler(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const workspaceId = searchParams.get('workspaceId')
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+
     // Get user's workspaces
     const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: { userId: session.user.id },
+      where: { userId },
       select: { workspaceId: true }
     })
 
@@ -172,10 +178,16 @@ async function postHandler(request: NextRequest) {
     const body = await request.json()
     const validatedData = postSchema.parse(body)
 
+    // Handle demo user ID compatibility
+    let userId = session.user.id
+    if (userId === 'demo-user-id') {
+      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    }
+
     // Get user's primary workspace with posting permissions
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { 
-        userId: session.user.id,
+        userId: userId,
         role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
       },
       include: { workspace: true }
@@ -214,7 +226,7 @@ async function postHandler(request: NextRequest) {
           title: validatedData.title,
           baseContent: validatedData.content.text,
           status: validatedData.status as any,
-          ownerId: session.user.id,
+          ownerId: userId,
           scheduledAt: validatedData.scheduledAt ? new Date(validatedData.scheduledAt) : null,
           tags: validatedData.tags,
           campaignId: validatedData.campaignId
@@ -275,7 +287,7 @@ async function postHandler(request: NextRequest) {
                 tags: []
               }
             })
-            BusinessLogger.logMediaUpload(placeholderAsset.id, session.user.id, placeholderAsset.filename, 0)
+            BusinessLogger.logMediaUpload(placeholderAsset.id, userId, placeholderAsset.filename, 0)
             assetIds.push(placeholderAsset.id)
           } else {
             assetIds.push(existingAsset.id)
@@ -306,15 +318,15 @@ async function postHandler(request: NextRequest) {
     })
 
     // Log business event
-    BusinessLogger.logPostCreated(result.id, session.user.id, validatedData)
+    BusinessLogger.logPostCreated(result.id, userId, validatedData)
 
     // If status is PUBLISHED or SCHEDULED, trigger background job
     if (validatedData.status === 'PUBLISHED') {
-      BusinessLogger.logWorkspaceAction('publish_post', userWorkspace.workspaceId, session.user.id, {
+      BusinessLogger.logWorkspaceAction('publish_post', userWorkspace.workspaceId, userId, {
         postId: result.id
       })
     } else if (validatedData.status === 'SCHEDULED' && validatedData.scheduledAt) {
-      BusinessLogger.logWorkspaceAction('schedule_post', userWorkspace.workspaceId, session.user.id, {
+      BusinessLogger.logWorkspaceAction('schedule_post', userWorkspace.workspaceId, userId, {
         postId: result.id,
         scheduledAt: validatedData.scheduledAt
       })
