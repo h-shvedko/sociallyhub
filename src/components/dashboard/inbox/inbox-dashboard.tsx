@@ -107,11 +107,11 @@ export function InboxDashboard({ workspaceId }: { workspaceId: string }) {
   
   // Filters
   const [filters, setFilters] = useState({
-    status: '',
-    type: '',
-    assigneeId: '',
-    socialAccountId: '',
-    sentiment: '',
+    status: 'all',
+    type: 'all',
+    assigneeId: 'all',
+    socialAccountId: 'all',
+    sentiment: 'all',
     search: ''
   })
   
@@ -319,7 +319,7 @@ export function InboxDashboard({ workspaceId }: { workspaceId: string }) {
                       No messages match your current filters
                     </p>
                     <Button variant="outline" onClick={() => setFilters({
-                      status: '', type: '', assigneeId: '', socialAccountId: '', sentiment: '', search: ''
+                      status: 'all', type: 'all', assigneeId: 'all', socialAccountId: 'all', sentiment: 'all', search: ''
                     })}>
                       Clear Filters
                     </Button>
