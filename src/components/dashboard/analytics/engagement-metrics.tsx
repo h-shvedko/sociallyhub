@@ -65,73 +65,20 @@ export function EngagementMetrics({ timeRange, onTimeRangeChange }: EngagementMe
   const fetchEngagementData = async () => {
     setLoading(true)
     try {
-      // Mock data - replace with actual API call
-      const mockPlatformData: EngagementData[] = [
-        {
-          platform: 'Twitter',
-          likes: 1250,
-          comments: 320,
-          shares: 180,
-          saves: 95,
-          reach: 15400,
-          impressions: 28300,
-          engagementRate: 6.8,
-          color: '#1DA1F2'
-        },
-        {
-          platform: 'Instagram',
-          likes: 2100,
-          comments: 450,
-          shares: 220,
-          saves: 340,
-          reach: 22100,
-          impressions: 41200,
-          engagementRate: 7.2,
-          color: '#E4405F'
-        },
-        {
-          platform: 'LinkedIn',
-          likes: 890,
-          comments: 120,
-          shares: 310,
-          saves: 65,
-          reach: 8900,
-          impressions: 16700,
-          engagementRate: 8.1,
-          color: '#0077B5'
-        },
-        {
-          platform: 'Facebook',
-          likes: 1650,
-          comments: 280,
-          shares: 150,
-          saves: 120,
-          reach: 18200,
-          impressions: 33400,
-          engagementRate: 6.1,
-          color: '#4267B2'
-        }
-      ]
-
-      // Generate trend data
-      const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : 365
-      const mockTrendData: EngagementTrend[] = Array.from({ length: days }, (_, i) => {
-        const date = format(subDays(new Date(), days - 1 - i), 'MMM dd')
-        const baseValue = 1000 + Math.random() * 500
-        return {
-          date,
-          likes: Math.floor(baseValue + Math.random() * 200),
-          comments: Math.floor(baseValue * 0.3 + Math.random() * 100),
-          shares: Math.floor(baseValue * 0.2 + Math.random() * 80),
-          reach: Math.floor(baseValue * 15 + Math.random() * 3000),
-          engagementRate: Math.round((6 + Math.random() * 3) * 10) / 10
-        }
-      })
-
-      setEngagementData(mockPlatformData)
-      setTrendData(mockTrendData)
+      const response = await fetch(`/api/analytics/engagement?timeRange=${timeRange}`)
+      if (response.ok) {
+        const data = await response.json()
+        setEngagementData(data.platformData || [])
+        setTrendData(data.trendData || [])
+      } else {
+        console.error('Failed to fetch engagement data:', response.statusText)
+        setEngagementData([])
+        setTrendData([])
+      }
     } catch (error) {
       console.error('Failed to fetch engagement data:', error)
+      setEngagementData([])
+      setTrendData([])
     } finally {
       setLoading(false)
     }

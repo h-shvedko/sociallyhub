@@ -131,92 +131,47 @@ export function PerformanceComparison({
     try {
       const periods = getComparisonPeriods()
       
-      // Mock comparison data - replace with actual API calls
-      const mockMetrics: MetricComparison[] = [
-        {
-          metric: 'Total Users',
-          current: 2847,
-          previous: 2543,
-          change: 304,
-          changePercent: 11.9,
-          trend: 'up',
-          unit: '',
-          icon: <Users className="h-4 w-4" />
-        },
-        {
-          metric: 'Active Sessions',
-          current: 1250,
-          previous: 1180,
-          change: 70,
-          changePercent: 5.9,
-          trend: 'up',
-          unit: '',
-          icon: <Activity className="h-4 w-4" />
-        },
-        {
-          metric: 'Posts Created',
-          current: 456,
-          previous: 523,
-          change: -67,
-          changePercent: -12.8,
-          trend: 'down',
-          unit: '',
-          icon: <BarChart3 className="h-4 w-4" />
-        },
-        {
-          metric: 'Engagement Rate',
-          current: 7.2,
-          previous: 6.8,
-          change: 0.4,
-          changePercent: 5.9,
-          trend: 'up',
-          unit: '%',
-          icon: <Zap className="h-4 w-4" />
-        },
-        {
-          metric: 'Avg Response Time',
-          current: 245,
-          previous: 312,
-          change: -67,
-          changePercent: -21.5,
-          trend: 'up', // Lower is better for response time
-          unit: 'ms',
-          icon: <Clock className="h-4 w-4" />
-        },
-        {
-          metric: 'Conversion Rate',
-          current: 3.4,
-          previous: 2.9,
-          change: 0.5,
-          changePercent: 17.2,
-          trend: 'up',
-          unit: '%',
-          icon: <Target className="h-4 w-4" />
-        }
-      ]
-
-      // Generate trend comparison data
-      const days = selectedPeriod === 'week' ? 7 : selectedPeriod === 'month' ? 30 : selectedPeriod === 'quarter' ? 90 : 365
-      const mockTrendData = Array.from({ length: days }, (_, i) => {
-        const date = format(subDays(new Date(), days - 1 - i), 'MMM dd')
-        const currentBase = 1000 + Math.random() * 500
-        const previousBase = currentBase * 0.85 + Math.random() * 200
+      // Fetch real performance data from API
+      const response = await fetch(`/api/analytics/performance?period=${selectedPeriod}&comparisonType=${comparisonType}`)
+      
+      if (response.ok) {
+        const data = await response.json()
         
-        return {
-          date,
-          current: Math.floor(currentBase),
-          previous: Math.floor(previousBase),
-          target: 1200
-        }
-      })
-
-      setMetrics(mockMetrics)
-      setTrendData(mockTrendData)
+        // Transform metrics to include icon components
+        const metricsWithIcons = data.metrics.map((metric: any) => ({
+          ...metric,
+          icon: getMetricIcon(metric.icon)
+        }))
+        
+        setMetrics(metricsWithIcons)
+        setTrendData(data.trendData.current || [])
+        setComparisonPeriods(data.periods)
+      } else {
+        console.error('Failed to fetch performance data:', response.statusText)
+        setMetrics([])
+        setTrendData([])
+      }
     } catch (error) {
       console.error('Failed to fetch comparison data:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  // Helper function to get icon components
+  const getMetricIcon = (iconName: string) => {
+    const icons: Record<string, React.ReactNode> = {
+      Users: <Users className="h-4 w-4" />,
+      Activity: <Activity className="h-4 w-4" />,
+      BarChart3: <BarChart3 className="h-4 w-4" />,
+      Eye: <Eye className="h-4 w-4" />,
+      Heart: <Heart className="h-4 w-4" />,
+      TrendingUp: <TrendingUp className="h-4 w-4" />,
+      Target: <Target className="h-4 w-4" />,
+      Clock: <Clock className="h-4 w-4" />,
+      Zap: <Zap className="h-4 w-4" />
+    }
+    return icons[iconName] || <Activity className="h-4 w-4" />
   }
 
   const getTrendIcon = (trend: 'up' | 'down' | 'neutral') => {

@@ -145,12 +145,15 @@ async function getHandler(request: NextRequest) {
       ? completedSessions.reduce((sum, s) => sum + (s.duration || 0), 0) / completedSessions.length
       : 0
 
-    // Mock some additional metrics (would be calculated from actual data)
-    const conversionRate = 3.4 + (Math.random() - 0.5) * 0.8
-    const apiRequests = Math.floor(Math.random() * 10000) + 40000
+    // Calculate conversion rate from actual data (placeholder - would need conversion tracking)
+    const conversionRate = 0 // Would be calculated from actual conversion events
+    const apiRequests = 0 // Would be tracked from actual API usage
 
-    // Social media specific metrics
-    const totalFollowers = Math.floor(Math.random() * 5000) + 15000
+    // Social media specific metrics from actual follower data
+    const totalFollowers = socialAccounts.reduce((sum, account) => {
+      // This would come from actual follower counts stored in social account data
+      return sum + 0 // Placeholder - would need actual follower data
+    }, 0)
     const totalShares = recentPosts.reduce((sum, post) => {
       const shareMetric = post.metrics.find(m => m.metricType === 'shares')
       return sum + (shareMetric ? shareMetric.value : 0)
@@ -165,7 +168,7 @@ async function getHandler(request: NextRequest) {
       totalUsers,
       activeUsers,
       activeSessions,
-      pageViews: pageViews || Math.floor(Math.random() * 5000) + 10000,
+      pageViews: pageViews,
       engagementRate: Math.round(engagementRate * 10) / 10,
       avgSessionDuration: Math.round(avgSessionDuration),
       apiRequests,
@@ -182,14 +185,14 @@ async function getHandler(request: NextRequest) {
       totalComments,
       totalReach,
       totalImpressions: totalReach * 1.8, // Approximation
-      clickThroughRate: Math.round((2.5 + Math.random() * 1) * 10) / 10,
-      growthRate: Math.round((10 + Math.random() * 5) * 10) / 10,
+      clickThroughRate: 0, // Would be calculated from actual click tracking
+      growthRate: 0, // Would be calculated from follower/engagement growth over time
       
-      // Performance metrics
-      avgResponseTime: Math.floor(Math.random() * 100) + 200,
-      uptime: 99.9,
-      throughput: Math.floor(Math.random() * 500) + 1000,
-      errorRate: Math.round(Math.random() * 0.5 * 10) / 10,
+      // Performance metrics (would be calculated from system monitoring)
+      avgResponseTime: 0, // Would be tracked from actual API response times
+      uptime: 0, // Would be calculated from system uptime monitoring
+      throughput: 0, // Would be tracked from actual request throughput
+      errorRate: 0, // Would be calculated from error monitoring
       
       // Meta information
       timeRange,

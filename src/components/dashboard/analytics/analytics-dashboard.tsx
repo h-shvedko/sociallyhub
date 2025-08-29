@@ -20,13 +20,10 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 
-// Import all the analytics components
+// Import the analytics components
 import { DefaultAnalyticsCards } from "./analytics-overview-cards"
 import { EngagementMetrics } from "./engagement-metrics"
 import { PerformanceComparison } from "./performance-comparison"
-import { ExportableReports } from "./exportable-reports"
-import { RealTimeUpdates } from "./real-time-updates"
-import { CustomDashboardWidgets } from "./custom-dashboard-widgets"
 
 interface AnalyticsDashboardProps {
   initialTab?: string
@@ -54,41 +51,19 @@ export function AnalyticsDashboard({
   const fetchAnalyticsData = async () => {
     setRefreshing(true)
     try {
-      // Mock API call - replace with actual endpoint
       const response = await fetch(`/api/analytics/dashboard?timeRange=${timeRange}`)
       if (response.ok) {
         const data = await response.json()
         setAnalyticsData(data)
+        setLastUpdate(new Date())
       } else {
-        // Use mock data if API fails
-        setAnalyticsData({
-          totalUsers: 2847,
-          activeUsers: 1250,
-          activeSessions: 456,
-          pageViews: 15420,
-          engagementRate: 7.2,
-          avgSessionDuration: 245,
-          apiRequests: 45230,
-          conversionRate: 3.4,
-          postsCreated: 123,
-          postsGoal: 150,
-          totalFollowers: 15400,
-          postEngagement: 1850,
-          totalShares: 720,
-          totalComments: 450,
-          totalReach: 28300,
-          totalImpressions: 52100,
-          clickThroughRate: 2.8,
-          growthRate: 12.5,
-          avgResponseTime: 245,
-          uptime: 99.9,
-          throughput: 1200,
-          errorRate: 0.1
-        })
+        console.error('Failed to fetch analytics data:', response.statusText)
+        // Set empty state instead of mock data
+        setAnalyticsData(null)
       }
-      setLastUpdate(new Date())
     } catch (error) {
       console.error('Failed to fetch analytics data:', error)
+      setAnalyticsData(null)
     } finally {
       setRefreshing(false)
     }
@@ -247,24 +222,83 @@ export function AnalyticsDashboard({
 
         {/* Real-time Tab */}
         <TabsContent value="realtime" className="space-y-6">
-          <RealTimeUpdates 
-            updateInterval={5000}
-            autoRefresh={autoRefresh}
-            onDataUpdate={(data) => {
-              // Handle real-time data updates
-              console.log('Real-time data update:', data)
-            }}
-          />
+          <Card>
+            <CardHeader>
+              <CardTitle>Real-time Analytics</CardTitle>
+              <CardDescription>
+                Live data updates require additional infrastructure setup
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center space-y-4">
+                  <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+                    <Zap className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-medium">Real-time Updates Coming Soon</p>
+                    <p className="text-sm text-muted-foreground">
+                      This feature will show live analytics data when WebSocket infrastructure is implemented
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Reports Tab */}
         <TabsContent value="reports" className="space-y-6">
-          <ExportableReports />
+          <Card>
+            <CardHeader>
+              <CardTitle>Export Reports</CardTitle>
+              <CardDescription>
+                Download your analytics data in various formats
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center space-y-4">
+                  <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+                    <Download className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-medium">Export Functionality Coming Soon</p>
+                    <p className="text-sm text-muted-foreground">
+                      Export your analytics data to PDF, Excel, and other formats
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Custom Dashboard Tab */}
         <TabsContent value="custom" className="space-y-6">
-          <CustomDashboardWidgets />
+          <Card>
+            <CardHeader>
+              <CardTitle>Custom Dashboards</CardTitle>
+              <CardDescription>
+                Create personalized dashboard widgets and layouts
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center space-y-4">
+                  <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+                    <Settings className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-medium">Custom Widgets Coming Soon</p>
+                    <p className="text-sm text-muted-foreground">
+                      Build custom analytics widgets and drag-and-drop layouts
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
