@@ -228,33 +228,6 @@ export function ExportReports({ className }: ExportReportsProps) {
     } catch (error) {
       console.error('Export failed:', error)
       setExportStatus('error')
-      
-      // Fallback to mock export for demo purposes
-      const filename = `analytics-report-${format(new Date(), 'yyyy-MM-dd')}.${selectedFormat}`
-      const mockData = generateMockReportData({
-        format: selectedFormat,
-        title: reportTitle,
-        timeRange,
-        metrics: selectedMetrics
-      })
-      
-      const blob = new Blob([mockData], { 
-        type: selectedFormat === 'pdf' ? 'application/pdf' : 
-              selectedFormat === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
-              'text/csv'
-      })
-      
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      
-      setLastExport(new Date())
-      setExportStatus('success')
     } finally {
       setExporting(false)
     }
@@ -477,7 +450,10 @@ Total Likes,456,+5%`
           {/* Custom Report Details */}
           <Card>
             <CardHeader>
-              <CardTitle>Report Details</CardTitle>
+              <CardTitle>Report Customization</CardTitle>
+              <CardDescription>
+                Customize your report title, description, and formatting options
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -486,49 +462,67 @@ Total Likes,456,+5%`
                   id="report-title"
                   value={reportTitle}
                   onChange={(e) => setReportTitle(e.target.value)}
-                  placeholder="Enter report title"
+                  placeholder="Enter a custom title for your report"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will appear as the main heading in your exported report
+                </p>
               </div>
 
               <div>
-                <Label htmlFor="report-description">Description (Optional)</Label>
+                <Label htmlFor="report-description">Report Description (Optional)</Label>
                 <Textarea
                   id="report-description"
                   value={reportDescription}
                   onChange={(e) => setReportDescription(e.target.value)}
-                  placeholder="Add a description for your report"
+                  placeholder="Add a description explaining the purpose of this report..."
                   rows={3}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will appear below the title to provide context about the report
+                </p>
               </div>
 
               <Separator />
 
               <div>
-                <Label>Report Options</Label>
-                <div className="mt-2 space-y-3">
-                  <div className="flex items-center space-x-2">
+                <Label>Report Formatting Options</Label>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Choose what elements to include in your exported report
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-start space-x-2">
                     <Checkbox
                       id="include-charts"
                       checked={includeCharts}
                       onCheckedChange={setIncludeCharts}
                     />
-                    <Label htmlFor="include-charts">Include charts and graphs</Label>
+                    <div>
+                      <Label htmlFor="include-charts">Include charts and graphs</Label>
+                      <p className="text-xs text-muted-foreground">Add visual charts to illustrate your data</p>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-start space-x-2">
                     <Checkbox
                       id="include-tables"
                       checked={includeTables}
                       onCheckedChange={setIncludeTables}
                     />
-                    <Label htmlFor="include-tables">Include data tables</Label>
+                    <div>
+                      <Label htmlFor="include-tables">Include data tables</Label>
+                      <p className="text-xs text-muted-foreground">Add detailed tables with raw metric values</p>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-start space-x-2">
                     <Checkbox
                       id="include-comparisons"
                       checked={includeComparisons}
                       onCheckedChange={setIncludeComparisons}
                     />
-                    <Label htmlFor="include-comparisons">Include period comparisons</Label>
+                    <div>
+                      <Label htmlFor="include-comparisons">Include period comparisons</Label>
+                      <p className="text-xs text-muted-foreground">Show performance changes vs previous period</p>
+                    </div>
                   </div>
                 </div>
               </div>

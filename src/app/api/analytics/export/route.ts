@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     )
 
     // Generate export data based on format
-    const generateExportData = () => {
+    const generateExportData = (): string | Buffer => {
       const reportData = {
         title: exportRequest.title,
         description: exportRequest.description,
@@ -194,9 +194,14 @@ export async function POST(request: NextRequest) {
     const exportData = generateExportData()
     const filename = `analytics-report-${new Date().toISOString().split('T')[0]}.${exportRequest.format}`
 
+    // Fix filename extension
+    const properFilename = exportRequest.format === 'excel' ? 
+      `analytics-report-${new Date().toISOString().split('T')[0]}.xlsx` :
+      `analytics-report-${new Date().toISOString().split('T')[0]}.${exportRequest.format}`
+
     // Set appropriate headers for file download
     const headers = new Headers()
-    headers.set('Content-Disposition', `attachment; filename="${filename}"`)
+    headers.set('Content-Disposition', `attachment; filename="${properFilename}"`)
     
     switch (exportRequest.format) {
       case 'csv':
@@ -272,11 +277,59 @@ function generateExcelData(data: any): string {
   }, null, 2)
 }
 
-function generatePDFData(data: any): string {
-  // In a real implementation, this would generate actual PDF using libraries like puppeteer or jsPDF
-  return JSON.stringify({
-    type: 'pdf',
-    data: data,
-    note: 'This would be a real PDF file in production'
-  }, null, 2)
+function generatePDFData(data: any): Buffer {
+  // Generate a simple PDF-like content (in real implementation, use jsPDF or similar)
+  const pdfContent = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]
+   /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+
+4 0 obj
+<< /Length ${150 + data.title.length * 6} >>
+stream
+BT
+/F1 12 Tf
+50 750 Td
+(${data.title}) Tj
+0 -20 Td
+(Generated: ${new Date(data.generatedAt).toLocaleDateString()}) Tj
+0 -20 Td
+(Date Range: ${data.dateRange.label}) Tj
+0 -40 Td
+(Metrics Summary:) Tj
+${data.metrics.map((m: any, i: number) => 
+  `0 -20 Td\n(${m.label}: ${m.value}) Tj`
+).join('\n')}
+ET
+endstream
+endobj
+
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000259 00000 n 
+0000000${450 + data.metrics.length * 25} 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+${470 + data.metrics.length * 25}
+%%EOF`
+  
+  return Buffer.from(pdfContent, 'utf-8')
 }

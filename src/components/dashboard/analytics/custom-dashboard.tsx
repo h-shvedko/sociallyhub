@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -301,37 +301,8 @@ function SortableWidget({ widget, onEdit, onDelete }: { widget: Widget; onEdit: 
 }
 
 export function CustomDashboard({ className }: CustomDashboardProps) {
-  const [widgets, setWidgets] = useState<Widget[]>([
-    {
-      id: '1',
-      type: 'metric',
-      title: 'Total Posts',
-      metric: 'posts_published',
-      size: 'small',
-      color: 'blue',
-      position: { x: 0, y: 0 },
-      config: { showTrend: true }
-    },
-    {
-      id: '2',
-      type: 'chart',
-      title: 'Engagement Trend',
-      chartType: 'line',
-      size: 'medium',
-      color: 'green',
-      position: { x: 1, y: 0 },
-      config: { timeRange: '30d' }
-    },
-    {
-      id: '3',
-      type: 'activity_feed',
-      title: 'Recent Activity',
-      size: 'medium',
-      color: 'purple',
-      position: { x: 0, y: 1 },
-      config: {}
-    }
-  ])
+  const [widgets, setWidgets] = useState<Widget[]>([])
+  const [loading, setLoading] = useState(true)
 
   const [editingWidget, setEditingWidget] = useState<Widget | null>(null)
   const [isAddingWidget, setIsAddingWidget] = useState(false)
@@ -345,6 +316,90 @@ export function CustomDashboard({ className }: CustomDashboardProps) {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   )
+
+  // Load dashboard configuration on component mount
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const response = await fetch('/api/analytics/dashboards')
+        if (response.ok) {
+          const data = await response.json()
+          const currentDashboard = data.dashboards[0]?.dashboards?.find((d: any) => d.isDefault || d.id === 'default')
+          if (currentDashboard?.widgets) {
+            setWidgets(currentDashboard.widgets)
+            setDashboardName(currentDashboard.name || 'My Custom Dashboard')
+          } else {
+            // Set default widgets if no saved dashboard
+            setWidgets([
+              {
+                id: '1',
+                type: 'metric',
+                title: 'Total Posts',
+                metric: 'posts_published',
+                size: 'small',
+                color: 'blue',
+                position: { x: 0, y: 0 },
+                config: { showTrend: true }
+              },
+              {
+                id: '2',
+                type: 'chart',
+                title: 'Engagement Trend',
+                chartType: 'line',
+                size: 'medium',
+                color: 'green',
+                position: { x: 1, y: 0 },
+                config: { timeRange: '30d' }
+              }
+            ])
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load dashboard:', error)
+        // Set default widgets on error
+        setWidgets([
+          {
+            id: '1',
+            type: 'metric',
+            title: 'Total Posts',
+            metric: 'posts_published',
+            size: 'small',
+            color: 'blue',
+            position: { x: 0, y: 0 },
+            config: { showTrend: true }
+          }
+        ])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadDashboard()
+  }, [])
+
+  // Save dashboard configuration when widgets change (debounced)
+  useEffect(() => {
+    if (!loading && widgets.length > 0) {
+      const saveTimeout = setTimeout(async () => {
+        try {
+          await fetch('/api/analytics/dashboards', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: 'default',
+              name: dashboardName,
+              widgets,
+              isDefault: true
+            })
+          })
+        } catch (error) {
+          console.error('Failed to save dashboard:', error)
+        }
+      }, 1000) // Debounce saves by 1 second
+
+      return () => clearTimeout(saveTimeout)
+    }
+  }, [widgets, dashboardName, loading])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string)
@@ -431,6 +486,21 @@ export function CustomDashboard({ className }: CustomDashboardProps) {
     () => widgets.find((widget) => widget.id === activeId),
     [activeId, widgets]
   )
+
+  if (loading) {
+    return (
+      <div className={cn("space-y-6", className)}>
+        <Card>
+          <CardContent className="flex items-center justify-center py-12">
+            <div className="flex items-center space-x-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              <span>Loading dashboard...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className={cn("space-y-6", className)}>

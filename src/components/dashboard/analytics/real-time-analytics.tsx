@@ -89,46 +89,19 @@ export function RealTimeAnalytics({ className }: RealTimeAnalyticsProps) {
         setError('Failed to connect to real-time data')
         setConnected(false)
         
-        // Fallback to simulated data
-        const fallbackMetrics: RealTimeMetrics = {
-          activeUsers: Math.floor(Math.random() * 150) + 50,
-          pageViews: Math.floor(Math.random() * 500) + 100,
-          postsPublished: Math.floor(Math.random() * 10) + 1,
-          engagementRate: Math.floor(Math.random() * 30) + 60,
-          newComments: Math.floor(Math.random() * 25) + 5,
-          newShares: Math.floor(Math.random() * 15) + 2,
-          newLikes: Math.floor(Math.random() * 100) + 20,
-          platformActivity: [
-            {
-              platform: 'Twitter',
-              activity: Math.floor(Math.random() * 100) + 50,
-              change: (Math.random() - 0.5) * 40
-            },
-            {
-              platform: 'Facebook',
-              activity: Math.floor(Math.random() * 80) + 30,
-              change: (Math.random() - 0.5) * 30
-            },
-            {
-              platform: 'Instagram',
-              activity: Math.floor(Math.random() * 120) + 70,
-              change: (Math.random() - 0.5) * 50
-            },
-            {
-              platform: 'LinkedIn',
-              activity: Math.floor(Math.random() * 60) + 20,
-              change: (Math.random() - 0.5) * 25
-            }
-          ],
-          topPages: [
-            { page: '/dashboard', views: Math.floor(Math.random() * 200) + 100 },
-            { page: '/analytics', views: Math.floor(Math.random() * 150) + 80 },
-            { page: '/posts', views: Math.floor(Math.random() * 120) + 60 },
-            { page: '/inbox', views: Math.floor(Math.random() * 100) + 40 },
-          ],
-          recentEvents: generateRecentEvents()
-        }
-        setMetrics(fallbackMetrics)
+        // Set empty metrics when API fails
+        setMetrics({
+          activeUsers: 0,
+          pageViews: 0,
+          postsPublished: 0,
+          engagementRate: 0,
+          newComments: 0,
+          newShares: 0,
+          newLikes: 0,
+          platformActivity: [],
+          topPages: [],
+          recentEvents: []
+        })
         setLastUpdate(new Date())
       } finally {
         setLoading(false)
@@ -148,32 +121,6 @@ export function RealTimeAnalytics({ className }: RealTimeAnalyticsProps) {
     }
   }, [isActive])
 
-  const generateRecentEvents = (): RealTimeMetrics['recentEvents'] => {
-    const eventTypes = ['post', 'comment', 'like', 'share', 'user_join'] as const
-    const platforms = ['Twitter', 'Facebook', 'Instagram', 'LinkedIn']
-    const messages = {
-      post: ['New post published', 'Content shared', 'Article posted', 'Update published'],
-      comment: ['New comment received', 'Comment reply added', 'Feedback received', 'Discussion started'],
-      like: ['Post liked', 'Content appreciated', 'Engagement received', 'Reaction added'],
-      share: ['Content shared', 'Post reshared', 'Article forwarded', 'Content distributed'],
-      user_join: ['New user joined', 'Account created', 'User signed up', 'New member added']
-    }
-
-    return Array.from({ length: 8 }, (_, i) => {
-      const type = eventTypes[Math.floor(Math.random() * eventTypes.length)]
-      const platform = platforms[Math.floor(Math.random() * platforms.length)]
-      const messageList = messages[type]
-      const message = messageList[Math.floor(Math.random() * messageList.length)]
-
-      return {
-        id: `event-${Date.now()}-${i}`,
-        type,
-        message: `${message} on ${platform}`,
-        timestamp: new Date(Date.now() - Math.random() * 300000), // Last 5 minutes
-        platform
-      }
-    }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-  }
 
   const handleToggleActive = useCallback(() => {
     setIsActive(prev => !prev)
