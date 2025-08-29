@@ -22,17 +22,7 @@ export const authOptions: NextAuthOptions = {
         try {
           console.log(`Login attempt for email: ${credentials.email}`)
           
-          // Handle demo user first (before database lookup)
-          if (credentials.email === "demo@sociallyhub.com" && credentials.password === "demo123456") {
-            console.log("Demo user login detected")
-            return {
-              id: "cmesceft00000r6gjl499x7dl",
-              email: "demo@sociallyhub.com",
-              name: "Demo User",
-              image: null,
-            }
-          }
-          
+          // Always use database for authentication - no hardcoded credentials
           const user = await prisma.user.findUnique({
             where: {
               email: credentials.email,
@@ -57,6 +47,7 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Invalid credentials")
           }
 
+          // Return user data from database
           return {
             id: user.id,
             email: user.email,

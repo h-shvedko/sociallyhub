@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { withLogging, BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 import { AppLogger } from '@/lib/logger'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 // Schema for post creation/update
 const postSchema = z.object({
@@ -42,11 +43,8 @@ async function getHandler(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const workspaceId = searchParams.get('workspaceId')
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
+    // Normalize user ID to handle legacy demo IDs
+    const userId = await normalizeUserId(session.user.id)
 
     // Get user's workspaces
     const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -178,11 +176,8 @@ async function postHandler(request: NextRequest) {
     const body = await request.json()
     const validatedData = postSchema.parse(body)
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
+    // Normalize user ID to handle legacy demo IDs
+    const userId = await normalizeUserId(session.user.id)
 
     // Get user's primary workspace with posting permissions
     const userWorkspace = await prisma.userWorkspace.findFirst({

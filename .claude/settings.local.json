@@ -44,7 +44,11 @@
       "Bash(set DATABASE_URL=postgresql://sociallyhub:sociallyhub_dev_password@localhost:5432/sociallyhub)",
       "Bash(find:*)",
       "Bash(sed:*)",
-      "Bash(timeout 5 docker-compose logs -f app)"
+      "Bash(timeout 5 docker-compose logs -f app)",
+      "Bash(claude doctor)",
+      "Bash(node:*)",
+      "Bash(npm --version)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

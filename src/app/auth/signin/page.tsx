@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { isDemoMode, getDemoCredentialsMessage } from "@/lib/config/demo"
 
 export default function SignInPage() {
   const [email, setEmail] = useState("")
@@ -186,10 +187,12 @@ export default function SignInPage() {
             </Link>
           </div>
 
-          <div className="bg-muted p-3 rounded-lg text-center">
-            <p className="text-xs text-muted-foreground mb-1">Demo Credentials:</p>
-            <p className="text-xs font-mono">demo@sociallyhub.com / demo123456</p>
-          </div>
+          {isDemoMode() && getDemoCredentialsMessage() && (
+            <div className="bg-muted p-3 rounded-lg text-center">
+              <p className="text-xs text-muted-foreground mb-1">Demo Credentials:</p>
+              <p className="text-xs font-mono">{getDemoCredentialsMessage()}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
