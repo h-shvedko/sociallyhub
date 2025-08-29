@@ -306,9 +306,8 @@ function generateExcelData(data: any): string {
 }
 
 function generatePDFData(data: any): Buffer {
-  // Generate a professional PDF with styling (in production, use jsPDF or similar)
-  const brandColor = '#3b82f6' // Blue color from app design
-  const generatedDate = new Date(data.generatedAt).toLocaleDateString('en-US', { 
+  // Generate a professional PDF with enhanced styling and branding
+  const generatedDate = new Date(data.generatedAt).toLocaleString('en-US', { 
     year: 'numeric', 
     month: 'long', 
     day: 'numeric',
@@ -316,15 +315,23 @@ function generatePDFData(data: any): Buffer {
     minute: '2-digit'
   })
   
-  // Calculate content length dynamically
-  const titleLength = data.title.length * 8
-  const descLength = (data.description || '').length * 6
-  const metricsLength = data.metrics.length * 30
-  const contentLength = 600 + titleLength + descLength + metricsLength
+  // Ensure we have metrics to display
+  const metricsToShow = data.metrics && data.metrics.length > 0 ? data.metrics.slice(0, 10) : [
+    { label: 'Total Posts', value: 0, metric: 'posts_published' },
+    { label: 'Total Reach', value: 0, metric: 'total_reach' },
+    { label: 'Engagement Rate', value: '0%', metric: 'engagement_rate' }
+  ]
   
-  const pdfContent = `%PDF-1.7
+  // Calculate content length more accurately
+  const baseContentLength = 2000
+  const metricsContentLength = metricsToShow.length * 60
+  const titleLength = (data.title || 'Analytics Report').length * 8
+  const descLength = (data.description || '').length * 6
+  const totalContentLength = baseContentLength + metricsContentLength + titleLength + descLength
+  
+  const pdfContent = `%PDF-1.4
 1 0 obj
-<< /Type /Catalog /Pages 2 0 R /ViewerPreferences << /DisplayDocTitle true >> >>
+<< /Type /Catalog /Pages 2 0 R >>
 endobj
 
 2 0 obj
@@ -332,109 +339,136 @@ endobj
 endobj
 
 3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]
-   /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> 
-   /ColorSpace << /CS1 << /Type /Separation /ColorSpace /DeviceRGB /TintTransform 8 0 R >> >> >>
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>
 endobj
 
 4 0 obj
-<< /Length ${contentLength} >>
+<< /Length ${totalContentLength} >>
 stream
 BT
 
-% Header Section with Brand Colors
-/F2 24 Tf
-0.231 0.511 0.965 rg
-50 740 Td
-(SociallyHub Analytics Report) Tj
+% === HEADER SECTION WITH LOGO ===
+% SociallyHub Logo Area (Simulated with text and styling)
+/F2 18 Tf
+0.2 0.4 0.8 rg
+50 750 Td
+(SOCIALLYHUB) Tj
 
-% Subtitle
-0 0 0 rg
-/F1 14 Tf
-0 -30 Td
-(${data.title}) Tj
-
-% Generated info box
-0.97 0.97 0.97 rg
-45 645 522 60 re f
-0.8 0.8 0.8 RG
-45 645 522 60 re S
-
-0.4 0.4 0.4 rg
-/F1 10 Tf
-55 685 Td
-(Generated: ${generatedDate}) Tj
-0 -15 Td
-(Date Range: ${data.dateRange.label}) Tj
-0 -15 Td
-(Report Type: ${data.summary.reportType.charAt(0).toUpperCase() + data.summary.reportType.slice(1)}) Tj
-
-% Section Divider
-0.231 0.511 0.965 RG
+% Logo underline
+0.2 0.4 0.8 RG
 2 w
-50 625 512 0 re S
+50 745 150 0 re S
 
-% Description (if available)
+% Analytics Report Title
+0 0 0 rg
+/F2 24 Tf
+50 710 Td
+(Analytics Report) Tj
+
+% Report Title
+/F1 16 Tf
+0 -25 Td
+(${data.title || 'Monthly Analytics Report'}) Tj
+
+% === INFO BOX SECTION ===
+% Background box for report info
+0.95 0.95 0.95 rg
+45 630 522 80 re f
+0.7 0.7 0.7 RG
+1 w
+45 630 522 80 re S
+
+% Report Information
+0.3 0.3 0.3 rg
+/F1 12 Tf
+55 695 Td
+(Report Generated: ${generatedDate}) Tj
+0 -15 Td
+(Date Range: ${data.dateRange?.label || 'Last 30 Days'}) Tj
+0 -15 Td
+(Report Type: ${data.summary?.reportType ? data.summary.reportType.charAt(0).toUpperCase() + data.summary.reportType.slice(1) : 'Summary'}) Tj
+0 -15 Td
+(Total Metrics: ${metricsToShow.length}) Tj
+
+% === DESCRIPTION SECTION ===
 ${data.description ? `
 0 0 0 rg
-/F1 12 Tf
+/F2 14 Tf
 50 600 Td
-(Description:) Tj
-/F1 10 Tf
-0 -18 Td
-(${data.description.substring(0, 80)}${data.description.length > 80 ? '...' : ''}) Tj
+(Report Description:) Tj
+/F1 11 Tf
+0 -20 Td
+(${data.description.substring(0, 100)}${data.description.length > 100 ? '...' : ''}) Tj
 ` : ''}
 
-% Metrics Section Header
-0 0 0 rg
-/F2 16 Tf
-50 ${data.description ? '560' : '590'} Td
-(Key Metrics) Tj
-
-% Metrics Grid Background
-0.98 0.98 0.98 rg
-45 ${data.description ? '320' : '350'} 522 ${data.description ? '220' : '220'} re f
-0.9 0.9 0.9 RG
-45 ${data.description ? '320' : '350'} 522 ${data.description ? '220' : '220'} re S
-
-% Individual Metrics
-${data.metrics.map((m: any, i: number) => {
-  const yPos = (data.description ? 520 : 550) - (i * 35)
-  const value = typeof m.value === 'number' ? m.value.toLocaleString() : m.value
-  return `
-% Metric ${i + 1}: ${m.label}
-0.231 0.511 0.965 rg
-55 ${yPos} 8 8 re f
-0 0 0 rg
-/F2 12 Tf
-75 ${yPos - 2} Td
-(${m.label}) Tj
-/F1 14 Tf
+% === METRICS SECTION ===
+% Section Header with colored background
 0.2 0.4 0.8 rg
-350 ${yPos - 2} Td
+45 ${data.description ? '540' : '570'} 522 25 re f
+1 1 1 rg
+/F2 14 Tf
+55 ${data.description ? '550' : '580'} Td
+(Key Performance Metrics) Tj
+
+% Metrics Table Header
+0.9 0.9 0.9 rg
+45 ${data.description ? '520' : '550'} 522 20 re f
+0 0 0 rg
+/F2 11 Tf
+55 ${data.description ? '530' : '560'} Td
+(Metric) Tj
+400 ${data.description ? '530' : '560'} Td
+(Value) Tj
+
+% Individual Metrics Rows
+${metricsToShow.map((m: any, i: number) => {
+  const yPos = (data.description ? 500 : 530) - (i * 25)
+  const value = typeof m.value === 'number' ? m.value.toLocaleString() : (m.value || '0')
+  const bgColor = i % 2 === 0 ? '0.98 0.98 0.98' : '1 1 1'
+  return `
+% Row ${i + 1} Background
+${bgColor} rg
+45 ${yPos - 5} 522 20 re f
+
+% Row ${i + 1} Content
+0 0 0 rg
+/F1 10 Tf
+55 ${yPos} Td
+(${(m.label || 'Unknown Metric').substring(0, 40)}) Tj
+
+% Value (right aligned)
+/F2 10 Tf
+0.2 0.4 0.8 rg
+400 ${yPos} Td
 (${value}) Tj`
 }).join('')}
 
-% Footer Section
-0.95 0.95 0.95 rg
+% === BRANDING FOOTER ===
+% Footer background
+0.1 0.1 0.1 rg
 45 50 522 40 re f
-0.8 0.8 0.8 RG
-45 50 522 40 re S
 
-0.5 0.5 0.5 rg
+% Footer content
+1 1 1 rg
+/F1 10 Tf
+55 75 Td
+(SociallyHub) Tj
+/F2 8 Tf
+0.8 0.8 0.8 rg
+120 75 Td
+(- Social Media Analytics Platform) Tj
+
+% Copyright and page info
 /F1 8 Tf
-50 75 Td
-(SociallyHub - Social Media Analytics Platform) Tj
-350 75 Td
+400 75 Td
 (Page 1 of 1) Tj
-50 60 Td
-(Generated automatically from your social media data) Tj
+55 60 Td
+(© 2025 SociallyHub. Generated automatically from your analytics data.) Tj
 
 ET
 endstream
 endobj
 
-% Font Resources
 5 0 obj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
 endobj
@@ -443,32 +477,19 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
 endobj
 
-7 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>
-endobj
-
-% Color Space for Brand Colors
-8 0 obj
-<< /FunctionType 2 /Domain [0 1] /C0 [0 0 0] /C1 [0.231 0.511 0.965] /N 1 >>
-endobj
-
-% Cross-reference table
 xref
-0 9
+0 7
 0000000000 65535 f 
-0000000010 00000 n 
-0000000100 00000 n 
-0000000157 00000 n 
-0000000350 00000 n 
-0000${contentLength + 400} 00000 n 
-0000${contentLength + 460} 00000 n 
-0000${contentLength + 525} 00000 n 
-0000${contentLength + 590} 00000 n 
-
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000259 00000 n 
+0000${totalContentLength + 350} 00000 n 
+0000${totalContentLength + 410} 00000 n 
 trailer
-<< /Size 9 /Root 1 0 R /Info << /Title (${data.title}) /Creator (SociallyHub Analytics) /Producer (SociallyHub Platform) >> >>
+<< /Size 7 /Root 1 0 R /Info << /Title (${data.title || 'Analytics Report'}) /Author (SociallyHub) /Creator (SociallyHub Analytics Platform) /Subject (Social Media Analytics Report) >> >>
 startxref
-${contentLength + 650}
+${totalContentLength + 470}
 %%EOF`
   
   return Buffer.from(pdfContent, 'utf-8')

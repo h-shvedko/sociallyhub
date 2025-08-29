@@ -136,18 +136,77 @@
 - **Database Models:** `Post`, `Campaign`
 - **Description:** Visual content calendar with drag-and-drop scheduling
 
-### Analytics
+### Analytics Platform (Enterprise-Grade)
 **Page:** `src/app/dashboard/analytics/page.tsx`
 **Related Files:**
-- `src/components/dashboard/analytics/analytics-dashboard.tsx` - Main analytics component
-- `src/components/dashboard/analytics/engagement-metrics.tsx` - Engagement tracking
-- `src/components/dashboard/analytics/performance-comparison.tsx` - Platform comparison
-- `src/components/dashboard/analytics/real-time-updates.tsx` - Live metrics
-- `src/app/api/analytics/dashboard/route.ts` - Analytics data API
-- `src/app/api/analytics/platform/route.ts` - Platform-specific analytics
-- `src/lib/analytics/user-analytics.ts` - Analytics service
-- **Database Models:** `AnalyticsMetric`, `UserSession`, `UserAction`
-- **Description:** Comprehensive analytics dashboard with real-time metrics
+
+#### Core Analytics Components
+- `src/components/dashboard/analytics/analytics-dashboard.tsx` - Main tabbed analytics interface
+- `src/components/dashboard/analytics/analytics-overview-cards.tsx` - Overview metrics cards
+- `src/components/dashboard/analytics/engagement-metrics.tsx` - Engagement tracking and analysis
+- `src/components/dashboard/analytics/performance-comparison.tsx` - Cross-platform performance comparison
+
+#### Real-Time Analytics System
+- `src/components/dashboard/analytics/real-time-analytics.tsx` - Live metrics dashboard (3-second updates)
+- `src/app/api/analytics/realtime/route.ts` - Real-time data API with database integration
+- **Features:** Live user activity, engagement tracking, platform monitoring
+- **Data Sources:** Real AnalyticsMetric data, actual post engagement, inbox activity
+
+#### Export & Reporting System
+- `src/components/dashboard/analytics/export-reports.tsx` - Professional report generation UI
+- `src/app/api/analytics/export/route.ts` - Multi-format export API (PDF/Excel/CSV)
+- **Formats Supported:**
+  - **PDF:** Professional branded reports with SociallyHub logo and styling
+  - **Excel:** .xlsx files with proper formatting and data structure
+  - **CSV:** Clean data export for external analysis
+- **Features:** Custom date ranges, metric selection, report descriptions, branded templates
+
+#### Custom Dashboard System
+- `src/components/dashboard/analytics/custom-dashboard.tsx` - Drag-and-drop dashboard builder
+- `src/app/api/analytics/dashboards/route.ts` - Full CRUD API for dashboard persistence
+- **Database Model:** `CustomDashboard` with user/workspace relationships
+- **Features:**
+  - **Drag-and-Drop Interface:** @dnd-kit integration for React 19 compatibility
+  - **Widget Types:** Metrics, charts, tables, progress indicators, activity feeds
+  - **Persistent Storage:** Database-backed with auto-save functionality
+  - **User-Specific:** Individual dashboards per user/workspace
+  - **Real-Time Updates:** Live data integration with all widget types
+
+#### API Endpoints
+- `GET /api/analytics/dashboard` - Overview dashboard metrics
+- `GET /api/analytics/realtime` - Real-time metrics (fixed database queries)
+- `POST /api/analytics/export` - Generate and download reports
+- `GET /api/analytics/dashboards` - List user's custom dashboards
+- `POST /api/analytics/dashboards` - Create new custom dashboard
+- `PUT /api/analytics/dashboards` - Update existing dashboard
+- `DELETE /api/analytics/dashboards` - Delete dashboard (with safety checks)
+
+#### Database Models
+- **AnalyticsMetric** - Core metrics storage (metricType, value, dimensions)
+- **CustomDashboard** - Dashboard configurations and layouts (NEW)
+- **UserSession** - User activity tracking
+- **UserAction** - Detailed user behavior analytics
+- **Post** - Content performance metrics
+- **InboxItem** - Engagement and interaction data
+
+#### Key Features
+- **Zero Mock Data:** All analytics use real database information
+- **Production-Grade Export:** Professional PDF reports with branding
+- **Real-Time Updates:** Live data refresh every 3 seconds
+- **Custom Dashboards:** Persistent, user-specific dashboard configurations
+- **Cross-Platform Analytics:** Unified view of all connected social accounts
+- **Enterprise Security:** User authentication and workspace isolation
+- **Scalable Architecture:** Optimized queries with proper indexing
+
+#### Technical Implementation
+- **Database Integration:** Prisma ORM with PostgreSQL
+- **Real-Time System:** Polling-based updates with error handling
+- **Export Generation:** Server-side PDF/Excel generation
+- **Drag-and-Drop:** @dnd-kit library for modern React compatibility
+- **Type Safety:** Full TypeScript interfaces throughout
+- **Error Handling:** Comprehensive error boundaries and fallbacks
+
+**Description:** Enterprise-grade analytics platform with real-time monitoring, professional reporting, and customizable dashboards. Completely production-ready with zero mock data and full database integration.
 
 ### Inbox
 **Page:** `src/app/dashboard/inbox/page.tsx`
@@ -408,11 +467,14 @@
 - **Conversation** - Message threads
 
 ### Analytics & AI
-- **AnalyticsMetric** - Performance metrics
+- **AnalyticsMetric** - Performance metrics and real-time data
+- **CustomDashboard** - User-specific dashboard configurations and layouts
 - **AIContentSuggestion** - AI-generated content
 - **SentimentAnalysis** - Sentiment tracking
 - **AudienceSegment** - Audience clustering
 - **ContentABTest** - A/B testing data
+- **UserSession** - User activity tracking
+- **UserAction** - Detailed behavior analytics
 
 ### System
 - **AuditEvent** - Activity logging

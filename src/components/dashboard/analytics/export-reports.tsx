@@ -210,7 +210,18 @@ export function ExportReports({ className }: ExportReportsProps) {
 
       // Get the exported file
       const blob = await response.blob()
-      const filename = `analytics-report-${format(new Date(), 'yyyy-MM-dd')}.${selectedFormat}`
+      
+      // Generate proper filename with correct extension
+      const getFileExtension = (format: string) => {
+        switch (format) {
+          case 'excel': return 'xlsx'
+          case 'pdf': return 'pdf'
+          case 'csv': return 'csv'
+          default: return format
+        }
+      }
+      
+      const filename = `analytics-report-${format(new Date(), 'yyyy-MM-dd')}.${getFileExtension(selectedFormat)}`
       
       // Create download link
       const url = URL.createObjectURL(blob)

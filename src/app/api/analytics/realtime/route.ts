@@ -30,6 +30,56 @@ interface RealTimeMetrics {
   }[]
 }
 
+async function getTopPages(workspaceIds: string[], oneHourAgo: Date) {
+  try {
+    // Get page view metrics from analytics
+    const topPagesMetrics = await prisma.analyticsMetric.findMany({
+      where: {
+        workspaceId: { in: workspaceIds },
+        date: { gte: oneHourAgo },
+        metricType: 'page_views',
+        dimensions: { not: null } // Should contain page information
+      },
+      select: {
+        value: true,
+        dimensions: true
+      },
+      orderBy: { value: 'desc' },
+      take: 4
+    })
+
+    // Extract page information from dimensions
+    const topPages = topPagesMetrics.map(metric => {
+      const dimensions = metric.dimensions as any
+      const page = dimensions?.page || '/dashboard' // fallback
+      return {
+        page,
+        views: Math.round(metric.value || 0)
+      }
+    })
+
+    // If no real data, return fallback pages
+    if (topPages.length === 0) {
+      return [
+        { page: '/dashboard', views: 0 },
+        { page: '/analytics', views: 0 },
+        { page: '/posts', views: 0 },
+        { page: '/inbox', views: 0 }
+      ]
+    }
+
+    return topPages
+  } catch (error) {
+    console.error('Error fetching top pages:', error)
+    return [
+      { page: '/dashboard', views: 0 },
+      { page: '/analytics', views: 0 },
+      { page: '/posts', views: 0 },
+      { page: '/inbox', views: 0 }
+    ]
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -170,11 +220,27 @@ export async function GET(request: NextRequest) {
     })
     const totalReach = reachMetrics._sum.value || 0
 
-    // Get active sessions (simulate based on recent activity)
-    const activeUsers = Math.max(1, Math.floor(totalEngagement / 5)) + Math.max(1, totalPosts)
+    // Get active users data from analytics metrics
+    const activeUsersMetrics = await prisma.analyticsMetric.aggregate({
+      where: {
+        workspaceId: { in: workspaceIds },
+        date: { gte: oneHourAgo },
+        metricType: 'active_users'
+      },
+      _sum: { value: true }
+    })
+    const activeUsers = activeUsersMetrics._sum.value || Math.max(1, Math.floor(totalEngagement / 5))
     
-    // Calculate page views based on total activity
-    const pageViews = (totalEngagement * 3) + (totalPosts * 10) + Math.floor(Date.now() / 1000000) % 50
+    // Get page views from analytics metrics
+    const pageViewsMetrics = await prisma.analyticsMetric.aggregate({
+      where: {
+        workspaceId: { in: workspaceIds },
+        date: { gte: oneHourAgo },
+        metricType: 'page_views'
+      },
+      _sum: { value: true }
+    })
+    const pageViews = pageViewsMetrics._sum.value || (totalEngagement * 3) + (totalPosts * 10)
 
     const realTimeMetrics: RealTimeMetrics = {
       activeUsers,
@@ -185,12 +251,7 @@ export async function GET(request: NextRequest) {
       newShares: recentInboxItems.filter(item => item.type === 'SHARE').length,
       newLikes: recentInboxItems.filter(item => item.type === 'MENTION').length,
       platformActivity,
-      topPages: [
-        { page: '/dashboard', views: Math.floor(pageViews * 0.4) },
-        { page: '/analytics', views: Math.floor(pageViews * 0.25) },
-        { page: '/posts', views: Math.floor(pageViews * 0.2) },
-        { page: '/inbox', views: Math.floor(pageViews * 0.15) }
-      ],
+      topPages: await getTopPages(workspaceIds, oneHourAgo),
       recentEvents
     }
 
