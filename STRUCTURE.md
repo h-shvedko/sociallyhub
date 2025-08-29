@@ -152,15 +152,38 @@
 ### Inbox
 **Page:** `src/app/dashboard/inbox/page.tsx`
 **Related Files:**
-- `src/components/dashboard/inbox/inbox-dashboard.tsx` - Unified inbox interface
-- `src/components/dashboard/inbox/conversation-view.tsx` - Message threads
-- `src/components/dashboard/inbox/sentiment-analysis.tsx` - Sentiment tracking
-- `src/components/dashboard/inbox/automated-responses.tsx` - Auto-reply system
-- `src/app/api/inbox/route.ts` - Inbox messages API
-- `src/app/api/inbox/[id]/reply/route.ts` - Reply handling
+- `src/components/dashboard/inbox/inbox-dashboard.tsx` - Unified inbox interface with real workspace integration
+- `src/components/dashboard/inbox/conversation-view.tsx` - Message threads and conversation management
+- `src/components/dashboard/inbox/sentiment-analysis.tsx` - AI-powered sentiment tracking
+- `src/components/dashboard/inbox/automated-responses.tsx` - Database-driven auto-response system
+- `src/app/api/inbox/route.ts` - Inbox messages API with workspace filtering
+- `src/app/api/inbox/automated-responses/route.ts` - Automated responses CRUD API
+- `src/app/api/inbox/automated-responses/[id]/route.ts` - Individual response management
+- `src/app/api/inbox/[id]/reply/route.ts` - Reply handling and conversation threading
+- `src/app/api/inbox/stats/route.ts` - Inbox statistics and metrics
 - `src/lib/audience/sentiment-analyzer.ts` - Sentiment analysis service
-- **Database Models:** `InboxItem`, `Conversation`, `SentimentAnalysis`
-- **Description:** Unified social media inbox with sentiment analysis
+- `src/lib/auth/demo-user.ts` - User ID normalization for workspace access
+- **Database Models:** `InboxItem`, `Conversation`, `SentimentAnalysis`, `AutomationRule`
+- **Features:**
+  - **Real Workspace Integration**: Dynamic workspace lookup from user's database relationships
+  - **Database-Driven Auto-Responses**: Complete CRUD operations for automated response management
+  - **AutomationRule Integration**: Leverages existing automation infrastructure with `SMART_RESPONSE` type
+  - **Workspace Access Validation**: Proper security through `UserWorkspace` model verification
+  - **Optimistic UI Updates**: Immediate feedback with error rollback for all operations
+  - **Professional Error Handling**: Comprehensive API error handling with user-friendly messages
+- **Automated Response System:**
+  - **Trigger Types**: Support for sentiment, keyword, platform, and time-based triggers
+  - **Response Templates**: Customizable response messages with delay settings
+  - **Conditions**: Advanced filtering by platform, message type, and sentiment
+  - **Priority Management**: Configurable response priority with execution ordering  
+  - **Usage Tracking**: Metrics for response effectiveness and execution history
+  - **Enable/Disable**: Real-time toggle functionality with database persistence
+- **API Endpoints:**
+  - `GET /api/inbox/automated-responses?workspaceId={id}` - List workspace responses
+  - `POST /api/inbox/automated-responses` - Create new automated response
+  - `PATCH /api/inbox/automated-responses/{id}` - Update existing response
+  - `DELETE /api/inbox/automated-responses/{id}` - Delete response with validation
+- **Description:** Professional unified social media inbox with comprehensive automated response management, real database integration, and workspace-based security
 
 ### Campaigns
 **Page:** `src/app/dashboard/campaigns/page.tsx`

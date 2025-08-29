@@ -96,67 +96,16 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
     try {
       setIsLoading(true)
       
-      // Mock data for demonstration
-      // In a real app, this would fetch from /api/inbox/automated-responses
-      const mockResponses: AutomatedResponse[] = [
-        {
-          id: '1',
-          name: 'Thank You for Positive Feedback',
-          isEnabled: true,
-          triggerType: 'sentiment',
-          triggerValue: 'positive',
-          responseTemplate: 'Thank you so much for your kind words! We really appreciate your feedback and are glad you had a great experience. 😊',
-          priority: 1,
-          delayMinutes: 5,
-          conditions: {
-            sentiments: ['positive'],
-            platforms: ['TWITTER', 'FACEBOOK'],
-            messageTypes: ['COMMENT', 'REVIEW']
-          },
-          createdAt: '2024-01-15T10:00:00Z',
-          lastUsed: '2024-01-20T14:30:00Z',
-          usageCount: 23
-        },
-        {
-          id: '2',
-          name: 'Support for Negative Issues',
-          isEnabled: true,
-          triggerType: 'sentiment',
-          triggerValue: 'negative',
-          responseTemplate: 'We sincerely apologize for the issue you\'ve experienced. We take all feedback seriously and would like to make this right. Please DM us with more details so we can assist you personally.',
-          priority: 2,
-          delayMinutes: 0, // Immediate response for negative sentiment
-          conditions: {
-            sentiments: ['negative'],
-            platforms: ['TWITTER', 'FACEBOOK', 'INSTAGRAM'],
-            messageTypes: ['COMMENT', 'MENTION', 'REVIEW']
-          },
-          createdAt: '2024-01-15T10:00:00Z',
-          lastUsed: '2024-01-21T09:15:00Z',
-          usageCount: 8
-        },
-        {
-          id: '3',
-          name: 'Weekend Out of Office',
-          isEnabled: false,
-          triggerType: 'time_based',
-          triggerValue: 'weekend',
-          responseTemplate: 'Thanks for reaching out! Our team is currently offline for the weekend, but we\'ll get back to you first thing Monday morning. For urgent matters, please email support@company.com.',
-          priority: 3,
-          delayMinutes: 30,
-          conditions: {
-            timeRanges: [{ start: '18:00', end: '09:00' }],
-            platforms: ['TWITTER', 'FACEBOOK', 'INSTAGRAM', 'LINKEDIN'],
-            messageTypes: ['DIRECT_MESSAGE', 'MENTION']
-          },
-          createdAt: '2024-01-16T15:00:00Z',
-          usageCount: 0
-        }
-      ]
+      const response = await fetch(`/api/inbox/automated-responses?workspaceId=${workspaceId}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch automated responses')
+      }
       
-      setResponses(mockResponses)
+      const data = await response.json()
+      setResponses(data)
     } catch (error) {
       console.error('Error fetching automated responses:', error)
+      setResponses([]) // Set empty array on error
     } finally {
       setIsLoading(false)
     }
@@ -171,43 +120,75 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
           : response
       ))
       
-      // In a real app, this would make an API call
-      // await fetch(`/api/inbox/automated-responses/${responseId}`, {
-      //   method: 'PATCH',
-      //   body: JSON.stringify({ isEnabled: enabled })
-      // })
+      // Make API call to update the response
+      const response = await fetch(`/api/inbox/automated-responses/${responseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isEnabled: enabled })
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to update response')
+      }
     } catch (error) {
       console.error('Error toggling response:', error)
+      // Revert the optimistic update on error
+      setResponses(prev => prev.map(response => 
+        response.id === responseId 
+          ? { ...response, isEnabled: !enabled }
+          : response
+      ))
     }
   }
 
   const handleDeleteResponse = async (responseId: string) => {
     try {
+      // Store original responses for potential revert
+      const originalResponses = responses
+      
+      // Optimistically remove the response
       setResponses(prev => prev.filter(response => response.id !== responseId))
       
-      // In a real app, this would make an API call
-      // await fetch(`/api/inbox/automated-responses/${responseId}`, {
-      //   method: 'DELETE'
-      // })
+      // Make API call to delete the response
+      const response = await fetch(`/api/inbox/automated-responses/${responseId}`, {
+        method: 'DELETE'
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete response')
+      }
     } catch (error) {
       console.error('Error deleting response:', error)
+      // Restore original responses on error
+      setResponses(responses)
     }
   }
 
   const handleCreateResponse = async () => {
     try {
-      const newResponse: AutomatedResponse = {
-        id: Date.now().toString(),
-        ...formData,
-        createdAt: new Date().toISOString(),
-        usageCount: 0
+      // Make API call to create the response
+      const response = await fetch('/api/inbox/automated-responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId,
+          ...formData
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to create response')
       }
       
+      const newResponse = await response.json()
+      
+      // Add the new response to the list
       setResponses(prev => [...prev, newResponse])
       setIsCreating(false)
       resetForm()
     } catch (error) {
       console.error('Error creating response:', error)
+      // TODO: Show error message to user
     }
   }
 
