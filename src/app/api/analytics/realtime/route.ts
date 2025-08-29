@@ -242,6 +242,9 @@ export async function GET(request: NextRequest) {
     })
     const pageViews = pageViewsMetrics._sum.value || (totalEngagement * 3) + (totalPosts * 10)
 
+    // Get top pages data
+    const topPages = await getTopPages(workspaceIds, oneHourAgo)
+
     const realTimeMetrics: RealTimeMetrics = {
       activeUsers,
       pageViews,
@@ -251,7 +254,7 @@ export async function GET(request: NextRequest) {
       newShares: recentInboxItems.filter(item => item.type === 'SHARE').length,
       newLikes: recentInboxItems.filter(item => item.type === 'MENTION').length,
       platformActivity,
-      topPages: await getTopPages(workspaceIds, oneHourAgo),
+      topPages,
       recentEvents
     }
 
