@@ -24,6 +24,9 @@ import { format } from "date-fns"
 import { DefaultAnalyticsCards } from "./analytics-overview-cards"
 import { EngagementMetrics } from "./engagement-metrics"
 import { PerformanceComparison } from "./performance-comparison"
+import { RealTimeAnalytics } from "./real-time-analytics"
+import { ExportReports } from "./export-reports"
+import { CustomDashboard } from "./custom-dashboard"
 
 interface AnalyticsDashboardProps {
   initialTab?: string
@@ -222,83 +225,17 @@ export function AnalyticsDashboard({
 
         {/* Real-time Tab */}
         <TabsContent value="realtime" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Real-time Analytics</CardTitle>
-              <CardDescription>
-                Live data updates require additional infrastructure setup
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center space-y-4">
-                  <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                    <Zap className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-medium">Real-time Updates Coming Soon</p>
-                    <p className="text-sm text-muted-foreground">
-                      This feature will show live analytics data when WebSocket infrastructure is implemented
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <RealTimeAnalytics />
         </TabsContent>
 
         {/* Reports Tab */}
         <TabsContent value="reports" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Export Reports</CardTitle>
-              <CardDescription>
-                Download your analytics data in various formats
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center space-y-4">
-                  <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                    <Download className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-medium">Export Functionality Coming Soon</p>
-                    <p className="text-sm text-muted-foreground">
-                      Export your analytics data to PDF, Excel, and other formats
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <ExportReports />
         </TabsContent>
 
         {/* Custom Dashboard Tab */}
         <TabsContent value="custom" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom Dashboards</CardTitle>
-              <CardDescription>
-                Create personalized dashboard widgets and layouts
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center space-y-4">
-                  <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                    <Settings className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-medium">Custom Widgets Coming Soon</p>
-                    <p className="text-sm text-muted-foreground">
-                      Build custom analytics widgets and drag-and-drop layouts
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <CustomDashboard />
         </TabsContent>
       </Tabs>
 
