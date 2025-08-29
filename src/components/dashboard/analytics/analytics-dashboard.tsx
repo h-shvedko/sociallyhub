@@ -42,6 +42,11 @@ export function AnalyticsDashboard({
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [analyticsData, setAnalyticsData] = useState<any>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     fetchAnalyticsData()
@@ -124,7 +129,7 @@ export function AnalyticsDashboard({
           </Button>
           
           <div className="text-xs text-muted-foreground">
-            Updated {format(lastUpdate, 'HH:mm')}
+            {mounted ? `Updated ${format(lastUpdate, 'HH:mm')}` : 'Updated --:--'}
           </div>
         </div>
       </div>
@@ -244,7 +249,7 @@ export function AnalyticsDashboard({
         <CardContent className="py-4">
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center space-x-4">
-              <span>Dashboard last updated: {format(lastUpdate, 'PPP p')}</span>
+              <span>Dashboard last updated: {mounted ? format(lastUpdate, 'PPP p') : 'Loading...'}</span>
               <Badge variant="outline" className="flex items-center space-x-1">
                 <Activity className="h-3 w-3" />
                 <span>Live Data</span>

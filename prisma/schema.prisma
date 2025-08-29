@@ -75,6 +75,9 @@ model Workspace {
   // Translation Relations
   translationCache      TranslationCache[]          @relation("WorkspaceTranslationCache")
   contentTranslations   WorkspaceContentTranslation[] @relation("WorkspaceContentTranslations")
+  
+  // Custom Dashboard Relations
+  customDashboards      CustomDashboard[] @relation("WorkspaceCustomDashboards")
 
   @@map("workspaces")
 }
@@ -111,6 +114,9 @@ model User {
   // Translation Relations
   languagePreferences  UserLanguagePreference[] @relation("UserLanguagePreferences")
   translatedContent    WorkspaceContentTranslation[] @relation("ContentTranslatedBy")
+  
+  // Custom Dashboard Relations
+  customDashboards     CustomDashboard[] @relation("UserCustomDashboards")
   aiUsage         AIUsageTracking[]     @relation("UserAIUsage")
 
   @@map("users")
@@ -2055,4 +2061,34 @@ model WorkspaceContentTranslation {
   @@index([workspaceId, contentType])
   @@index([contentId, locale])
   @@map("workspace_content_translations")
+}
+
+model CustomDashboard {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  name        String   @default("My Dashboard")
+  description String?
+  isDefault   Boolean  @default(false)
+  
+  // Dashboard Layout & Configuration
+  layout      Json     // Grid layout configuration
+  widgets     Json     // Widget configurations array
+  settings    Json?    // Dashboard-wide settings (colors, refresh rate, etc.)
+  
+  // Metadata
+  isPublic    Boolean  @default(false)
+  tags        String[] @default([])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User      @relation("UserCustomDashboards", fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation("WorkspaceCustomDashboards", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId, name])
+  @@index([userId, workspaceId])
+  @@index([workspaceId, isPublic])
+  @@map("custom_dashboards")
 }

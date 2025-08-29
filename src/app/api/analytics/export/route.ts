@@ -81,69 +81,91 @@ export async function POST(request: NextRequest) {
           })
 
         case 'engagement_rate':
-          const posts = await prisma.post.findMany({
+          const engagementMetrics = await prisma.analyticsMetric.groupBy({
+            by: ['metricType'],
             where: {
               workspaceId: { in: workspaceIds },
-              publishedAt: { gte: startDate, lte: endDate },
-              status: 'PUBLISHED'
+              date: { gte: startDate, lte: endDate },
+              metricType: { in: ['likes', 'comments', 'shares', 'reach'] }
             },
-            select: { likes: true, comments: true, shares: true, reach: true }
+            _sum: { value: true }
           })
 
-          const totalEngagement = posts.reduce((sum, post) => 
-            sum + (post.likes || 0) + (post.comments || 0) + (post.shares || 0), 0
-          )
-          const totalReach = posts.reduce((sum, post) => sum + (post.reach || 0), 0)
+          const metricTotals = engagementMetrics.reduce((acc, metric) => {
+            acc[metric.metricType] = metric._sum.value || 0
+            return acc
+          }, {} as Record<string, number>)
+
+          const totalEngagement = (metricTotals.likes || 0) + (metricTotals.comments || 0) + (metricTotals.shares || 0)
+          const totalReach = metricTotals.reach || 0
           
           return totalReach > 0 ? ((totalEngagement / totalReach) * 100) : 0
 
         case 'total_reach':
-          return await prisma.post.aggregate({
+          const reachResult = await prisma.analyticsMetric.aggregate({
             where: {
               workspaceId: { in: workspaceIds },
-              publishedAt: { gte: startDate, lte: endDate },
-              status: 'PUBLISHED'
+              date: { gte: startDate, lte: endDate },
+              metricType: 'reach'
             },
-            _sum: { reach: true }
-          }).then(result => result._sum.reach || 0)
+            _sum: { value: true }
+          })
+          return reachResult._sum.value || 0
 
         case 'page_views':
-          // Simulate page views (would be from analytics service in real implementation)
-          return Math.floor(Math.random() * 10000) + 5000
+          const pageViewsResult = await prisma.analyticsMetric.aggregate({
+            where: {
+              workspaceId: { in: workspaceIds },
+              date: { gte: startDate, lte: endDate },
+              metricType: 'page_views'
+            },
+            _sum: { value: true }
+          })
+          return pageViewsResult._sum.value || 0
 
         case 'total_comments':
-          return await prisma.post.aggregate({
+          const commentsResult = await prisma.analyticsMetric.aggregate({
             where: {
               workspaceId: { in: workspaceIds },
-              publishedAt: { gte: startDate, lte: endDate },
-              status: 'PUBLISHED'
+              date: { gte: startDate, lte: endDate },
+              metricType: 'comments'
             },
-            _sum: { comments: true }
-          }).then(result => result._sum.comments || 0)
+            _sum: { value: true }
+          })
+          return commentsResult._sum.value || 0
 
         case 'total_shares':
-          return await prisma.post.aggregate({
+          const sharesResult = await prisma.analyticsMetric.aggregate({
             where: {
               workspaceId: { in: workspaceIds },
-              publishedAt: { gte: startDate, lte: endDate },
-              status: 'PUBLISHED'
+              date: { gte: startDate, lte: endDate },
+              metricType: 'shares'
             },
-            _sum: { shares: true }
-          }).then(result => result._sum.shares || 0)
+            _sum: { value: true }
+          })
+          return sharesResult._sum.value || 0
 
         case 'total_likes':
-          return await prisma.post.aggregate({
+          const likesResult = await prisma.analyticsMetric.aggregate({
             where: {
               workspaceId: { in: workspaceIds },
-              publishedAt: { gte: startDate, lte: endDate },
-              status: 'PUBLISHED'
+              date: { gte: startDate, lte: endDate },
+              metricType: 'likes'
             },
-            _sum: { likes: true }
-          }).then(result => result._sum.likes || 0)
+            _sum: { value: true }
+          })
+          return likesResult._sum.value || 0
 
         case 'follower_growth':
-          // Simulate follower growth (would be from social platform APIs in real implementation)
-          return Math.floor(Math.random() * 500) + 100
+          const followerGrowthResult = await prisma.analyticsMetric.aggregate({
+            where: {
+              workspaceId: { in: workspaceIds },
+              date: { gte: startDate, lte: endDate },
+              metricType: 'follower_growth'
+            },
+            _sum: { value: true }
+          })
+          return followerGrowthResult._sum.value || 0
 
         default:
           return 0
@@ -192,12 +214,18 @@ export async function POST(request: NextRequest) {
     }
 
     const exportData = generateExportData()
-    const filename = `analytics-report-${new Date().toISOString().split('T')[0]}.${exportRequest.format}`
-
-    // Fix filename extension
-    const properFilename = exportRequest.format === 'excel' ? 
-      `analytics-report-${new Date().toISOString().split('T')[0]}.xlsx` :
-      `analytics-report-${new Date().toISOString().split('T')[0]}.${exportRequest.format}`
+    
+    // Generate proper filename with correct extension
+    const getFileExtension = (format: string) => {
+      switch (format) {
+        case 'excel': return 'xlsx'
+        case 'pdf': return 'pdf'
+        case 'csv': return 'csv'
+        default: return format
+      }
+    }
+    
+    const properFilename = `analytics-report-${new Date().toISOString().split('T')[0]}.${getFileExtension(exportRequest.format)}`
 
     // Set appropriate headers for file download
     const headers = new Headers()
@@ -278,10 +306,25 @@ function generateExcelData(data: any): string {
 }
 
 function generatePDFData(data: any): Buffer {
-  // Generate a simple PDF-like content (in real implementation, use jsPDF or similar)
-  const pdfContent = `%PDF-1.4
+  // Generate a professional PDF with styling (in production, use jsPDF or similar)
+  const brandColor = '#3b82f6' // Blue color from app design
+  const generatedDate = new Date(data.generatedAt).toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+  
+  // Calculate content length dynamically
+  const titleLength = data.title.length * 8
+  const descLength = (data.description || '').length * 6
+  const metricsLength = data.metrics.length * 30
+  const contentLength = 600 + titleLength + descLength + metricsLength
+  
+  const pdfContent = `%PDF-1.7
 1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
+<< /Type /Catalog /Pages 2 0 R /ViewerPreferences << /DisplayDocTitle true >> >>
 endobj
 
 2 0 obj
@@ -290,45 +333,142 @@ endobj
 
 3 0 obj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]
-   /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+   /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R >> 
+   /ColorSpace << /CS1 << /Type /Separation /ColorSpace /DeviceRGB /TintTransform 8 0 R >> >> >>
 endobj
 
 4 0 obj
-<< /Length ${150 + data.title.length * 6} >>
+<< /Length ${contentLength} >>
 stream
 BT
-/F1 12 Tf
-50 750 Td
+
+% Header Section with Brand Colors
+/F2 24 Tf
+0.231 0.511 0.965 rg
+50 740 Td
+(SociallyHub Analytics Report) Tj
+
+% Subtitle
+0 0 0 rg
+/F1 14 Tf
+0 -30 Td
 (${data.title}) Tj
-0 -20 Td
-(Generated: ${new Date(data.generatedAt).toLocaleDateString()}) Tj
-0 -20 Td
+
+% Generated info box
+0.97 0.97 0.97 rg
+45 645 522 60 re f
+0.8 0.8 0.8 RG
+45 645 522 60 re S
+
+0.4 0.4 0.4 rg
+/F1 10 Tf
+55 685 Td
+(Generated: ${generatedDate}) Tj
+0 -15 Td
 (Date Range: ${data.dateRange.label}) Tj
-0 -40 Td
-(Metrics Summary:) Tj
-${data.metrics.map((m: any, i: number) => 
-  `0 -20 Td\n(${m.label}: ${m.value}) Tj`
-).join('\n')}
+0 -15 Td
+(Report Type: ${data.summary.reportType.charAt(0).toUpperCase() + data.summary.reportType.slice(1)}) Tj
+
+% Section Divider
+0.231 0.511 0.965 RG
+2 w
+50 625 512 0 re S
+
+% Description (if available)
+${data.description ? `
+0 0 0 rg
+/F1 12 Tf
+50 600 Td
+(Description:) Tj
+/F1 10 Tf
+0 -18 Td
+(${data.description.substring(0, 80)}${data.description.length > 80 ? '...' : ''}) Tj
+` : ''}
+
+% Metrics Section Header
+0 0 0 rg
+/F2 16 Tf
+50 ${data.description ? '560' : '590'} Td
+(Key Metrics) Tj
+
+% Metrics Grid Background
+0.98 0.98 0.98 rg
+45 ${data.description ? '320' : '350'} 522 ${data.description ? '220' : '220'} re f
+0.9 0.9 0.9 RG
+45 ${data.description ? '320' : '350'} 522 ${data.description ? '220' : '220'} re S
+
+% Individual Metrics
+${data.metrics.map((m: any, i: number) => {
+  const yPos = (data.description ? 520 : 550) - (i * 35)
+  const value = typeof m.value === 'number' ? m.value.toLocaleString() : m.value
+  return `
+% Metric ${i + 1}: ${m.label}
+0.231 0.511 0.965 rg
+55 ${yPos} 8 8 re f
+0 0 0 rg
+/F2 12 Tf
+75 ${yPos - 2} Td
+(${m.label}) Tj
+/F1 14 Tf
+0.2 0.4 0.8 rg
+350 ${yPos - 2} Td
+(${value}) Tj`
+}).join('')}
+
+% Footer Section
+0.95 0.95 0.95 rg
+45 50 522 40 re f
+0.8 0.8 0.8 RG
+45 50 522 40 re S
+
+0.5 0.5 0.5 rg
+/F1 8 Tf
+50 75 Td
+(SociallyHub - Social Media Analytics Platform) Tj
+350 75 Td
+(Page 1 of 1) Tj
+50 60 Td
+(Generated automatically from your social media data) Tj
+
 ET
 endstream
 endobj
 
+% Font Resources
 5 0 obj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
 endobj
 
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>
+endobj
+
+% Color Space for Brand Colors
+8 0 obj
+<< /FunctionType 2 /Domain [0 1] /C0 [0 0 0] /C1 [0.231 0.511 0.965] /N 1 >>
+endobj
+
+% Cross-reference table
 xref
-0 6
+0 9
 0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000259 00000 n 
-0000000${450 + data.metrics.length * 25} 00000 n 
+0000000010 00000 n 
+0000000100 00000 n 
+0000000157 00000 n 
+0000000350 00000 n 
+0000${contentLength + 400} 00000 n 
+0000${contentLength + 460} 00000 n 
+0000${contentLength + 525} 00000 n 
+0000${contentLength + 590} 00000 n 
+
 trailer
-<< /Size 6 /Root 1 0 R >>
+<< /Size 9 /Root 1 0 R /Info << /Title (${data.title}) /Creator (SociallyHub Analytics) /Producer (SociallyHub Platform) >> >>
 startxref
-${470 + data.metrics.length * 25}
+${contentLength + 650}
 %%EOF`
   
   return Buffer.from(pdfContent, 'utf-8')

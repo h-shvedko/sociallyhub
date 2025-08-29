@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     // Get user's workspaces
     const userWorkspaces = await prisma.userWorkspace.findMany({
       where: { userId },
-      select: { workspaceId: true }
+      select: { workspaceId: true, workspace: { select: { name: true } } }
     })
 
     const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
@@ -48,63 +48,89 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
-    // For now, we'll store dashboard configurations in a JSON field
-    // In a real implementation, you might want a dedicated CustomDashboard model
-    const dashboards = await prisma.userWorkspace.findMany({
+    // Fetch custom dashboards from the database
+    const customDashboards = await prisma.customDashboard.findMany({
       where: {
         userId,
         workspaceId: { in: workspaceIds }
       },
       select: {
+        id: true,
+        name: true,
+        description: true,
+        isDefault: true,
+        widgets: true,
+        layout: true,
+        settings: true,
+        isPublic: true,
+        tags: true,
         workspaceId: true,
-        permissions: true, // We'll use permissions JSON field to store dashboard configs
+        createdAt: true,
+        updatedAt: true,
         workspace: {
           select: { name: true }
         }
-      }
+      },
+      orderBy: [
+        { isDefault: 'desc' },
+        { createdAt: 'desc' }
+      ]
     })
 
-    // Extract dashboard configurations from permissions field
-    const customDashboards = dashboards.map(uw => {
-      const permissions = uw.permissions as any || {}
-      const dashboardConfig = permissions.customDashboards || []
-      
-      return {
-        workspaceId: uw.workspaceId,
-        workspaceName: uw.workspace.name,
-        dashboards: Array.isArray(dashboardConfig) ? dashboardConfig : [
-          // Default dashboard configuration
-          {
-            id: 'default',
-            name: 'Default Dashboard',
-            description: 'Default analytics dashboard layout',
-            widgets: [
-              {
-                id: '1',
-                type: 'metric',
-                title: 'Total Posts',
-                metric: 'posts_published',
-                size: 'small',
-                color: 'blue',
-                position: { x: 0, y: 0 },
-                config: { showTrend: true }
-              },
-              {
-                id: '2',
-                type: 'chart',
-                title: 'Engagement Trend',
-                chartType: 'line',
-                size: 'medium',
-                color: 'green',
-                position: { x: 1, y: 0 },
-                config: { timeRange: '30d' }
-              }
-            ],
-            isDefault: true
+    // If no dashboards exist, create a default one
+    if (customDashboards.length === 0 && workspaceIds.length > 0) {
+      const defaultDashboard = await prisma.customDashboard.create({
+        data: {
+          userId,
+          workspaceId: workspaceIds[0],
+          name: 'Default Dashboard',
+          description: 'Default analytics dashboard layout',
+          isDefault: true,
+          layout: { cols: 12, rowHeight: 150, margin: [16, 16] },
+          widgets: [
+            {
+              id: '1',
+              type: 'metric',
+              title: 'Total Posts',
+              metric: 'posts_published',
+              size: 'small',
+              color: 'blue',
+              position: { x: 0, y: 0 },
+              config: { showTrend: true }
+            },
+            {
+              id: '2',
+              type: 'chart',
+              title: 'Engagement Trend',
+              chartType: 'line',
+              size: 'medium',
+              color: 'green',
+              position: { x: 1, y: 0 },
+              config: { timeRange: '30d' }
+            }
+          ]
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          isDefault: true,
+          widgets: true,
+          layout: true,
+          settings: true,
+          isPublic: true,
+          tags: true,
+          workspaceId: true,
+          createdAt: true,
+          updatedAt: true,
+          workspace: {
+            select: { name: true }
           }
-        ]
-      }
-    })
+        }
+      })
+
+      return NextResponse.json({ dashboards: [defaultDashboard] })
+    }
 
     return NextResponse.json({ dashboards: customDashboards })
 
@@ -131,40 +157,43 @@ export async function POST(request: NextRequest) {
 
     // Get user's primary workspace
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId, role: 'OWNER' },
-      select: { workspaceId: true, permissions: true }
+      where: { userId, role: { in: ['OWNER', 'ADMIN'] } },
+      select: { workspaceId: true }
     })
 
     if (!userWorkspace) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
-    // Get existing permissions/dashboard configs
-    const existingPermissions = userWorkspace.permissions as any || {}
-    const existingDashboards = existingPermissions.customDashboards || []
-
-    // Add new dashboard with generated ID
-    const newDashboard = {
-      ...dashboardData,
-      id: `dashboard-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-
-    const updatedDashboards = [...existingDashboards, newDashboard]
-
-    // Update the permissions field with new dashboard configuration
-    await prisma.userWorkspace.update({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId: userWorkspace.workspaceId
-        }
-      },
+    // Create new dashboard in database
+    const newDashboard = await prisma.customDashboard.create({
       data: {
-        permissions: {
-          ...existingPermissions,
-          customDashboards: updatedDashboards
+        userId,
+        workspaceId: userWorkspace.workspaceId,
+        name: dashboardData.name,
+        description: dashboardData.description,
+        isDefault: dashboardData.isDefault || false,
+        layout: dashboardData.layout || { cols: 12, rowHeight: 150, margin: [16, 16] },
+        widgets: dashboardData.widgets || [],
+        settings: dashboardData.settings || {},
+        isPublic: false,
+        tags: []
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        isDefault: true,
+        widgets: true,
+        layout: true,
+        settings: true,
+        isPublic: true,
+        tags: true,
+        workspaceId: true,
+        createdAt: true,
+        updatedAt: true,
+        workspace: {
+          select: { name: true }
         }
       }
     })
@@ -193,58 +222,59 @@ export async function PUT(request: NextRequest) {
     }
 
     const userId = await normalizeUserId(session.user.id)
-    const dashboardData: CustomDashboard = await request.json()
+    const dashboardData: CustomDashboard & { id: string } = await request.json()
 
     if (!dashboardData.id) {
       return NextResponse.json({ error: 'Dashboard ID is required' }, { status: 400 })
     }
 
-    // Get user's primary workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId, role: 'OWNER' },
-      select: { workspaceId: true, permissions: true }
+    // Check if dashboard exists and belongs to user
+    const existingDashboard = await prisma.customDashboard.findFirst({
+      where: {
+        id: dashboardData.id,
+        userId
+      }
     })
 
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
-    }
-
-    // Get existing permissions/dashboard configs
-    const existingPermissions = userWorkspace.permissions as any || {}
-    const existingDashboards = existingPermissions.customDashboards || []
-
-    // Find and update the dashboard
-    const dashboardIndex = existingDashboards.findIndex((d: any) => d.id === dashboardData.id)
-    
-    if (dashboardIndex === -1) {
+    if (!existingDashboard) {
       return NextResponse.json({ error: 'Dashboard not found' }, { status: 404 })
     }
 
-    // Update the dashboard
-    existingDashboards[dashboardIndex] = {
-      ...existingDashboards[dashboardIndex],
-      ...dashboardData,
-      updatedAt: new Date().toISOString()
-    }
-
-    // Update the permissions field
-    await prisma.userWorkspace.update({
+    // Update the dashboard in database
+    const updatedDashboard = await prisma.customDashboard.update({
       where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId: userWorkspace.workspaceId
-        }
+        id: dashboardData.id
       },
       data: {
-        permissions: {
-          ...existingPermissions,
-          customDashboards: existingDashboards
+        name: dashboardData.name ?? existingDashboard.name,
+        description: dashboardData.description ?? existingDashboard.description,
+        isDefault: dashboardData.isDefault ?? existingDashboard.isDefault,
+        layout: dashboardData.layout ?? existingDashboard.layout,
+        widgets: dashboardData.widgets ?? existingDashboard.widgets,
+        settings: dashboardData.settings ?? existingDashboard.settings,
+        tags: dashboardData.tags ?? existingDashboard.tags
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        isDefault: true,
+        widgets: true,
+        layout: true,
+        settings: true,
+        isPublic: true,
+        tags: true,
+        workspaceId: true,
+        createdAt: true,
+        updatedAt: true,
+        workspace: {
+          select: { name: true }
         }
       }
     })
 
     return NextResponse.json({ 
-      dashboard: existingDashboards[dashboardIndex],
+      dashboard: updatedDashboard,
       message: 'Dashboard updated successfully' 
     })
 
@@ -274,40 +304,38 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Dashboard ID is required' }, { status: 400 })
     }
 
-    // Get user's primary workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId, role: 'OWNER' },
-      select: { workspaceId: true, permissions: true }
+    // Check if dashboard exists and belongs to user
+    const existingDashboard = await prisma.customDashboard.findFirst({
+      where: {
+        id: dashboardId,
+        userId
+      }
     })
 
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
-    }
-
-    // Get existing permissions/dashboard configs
-    const existingPermissions = userWorkspace.permissions as any || {}
-    const existingDashboards = existingPermissions.customDashboards || []
-
-    // Filter out the dashboard to delete
-    const filteredDashboards = existingDashboards.filter((d: any) => d.id !== dashboardId)
-
-    if (filteredDashboards.length === existingDashboards.length) {
+    if (!existingDashboard) {
       return NextResponse.json({ error: 'Dashboard not found' }, { status: 404 })
     }
 
-    // Update the permissions field
-    await prisma.userWorkspace.update({
-      where: {
-        userId_workspaceId: {
+    // Prevent deleting the default dashboard if it's the only one
+    if (existingDashboard.isDefault) {
+      const dashboardCount = await prisma.customDashboard.count({
+        where: {
           userId,
-          workspaceId: userWorkspace.workspaceId
+          workspaceId: existingDashboard.workspaceId
         }
-      },
-      data: {
-        permissions: {
-          ...existingPermissions,
-          customDashboards: filteredDashboards
-        }
+      })
+
+      if (dashboardCount <= 1) {
+        return NextResponse.json({ 
+          error: 'Cannot delete the last dashboard. Please create another dashboard first.' 
+        }, { status: 400 })
+      }
+    }
+
+    // Delete the dashboard from database
+    await prisma.customDashboard.delete({
+      where: {
+        id: dashboardId
       }
     })
 

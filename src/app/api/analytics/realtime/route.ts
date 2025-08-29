@@ -84,35 +84,26 @@ export async function GET(request: NextRequest) {
       },
       include: {
         socialAccount: {
-          select: { platform: true }
+          select: { provider: true }
         }
       },
       orderBy: { createdAt: 'desc' },
       take: 50
     })
 
-    // Calculate platform activity
-    const platformStats = await prisma.post.groupBy({
-      by: ['workspaceId'],
+    // Get total posts count for platform activity calculation
+    const totalPostsToday = await prisma.post.count({
       where: {
         workspaceId: { in: workspaceIds },
-        publishedAt: { gte: oneDayAgo }
-      },
-      _count: {
-        id: true
-      },
-      _sum: {
-        likes: true,
-        comments: true,
-        shares: true,
-        reach: true
+        publishedAt: { gte: oneDayAgo },
+        status: 'PUBLISHED'
       }
     })
 
     // Get social accounts for platform activity calculation
     const socialAccounts = await prisma.socialAccount.findMany({
       where: { workspaceId: { in: workspaceIds } },
-      select: { platform: true }
+      select: { provider: true }
     })
 
     // Build platform activity metrics from real data
@@ -126,12 +117,12 @@ export async function GET(request: NextRequest) {
 
       // Count recent inbox items for this platform  
       const platformEngagement = recentInboxItems.filter(item => 
-        item.socialAccount?.platform === account.provider
+        item.socialAccount?.provider === account.provider
       ).length
 
       const activity = platformPosts + platformEngagement
-      const change = platformStats.length > 0 ? 
-        ((activity / Math.max(1, platformStats.length)) * 10) - 5 : 0 // Real change calculation
+      const change = totalPostsToday > 0 ? 
+        ((activity / Math.max(1, totalPostsToday)) * 10) - 5 : 0 // Real change calculation
 
       if (existing) {
         existing.activity += activity
@@ -167,7 +158,17 @@ export async function GET(request: NextRequest) {
     // Calculate metrics
     const totalPosts = recentPosts.length
     const totalEngagement = recentInboxItems.length
-    const totalReach = platformStats.reduce((sum, stat) => sum + (stat._sum.reach || 0), 0)
+    
+    // Get reach data from analytics metrics
+    const reachMetrics = await prisma.analyticsMetric.aggregate({
+      where: {
+        workspaceId: { in: workspaceIds },
+        date: { gte: oneHourAgo },
+        metricType: 'reach'
+      },
+      _sum: { value: true }
+    })
+    const totalReach = reachMetrics._sum.value || 0
 
     // Get active sessions (simulate based on recent activity)
     const activeUsers = Math.max(1, Math.floor(totalEngagement / 5)) + Math.max(1, totalPosts)
