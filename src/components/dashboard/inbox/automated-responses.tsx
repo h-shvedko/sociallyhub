@@ -160,7 +160,7 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
     } catch (error) {
       console.error('Error deleting response:', error)
       // Restore original responses on error
-      setResponses(responses)
+      setResponses(originalResponses)
     }
   }
 
@@ -190,6 +190,55 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
       console.error('Error creating response:', error)
       // TODO: Show error message to user
     }
+  }
+
+  const handleEditResponse = (response: AutomatedResponse) => {
+    setEditingResponse(response)
+    setFormData({
+      name: response.name,
+      isEnabled: response.isEnabled,
+      triggerType: response.triggerType,
+      triggerValue: response.triggerValue,
+      responseTemplate: response.responseTemplate,
+      priority: response.priority,
+      delayMinutes: response.delayMinutes,
+      conditions: response.conditions
+    })
+  }
+
+  const handleUpdateResponse = async () => {
+    if (!editingResponse) return
+
+    try {
+      // Make API call to update the response
+      const response = await fetch(`/api/inbox/automated-responses/${editingResponse.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to update response')
+      }
+      
+      const updatedResponse = await response.json()
+      
+      // Update the response in the list
+      setResponses(prev => prev.map(r => 
+        r.id === editingResponse.id ? updatedResponse : r
+      ))
+      
+      handleCancelEdit()
+    } catch (error) {
+      console.error('Error updating response:', error)
+      // TODO: Show error message to user
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingResponse(null)
+    setIsCreating(false)
+    resetForm()
   }
 
   const resetForm = () => {
@@ -244,21 +293,23 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
             <Bot className="h-4 w-4" />
             Auto-Responses
           </div>
-          <Dialog open={isCreating} onOpenChange={setIsCreating}>
+          <Dialog open={isCreating || !!editingResponse} onOpenChange={(open) => {
+            if (!open) handleCancelEdit()
+          }}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">
                 <Plus className="h-4 w-4" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden">
               <DialogHeader>
-                <DialogTitle>Create Automated Response</DialogTitle>
+                <DialogTitle>{editingResponse ? 'Edit Automated Response' : 'Create Automated Response'}</DialogTitle>
                 <DialogDescription>
-                  Set up automated responses to handle common inquiries
+                  {editingResponse ? 'Update your automated response settings' : 'Set up automated responses to handle common inquiries'}
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="space-y-4 overflow-y-auto flex-1 pr-1">
                 {/* Basic Info */}
                 <div className="space-y-2">
                   <Label>Response Name</Label>
@@ -363,10 +414,10 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                 </div>
 
                 <div className="flex gap-2 pt-4">
-                  <Button onClick={handleCreateResponse} disabled={!formData.name || !formData.responseTemplate}>
-                    Create Response
+                  <Button onClick={editingResponse ? handleUpdateResponse : handleCreateResponse} disabled={!formData.name || !formData.responseTemplate}>
+                    {editingResponse ? 'Update Response' : 'Create Response'}
                   </Button>
-                  <Button variant="outline" onClick={() => setIsCreating(false)}>
+                  <Button variant="outline" onClick={handleCancelEdit}>
                     Cancel
                   </Button>
                 </div>
@@ -448,7 +499,7 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setEditingResponse(response)}
+                        onClick={() => handleEditResponse(response)}
                         className="h-8 w-8 p-0"
                       >
                         <Edit className="h-3 w-3" />
