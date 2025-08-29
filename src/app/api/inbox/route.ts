@@ -30,11 +30,11 @@ export async function GET(request: NextRequest) {
     // Build filters
     const where: any = {
       workspaceId,
-      ...(status && { status }),
-      ...(type && { type }),
-      ...(assigneeId && { assigneeId }),
-      ...(socialAccountId && { socialAccountId }),
-      ...(sentiment && { sentiment }),
+      ...(status && status !== 'all' && { status }),
+      ...(type && type !== 'all' && { type }),
+      ...(assigneeId && assigneeId !== 'all' && { assigneeId }),
+      ...(socialAccountId && socialAccountId !== 'all' && { socialAccountId }),
+      ...(sentiment && sentiment !== 'all' && { sentiment }),
       ...(search && {
         OR: [
           { content: { contains: search, mode: 'insensitive' } },

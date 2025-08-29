@@ -301,15 +301,16 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                 <Plus className="h-4 w-4" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden">
-              <DialogHeader>
+            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+              <DialogHeader className="flex-shrink-0">
                 <DialogTitle>{editingResponse ? 'Edit Automated Response' : 'Create Automated Response'}</DialogTitle>
                 <DialogDescription>
                   {editingResponse ? 'Update your automated response settings' : 'Set up automated responses to handle common inquiries'}
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+              <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2"
+                   style={{ scrollbarWidth: 'thin' }}>
                 {/* Basic Info */}
                 <div className="space-y-2">
                   <Label>Response Name</Label>
@@ -413,14 +414,15 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                   <Label>Enable this automated response</Label>
                 </div>
 
-                <div className="flex gap-2 pt-4">
-                  <Button onClick={editingResponse ? handleUpdateResponse : handleCreateResponse} disabled={!formData.name || !formData.responseTemplate}>
-                    {editingResponse ? 'Update Response' : 'Create Response'}
-                  </Button>
-                  <Button variant="outline" onClick={handleCancelEdit}>
-                    Cancel
-                  </Button>
-                </div>
+              </div>
+              
+              <div className="flex gap-2 pt-4 border-t flex-shrink-0">
+                <Button onClick={editingResponse ? handleUpdateResponse : handleCreateResponse} disabled={!formData.name || !formData.responseTemplate}>
+                  {editingResponse ? 'Update Response' : 'Create Response'}
+                </Button>
+                <Button variant="outline" onClick={handleCancelEdit}>
+                  Cancel
+                </Button>
               </div>
             </DialogContent>
           </Dialog>

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -99,6 +100,7 @@ interface InboxStats {
 }
 
 export function InboxDashboard({ workspaceId }: { workspaceId: string }) {
+  const router = useRouter()
   const [messages, setMessages] = useState<InboxMessage[]>([])
   const [stats, setStats] = useState<InboxStats | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<InboxMessage | null>(null)
@@ -254,7 +256,11 @@ export function InboxDashboard({ workspaceId }: { workspaceId: string }) {
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => router.push('/dashboard/settings')}
+          >
             <Settings className="h-4 w-4 mr-2" />
             Settings
           </Button>
