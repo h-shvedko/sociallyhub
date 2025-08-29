@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 // GET /api/analytics/dashboard - Get dashboard analytics data
 async function getHandler(request: NextRequest) {
@@ -11,6 +12,9 @@ async function getHandler(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Normalize user ID for consistency with legacy sessions
+    const userId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const timeRange = searchParams.get('timeRange') || '30d'
@@ -22,7 +26,7 @@ async function getHandler(request: NextRequest) {
 
     // Get user's workspaces
     const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: { userId: session.user.id },
+      where: { userId },
       select: { workspaceId: true }
     })
     const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
@@ -82,7 +86,7 @@ async function getHandler(request: NextRequest) {
       // Analytics metrics
       prisma.analyticsMetric.findMany({
         where: {
-          userId: session.user.id,
+          userId,
           date: { gte: startDate },
           metricType: { in: ['page_view', 'session', 'engagement', 'conversion'] }
         }

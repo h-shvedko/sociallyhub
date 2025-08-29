@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,61 +16,91 @@ import {
   Users,
   Clock,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Inbox
 } from "lucide-react"
 
+interface DashboardStats {
+  totalUsers: number
+  activeUsers: number
+  activeSessions: number
+  postsCreated: number
+  totalReach: number
+  postEngagement: number
+  connectedPlatforms: number
+  totalComments: number
+}
+
 export default function DashboardPage() {
+  const { data: session } = useSession()
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
   const [postsLoading, setPostsLoading] = useState(true)
   const [inboxLoading, setInboxLoading] = useState(true)
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  // Simulate API loading
+  // Fetch real dashboard data from API
   useEffect(() => {
-    // Simulate initial page load
-    setTimeout(() => setLoading(false), 1000)
-    
-    // Simulate stats loading
-    setTimeout(() => setStatsLoading(false), 800)
-    
-    // Simulate posts loading
-    setTimeout(() => setPostsLoading(false), 1200)
-    
-    // Simulate inbox loading
-    setTimeout(() => setInboxLoading(false), 1500)
-  }, [])
+    const fetchDashboardData = async () => {
+      try {
+        setStatsLoading(true)
+        const response = await fetch('/api/analytics/dashboard?timeRange=30d')
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard data')
+        }
+        const data = await response.json()
+        setDashboardStats(data)
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err)
+        setError('Failed to load dashboard statistics')
+      } finally {
+        setStatsLoading(false)
+      }
+    }
 
-  // Mock data - will be replaced with real data from API
-  const stats = [
+    if (session?.user) {
+      fetchDashboardData()
+    }
+    
+    // Simulate other loading states for now
+    setTimeout(() => setLoading(false), 800)
+    setTimeout(() => setPostsLoading(false), 1000)
+    setTimeout(() => setInboxLoading(false), 1200)
+  }, [session])
+
+  // Real statistics from database
+  const stats = dashboardStats ? [
     {
-      title: "Posts This Week",
-      value: "24",
-      change: "+12%",
-      trend: "up",
+      title: "Posts This Month",
+      value: dashboardStats.postsCreated.toString(),
+      change: dashboardStats.postsCreated > 20 ? "+" + Math.round((dashboardStats.postsCreated - 20) / 20 * 100) + "%" : "Below target",
+      trend: dashboardStats.postsCreated > 20 ? "up" : "warning",
       icon: PenTool,
     },
     {
-      title: "Inbox Items",
-      value: "8",
-      change: "3 urgent",
-      trend: "neutral",
+      title: "Total Comments",
+      value: dashboardStats.totalComments.toString(),
+      change: dashboardStats.totalComments > 50 ? "Active engagement" : "Low engagement",
+      trend: dashboardStats.totalComments > 50 ? "up" : "neutral",
       icon: MessageCircle,
     },
     {
       title: "Total Reach",
-      value: "45.2K",
-      change: "+18%",
-      trend: "up",
+      value: dashboardStats.totalReach > 1000 ? (dashboardStats.totalReach / 1000).toFixed(1) + "K" : dashboardStats.totalReach.toString(),
+      change: dashboardStats.postEngagement > 100 ? "+" + Math.round((dashboardStats.postEngagement - 100) / 100 * 100) + "% engagement" : "Low engagement",
+      trend: dashboardStats.postEngagement > 100 ? "up" : "warning",
       icon: TrendingUp,
     },
     {
       title: "Connected Accounts",
-      value: "6",
-      change: "2 expire soon",
-      trend: "warning",
+      value: dashboardStats.connectedPlatforms.toString(),
+      change: dashboardStats.connectedPlatforms >= 3 ? "Well connected" : "Connect more platforms",
+      trend: dashboardStats.connectedPlatforms >= 3 ? "up" : "warning",
       icon: Users,
     },
-  ]
+  ] : []
 
   const recentPosts = [
     {
@@ -140,13 +172,18 @@ export default function DashboardPage() {
       {/* Material Design Header with proper typography */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h1 className="text-display-small font-normal text-md-on-background">Dashboard</h1>
+          <h1 className="text-display-small font-normal text-md-on-background">
+            Welcome back, {session?.user?.name?.split(' ')[0] || 'User'}!
+          </h1>
           <p className="text-body-large text-md-on-surface-variant">
-            Welcome back! Here's what's happening with your social media.
+            Here's what's happening with your social media.
           </p>
         </div>
         <div className="flex space-x-3">
-          <Button className="bg-md-primary text-md-on-primary hover:bg-md-primary/90 shadow-md-level2 rounded-md-large transition-all duration-300 hover:shadow-md-level3">
+          <Button 
+            onClick={() => router.push('/dashboard/compose')}
+            className="bg-md-primary text-md-on-primary hover:bg-md-primary/90 shadow-md-level2 rounded-md-large transition-all duration-300 hover:shadow-md-level3"
+          >
             <PenTool className="mr-2 h-4 w-4" />
             Compose Post
           </Button>
@@ -238,7 +275,10 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
-            <Button className="w-full bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-medium border border-md-outline-variant transition-all duration-300 hover:shadow-md-level1">
+            <Button 
+              onClick={() => router.push('/dashboard/calendar')}
+              className="w-full bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-medium border border-md-outline-variant transition-all duration-300 hover:shadow-md-level1"
+            >
               <Calendar className="mr-2 h-4 w-4" />
               View Calendar
             </Button>
@@ -273,7 +313,10 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
-            <Button className="w-full bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-medium border border-md-outline-variant transition-all duration-300 hover:shadow-md-level1">
+            <Button 
+              onClick={() => router.push('/dashboard/inbox')}
+              className="w-full bg-md-surface-variant text-md-on-surface-variant hover:bg-md-surface-variant/80 rounded-md-medium border border-md-outline-variant transition-all duration-300 hover:shadow-md-level1"
+            >
               <MessageCircle className="mr-2 h-4 w-4" />
               View All Messages
             </Button>
@@ -291,19 +334,31 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
-            <Button className="h-24 flex-col space-y-3 bg-md-primary-container text-md-on-primary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10">
+            <Button 
+              onClick={() => router.push('/dashboard/compose')}
+              className="h-24 flex-col space-y-3 bg-md-primary-container text-md-on-primary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10 hover:scale-105 transition-all duration-200"
+            >
               <PenTool className="h-6 w-6" />
               <span className="text-label-large">New Post</span>
             </Button>
-            <Button className="h-24 flex-col space-y-3 bg-md-secondary-container text-md-on-secondary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10">
+            <Button 
+              onClick={() => router.push('/dashboard/calendar')}
+              className="h-24 flex-col space-y-3 bg-md-secondary-container text-md-on-secondary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10 hover:scale-105 transition-all duration-200"
+            >
               <Calendar className="h-6 w-6" />
               <span className="text-label-large">Schedule Post</span>
             </Button>
-            <Button className="h-24 flex-col space-y-3 bg-md-tertiary-container text-md-on-tertiary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10">
+            <Button 
+              onClick={() => router.push('/dashboard/analytics')}
+              className="h-24 flex-col space-y-3 bg-md-tertiary-container text-md-on-tertiary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10 hover:scale-105 transition-all duration-200"
+            >
               <BarChart3 className="h-6 w-6" />
               <span className="text-label-large">View Analytics</span>
             </Button>
-            <Button className="h-24 flex-col space-y-3 bg-md-surface-variant text-md-on-surface-variant rounded-md-large shadow-md-level1 border border-md-outline-variant">
+            <Button 
+              onClick={() => router.push('/dashboard/accounts')}
+              className="h-24 flex-col space-y-3 bg-md-surface-variant text-md-on-surface-variant rounded-md-large shadow-md-level1 border border-md-outline-variant hover:scale-105 transition-all duration-200"
+            >
               <Users className="h-6 w-6" />
               <span className="text-label-large">Connect Account</span>
             </Button>

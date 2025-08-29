@@ -64,6 +64,7 @@ export function Header({ className }: HeaderProps) {
         <Button 
           variant="outline" 
           size="sm"
+          onClick={() => router.push('/dashboard/compose')}
           className="hidden sm:flex items-center space-x-2 hover:bg-primary/10 hover:border-primary/20 transition-all duration-200 active:scale-95"
         >
           <Plus className="h-4 w-4" />
@@ -74,6 +75,7 @@ export function Header({ className }: HeaderProps) {
         <Button 
           variant="outline" 
           size="sm"
+          onClick={() => router.push('/dashboard/compose')}
           className="sm:hidden p-2 hover:bg-primary/10 hover:border-primary/20 transition-all duration-200 active:scale-95"
         >
           <Plus className="h-4 w-4" />
