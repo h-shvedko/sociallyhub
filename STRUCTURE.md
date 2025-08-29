@@ -103,7 +103,7 @@
   - **Content Truncation**: Smart text truncation for better dashboard layout
   - **Loading States**: Skeleton animations matching inbox item structure
 - **Interactive Elements:**
-  - Compose Post button → `/dashboard/compose`
+  - Compose Post button → `/dashboard/posts?compose=true`
   - View Calendar button → `/dashboard/calendar`
   - View All Messages button → `/dashboard/inbox`
   - Quick action buttons for all major features
@@ -275,16 +275,28 @@
 - `src/components/dashboard/help/help-center.tsx` - Help documentation
 - **Description:** Documentation and support resources
 
-### Post Composer
-**Page:** `src/app/dashboard/compose/page.tsx`
+### Post Composer (Integrated into Posts Management)
+**Functionality:** Accessed via `/dashboard/posts?compose=true`
 **Related Files:**
-- `src/components/dashboard/posts/post-composer.tsx` - Enhanced composer
+- `src/app/dashboard/posts/page.tsx` - Unified posts management with integrated composer
+- `src/components/posts/post-composer.tsx` - Enhanced composer component
 - `src/app/api/ai/content/generate/route.ts` - AI content generation
 - `src/app/api/ai/hashtags/suggest/route.ts` - Hashtag suggestions
 - `src/app/api/ai/performance/predict/route.ts` - Performance prediction
 - `src/lib/ai/ai-service.ts` - AI service layer
 - **Database Models:** `Post`, `AIContentSuggestion`, `HashtagSuggestion`
-- **Description:** Advanced post creation with AI assistance
+- **Features:**
+  - **Integrated Experience**: Composer opens automatically when navigating from compose buttons
+  - **Context Awareness**: Users can see existing posts while creating new content
+  - **URL Parameter Handling**: Clean parameter management with automatic cleanup
+  - **State Management**: Proper integration with posts page state management
+  - **AI-Powered Assistance**: Content generation, hashtag suggestions, performance prediction
+- **Navigation Integration:**
+  - Dashboard "Compose Post" button automatically opens composer
+  - Header "+Compose" buttons trigger automatic composer opening
+  - Quick action "New Post" button opens composer with context
+  - Mobile-friendly navigation with consistent behavior
+- **Description:** Advanced post creation with AI assistance, seamlessly integrated into the posts management workflow
 
 ### Workspace
 **Page:** `src/app/dashboard/workspace/page.tsx`

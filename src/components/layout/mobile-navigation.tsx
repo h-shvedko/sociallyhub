@@ -29,7 +29,7 @@ import {
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, color: "text-blue-600" },
-  { name: "Compose", href: "/dashboard/compose", icon: PenTool, color: "text-green-600" },
+  { name: "Compose", href: "/dashboard/posts", icon: PenTool, color: "text-green-600" },
   { name: "Calendar", href: "/dashboard/calendar", icon: Calendar, color: "text-purple-600" },
   { name: "Inbox", href: "/dashboard/inbox", icon: Inbox, color: "text-orange-600" },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, color: "text-indigo-600" },

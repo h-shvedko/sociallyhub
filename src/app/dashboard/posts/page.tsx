@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -67,6 +68,7 @@ const statusStyles = {
 }
 
 export default function PostsPage() {
+  const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState("all")
   const [showComposer, setShowComposer] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -99,6 +101,16 @@ export default function PostsPage() {
   useEffect(() => {
     fetchPosts()
   }, [activeTab])
+
+  // Check for compose parameter to auto-open composer
+  useEffect(() => {
+    const shouldCompose = searchParams.get('compose')
+    if (shouldCompose === 'true') {
+      setShowComposer(true)
+      // Clean up the URL parameter
+      window.history.replaceState({}, '', '/dashboard/posts')
+    }
+  }, [searchParams])
 
   const handlePostSave = async (postData: any) => {
     try {

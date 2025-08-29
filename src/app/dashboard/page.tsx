@@ -198,7 +198,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex space-x-3">
           <Button 
-            onClick={() => router.push('/dashboard/compose')}
+            onClick={() => router.push('/dashboard/posts?compose=true')}
             className="bg-md-primary text-md-on-primary hover:bg-md-primary/90 shadow-md-level2 rounded-md-large transition-all duration-300 hover:shadow-md-level3"
           >
             <PenTool className="mr-2 h-4 w-4" />
@@ -422,7 +422,7 @@ export default function DashboardPage() {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
             <Button 
-              onClick={() => router.push('/dashboard/compose')}
+              onClick={() => router.push('/dashboard/posts?compose=true')}
               className="h-24 flex-col space-y-3 bg-md-primary-container text-md-on-primary-container rounded-md-large shadow-md-level1 border border-md-outline-variant/10 hover:scale-105 transition-all duration-200"
             >
               <PenTool className="h-6 w-6" />
