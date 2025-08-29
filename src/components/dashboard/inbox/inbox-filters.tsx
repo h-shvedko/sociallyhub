@@ -252,7 +252,9 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
             <SelectContent>
               <SelectItem value="all">All Assignees</SelectItem>
               <SelectItem value="unassigned">Unassigned</SelectItem>
-              {teamMembers.map((member) => (
+              {teamMembers
+                .filter((member) => member.userId && member.userId.trim() !== '')
+                .map((member) => (
                 <SelectItem key={member.userId} value={member.userId}>
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4" />
@@ -291,7 +293,9 @@ export function InboxFilters({ filters, onFiltersChange, workspaceId }: InboxFil
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Accounts</SelectItem>
-              {socialAccounts.map((account) => (
+              {socialAccounts
+                .filter((account) => account.id && account.id.trim() !== '')
+                .map((account) => (
                 <SelectItem key={account.id} value={account.id}>
                   <div className="flex items-center gap-2">
                     <span className="capitalize text-xs bg-muted px-1.5 py-0.5 rounded">

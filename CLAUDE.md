@@ -931,10 +931,43 @@ The email verification system is now production-ready with a complete, professio
 - **Consistent State**: All filter components have consistent initialization
 - **Maintainable Code**: Clear understanding of valid filter values
 
+### Additional Fix - Dynamic Data Validation
+**File:** `src/components/dashboard/inbox/inbox-filters.tsx`
+- **ADDED**: Validation for dynamic SelectItem components to prevent empty values:
+  ```typescript
+  // Team Members Filter
+  {teamMembers
+    .filter((member) => member.userId && member.userId.trim() !== '')
+    .map((member) => (
+    <SelectItem key={member.userId} value={member.userId}>
+      // ... content
+    </SelectItem>
+  ))}
+
+  // Social Accounts Filter  
+  {socialAccounts
+    .filter((account) => account.id && account.id.trim() !== '')
+    .map((account) => (
+    <SelectItem key={account.id} value={account.id}>
+      // ... content
+    </SelectItem>
+  ))}
+  ```
+
+### Root Cause - Dynamic Data Issue
+The original error was actually caused by dynamic data from API responses where:
+- Team members or social accounts could have empty string IDs
+- Database queries might return records with null/empty ID fields
+- SelectItem components were created with these empty values, triggering the error
+
 ### Files Modified
 1. **`src/components/dashboard/inbox/inbox-dashboard.tsx`**
    - Fixed filter state initialization (line 109-116)
    - Fixed clear filters function (line 321-323)
+
+2. **`src/components/dashboard/inbox/inbox-filters.tsx`**
+   - Added validation for team member IDs (line 255-257)
+   - Added validation for social account IDs (line 296-298)
 
 ### Commit Message
 ```
@@ -942,8 +975,9 @@ fix: resolve Select.Item runtime error on inbox page
 
 - Initialize filter state with 'all' values instead of empty strings
 - Update clear filters function to use valid option values
+- Add validation for dynamic SelectItem data (team members, social accounts)
+- Filter out empty/null IDs before creating SelectItem components
 - Ensure all Select components receive valid value props
-- Maintain consistency with existing filter option structure
 
 Fixes runtime error: "A <Select.Item /> must have a value prop that is not an empty string"
 ```
