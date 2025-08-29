@@ -66,9 +66,11 @@
 **Related Files:**
 - `src/components/dashboard/overview/dashboard-overview.tsx` - Main dashboard component
 - `src/app/api/analytics/dashboard/route.ts` - Dashboard metrics API with real database integration
+- `src/app/api/dashboard/posts/route.ts` - Dashboard recent posts API with engagement metrics
+- `src/app/api/dashboard/inbox/route.ts` - Dashboard inbox items API with social media integration
 - `src/app/api/monitoring/metrics/route.ts` - System health metrics
 - `src/lib/auth/demo-user.ts` - User ID normalization for legacy session compatibility
-- **Database Models:** `AnalyticsMetric`, `Post`, `Campaign`, `UserWorkspace`, `SocialAccount`
+- **Database Models:** `AnalyticsMetric`, `Post`, `Campaign`, `UserWorkspace`, `SocialAccount`, `InboxItem`
 - **Features:**
   - **Real-time Statistics**: Live dashboard metrics from actual database data
   - **Personalized Greeting**: Welcome message with user's first name
@@ -82,13 +84,35 @@
   - Total Reach: Real audience reach data across platforms
   - Connected Accounts: Actual count of linked social media accounts
   - Dynamic trend indicators based on performance thresholds
+- **Recent Posts Section:**
+  - **Real Data Integration**: Shows actual user posts with engagement metrics
+  - **Status Indicators**: Visual badges for published, scheduled, and draft posts
+  - **Platform Display**: Shows which social platforms each post targets
+  - **Engagement Metrics**: Real likes, comments, shares data when available
+  - **Smart Time Display**: Relative time formatting ("2 hours ago", "Tomorrow 9:00 AM")
+  - **Loading States**: Professional skeleton animations during data fetch
+  - **Empty States**: Encouraging messages for users with no posts yet
+  - **Error Handling**: Clear error messages with recovery options
+- **Inbox Section:**
+  - **Live Social Interactions**: Real comments, mentions, DMs from social platforms
+  - **Urgency Detection**: Automatic highlighting of high-priority or negative sentiment items
+  - **Platform Integration**: Shows source platform for each interaction
+  - **Assignee Information**: Displays who is responsible for handling each item
+  - **Type Differentiation**: Visual distinction between mentions, DMs, comments
+  - **Summary Statistics**: Total, urgent, pending, and replied item counts
+  - **Content Truncation**: Smart text truncation for better dashboard layout
+  - **Loading States**: Skeleton animations matching inbox item structure
 - **Interactive Elements:**
   - Compose Post button → `/dashboard/compose`
   - View Calendar button → `/dashboard/calendar`
   - View All Messages button → `/dashboard/inbox`
   - Quick action buttons for all major features
   - Hover animations and professional transitions
-- **Description:** Comprehensive dashboard with real-time metrics, personalized user experience, and fully functional navigation to all platform features
+- **API Endpoints:**
+  - `GET /api/analytics/dashboard` - Dashboard statistics and metrics
+  - `GET /api/dashboard/posts?limit=3` - Recent posts with engagement data
+  - `GET /api/dashboard/inbox?limit=3` - Recent inbox items with platform details
+- **Description:** Comprehensive dashboard with real-time metrics, actual user content, live social interactions, and fully functional navigation to all platform features
 
 ### Posts Management
 **Page:** `src/app/dashboard/posts/page.tsx`
