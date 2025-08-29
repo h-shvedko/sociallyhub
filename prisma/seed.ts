@@ -11,7 +11,10 @@ async function main() {
   
   const demoUser = await prisma.user.upsert({
     where: { email: 'demo@sociallyhub.com' },
-    update: {},
+    update: {
+      password: hashedPassword, // Always update password to ensure it's properly hashed
+      name: 'Demo User',
+    },
     create: {
       email: 'demo@sociallyhub.com',
       name: 'Demo User',

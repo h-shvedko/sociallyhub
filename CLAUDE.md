@@ -207,3 +207,50 @@ The script now provides a complete development environment setup with Docker val
 - Changed `npx prisma generate` for consistency
 - Updated all migration commands to use `npm run prisma:migrate`
 - Fixed script references throughout
+
+### Major Update: Full Docker Stack Integration
+
+#### Changes Made:
+1. **Updated dev-local.sh to start full Docker stack**:
+   - Now runs `docker-compose up -d` to start all containers (postgres, redis, app)
+   - Removed local npm dev server startup
+   - All services now run in Docker for consistency
+
+2. **Smart First-Time Setup Detection**:
+   - Detects first-time setup by checking if containers exist (`docker-compose ps -q`)
+   - Only runs migrations and seeding on completely fresh setup
+   - Skips setup steps if containers already exist
+
+3. **Fixed Demo User Authentication Issue**:
+   - **Problem**: Demo user password was not properly hashed (32 chars vs 60 chars expected for bcrypt)
+   - **Root Cause**: Seeding script used `upsert` with empty `update: {}`, so existing user password never updated
+   - **Solution**: 
+     - Fixed seeding script to always update password with proper bcrypt hash
+     - Manually updated existing demo user with properly hashed password
+     - Now login works correctly with demo credentials
+
+4. **Enhanced Container-Based Workflow**:
+   - All database operations now run inside app container
+   - Commands like migrations and seeding use `docker-compose exec app`
+   - Consistent environment between development and production
+
+#### New Workflow:
+```bash
+# Single command setup
+./dev-local.sh
+
+# Fresh setup (migrations + seeding):
+docker-compose down -v && ./dev-local.sh
+
+# View logs:
+docker-compose logs -f app
+```
+
+#### Fixed Issues:
+- ✅ **Demo login credentials now work**: email: demo@sociallyhub.com, password: demo123456
+- ✅ **Full Docker stack starts automatically** with all validation checks
+- ✅ **First-time setup detection** prevents unnecessary migrations on existing setups
+- ✅ **Consistent environment** - everything runs in Docker containers
+- ✅ **Smart setup logic** - only runs migrations/seeding when truly needed
+
+The development environment now provides a complete Docker-based workflow with proper authentication and intelligent setup detection.

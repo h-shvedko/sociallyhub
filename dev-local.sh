@@ -128,6 +128,16 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
+# Check if this is a first-time setup by looking for existing containers
+FIRST_TIME_SETUP=false
+if ! docker-compose ps -q | grep -q .; then
+    # No containers exist, this is first-time setup
+    FIRST_TIME_SETUP=true
+    echo "🆕 First-time setup detected - will run migrations and seeding"
+else
+    echo "🔄 Existing setup detected - skipping migrations and seeding"
+fi
+
 # Check if .env.local exists, if not create from example
 if [ ! -f ".env.local" ]; then
     if [ -f ".env.example" ]; then
@@ -155,13 +165,12 @@ EOF
     fi
 fi
 
-echo "🐳 Starting Docker services (database & Redis)..."
+echo "🐳 Starting full Docker stack..."
 # Stop any running containers first
 docker-compose down 2>/dev/null || true
 
-# Start only database services (not the app container)
-# The app will run locally via npm for better development experience
-if ! docker-compose up -d postgres redis; then
+# Start all Docker services (postgres, redis, and app)
+if ! docker-compose up -d; then
     echo "❌ Failed to start Docker services"
     echo "💡 Tip: Check if Docker Desktop is running"
     exit 1
@@ -194,35 +203,34 @@ if [ $attempt -eq $max_attempts ]; then
     exit 1
 fi
 
-# Install dependencies if needed
-if [ ! -d "node_modules" ]; then
-    echo "📦 Installing dependencies..."
-    npm ci || npm install
-fi
+# Only run setup tasks if this is first-time setup or if containers need setup
+if [ "$FIRST_TIME_SETUP" = true ]; then
+    # Install dependencies if needed
+    if [ ! -d "node_modules" ]; then
+        echo "📦 Installing dependencies..."
+        npm ci || npm install
+    fi
 
-# Generate Prisma client
-echo "🔄 Generating Prisma client..."
-if ! npx prisma generate >/dev/null 2>&1; then
-    echo "⚠️  Prisma generate failed, trying to fix..."
-    npm install @prisma/client prisma
-    npx prisma generate
-fi
+    # Generate Prisma client
+    echo "🔄 Generating Prisma client..."
+    if ! npx prisma generate >/dev/null 2>&1; then
+        echo "⚠️  Prisma generate failed, trying to fix..."
+        npm install @prisma/client prisma
+        npx prisma generate
+    fi
 
-# Check if database has been initialized
-echo "🔍 Checking database status..."
-DB_INITIALIZED=$(docker-compose exec -T postgres psql -U sociallyhub -d sociallyhub -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null || echo "0")
-
-if [ "$DB_INITIALIZED" = "0" ] || [ -z "$DB_INITIALIZED" ]; then
-    echo "🆕 Database is empty. Running initial setup..."
+    # Wait a bit longer for database to be fully ready on first setup
+    echo "⏳ Waiting extra time for database initial setup..."
+    sleep 5
     
-    # Run migrations
+    # Run migrations on first-time setup
     echo "🔄 Running database migrations..."
-    if npm run prisma:migrate; then
+    if docker-compose exec -T app npm run prisma:migrate; then
         echo "✅ Migrations completed successfully"
         
         # Run seeding
         echo "🌱 Seeding database with demo data..."
-        if npm run db:seed; then
+        if docker-compose exec -T app npm run db:seed; then
             echo "✅ Database seeded successfully"
             echo ""
             echo "📧 Demo credentials created:"
@@ -230,44 +238,23 @@ if [ "$DB_INITIALIZED" = "0" ] || [ -z "$DB_INITIALIZED" ]; then
             echo "   Password: demo123456"
         else
             echo "⚠️  Seeding failed, but you can still use the app"
-            echo "   Run 'npm run db:seed' manually to add demo data"
+            echo "   Run 'docker-compose exec app npm run db:seed' manually to add demo data"
         fi
     else
         echo "❌ Migration failed. Please check your database configuration"
         exit 1
     fi
 else
-    echo "✅ Database already initialized ($DB_INITIALIZED tables found)"
-    
-    # Ask if user wants to run migrations
-    read -p "🤔 Run any pending migrations? [y/N]: " run_migrations
-    if [[ $run_migrations =~ ^[Yy]$ ]]; then
-        echo "🔄 Running database migrations..."
-        if npm run prisma:migrate; then
-            echo "✅ Migrations completed"
-            
-            # Ask about seeding only if migrations succeeded
-            read -p "🌱 Run database seeding? (This will add/update demo data) [y/N]: " run_seeding
-            if [[ $run_seeding =~ ^[Yy]$ ]]; then
-                echo "🌱 Seeding database..."
-                if npm run db:seed; then
-                    echo "✅ Database seeded successfully"
-                else
-                    echo "⚠️  Seeding failed, continuing anyway..."
-                fi
-            fi
-        else
-            echo "⚠️  Migrations failed, but continuing..."
-        fi
-    fi
+    echo "ℹ️  Existing containers detected, skipping setup steps"
+    echo "💡 To force re-setup: docker-compose down -v && ./dev-local.sh"
 fi
 
 echo ""
-echo "🌟 Starting Next.js development server..."
+echo "🎉 SociallyHub Development Environment Ready!"
 echo ""
 echo "📍 Service URLs:"
 echo "   🌐 Application: http://localhost:3099"
-echo "   📊 Prisma Studio: http://localhost:5555 (run 'npm run prisma:studio' in another terminal)"
+echo "   📊 Prisma Studio: docker-compose exec app npm run prisma:studio"
 echo "   🗄️  PostgreSQL: localhost:5432"
 echo "   🔴 Redis: localhost:6379"
 echo ""
@@ -276,16 +263,14 @@ echo "   📧 Email: demo@sociallyhub.com"
 echo "   🔒 Password: demo123456"
 echo ""
 echo "💡 Useful Commands:"
-echo "   📊 Open Prisma Studio: npm run prisma:studio"
-echo "   🌱 Re-run seeding: npm run db:seed"
-echo "   🔄 Run migrations: npm run prisma:migrate"
-echo "   📝 View Docker logs: docker-compose logs -f [postgres|redis]"
-echo "   🛑 Stop Docker services: docker-compose down"
-echo "   🐳 Run full stack in Docker: docker-compose up -d (includes app container)"
+echo "   📊 Open Prisma Studio: docker-compose exec app npm run prisma:studio"
+echo "   🌱 Re-run seeding: docker-compose exec app npm run db:seed"
+echo "   🔄 Run migrations: docker-compose exec app npm run prisma:migrate"
+echo "   📝 View app logs: docker-compose logs -f app"
+echo "   📝 View database logs: docker-compose logs -f postgres"
+echo "   🛑 Stop all services: docker-compose down"
+echo "   🧹 Clean restart: docker-compose down -v && ./dev-local.sh"
 echo ""
-echo "⌨️  Press Ctrl+C to stop the development server"
+echo "🚀 All services are running in Docker containers!"
+echo "📱 Open http://localhost:3099 to start using SociallyHub"
 echo "────────────────────────────────────────────────"
-echo ""
-
-# Start the development server
-npm run dev
