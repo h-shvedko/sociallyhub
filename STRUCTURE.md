@@ -14,10 +14,46 @@
 ### Sign Up Page
 **Page:** `src/app/auth/signup/page.tsx`
 **Related Files:**
-- `src/app/api/auth/signup/route.ts` - User registration API endpoint
-- `src/lib/auth/config.ts` - Authentication configuration
-- **Database Models:** `User`, `UserWorkspace`
-- **Description:** User registration with workspace creation
+- `src/app/api/auth/signup/route.ts` - User registration API endpoint with email verification
+- `src/lib/auth/config.ts` - Authentication configuration with email verification checks  
+- `src/lib/notifications/email-service.ts` - Email verification service with professional templates
+- `src/lib/config/demo.ts` - Demo mode configuration and credential display
+- **Database Models:** `User`, `UserWorkspace`, `VerificationToken`
+- **Features:**
+  - Multi-step registration form with validation
+  - Workspace name collection during signup
+  - Email verification flow with professional UI messaging
+  - Password strength validation (minimum 8 characters)
+  - Terms of service agreement checkbox
+  - Google OAuth integration option
+  - Graceful error handling with inline alerts
+  - Success state with email verification instructions
+- **Email Verification Flow:**
+  - Creates user with `emailVerified: null`
+  - Generates UUID verification token with 24-hour expiry
+  - Sends HTML email with verification link
+  - Shows blue info box with "Check Your Email" message
+  - Provides options to go to sign-in or create another account
+- **Description:** Comprehensive user registration with workspace creation, email verification, and professional onboarding experience
+
+### Email Verification Page
+**Page:** `src/app/auth/verify-email/page.tsx`
+**Related Files:**
+- `src/app/api/auth/verify-email/route.ts` - Token validation and email verification API
+- `src/lib/notifications/email-service.ts` - Email service with verification templates
+- **Database Models:** `User`, `VerificationToken`
+- **Features:**
+  - Automatic token validation on page load
+  - Professional loading state with spinner
+  - Success state with checkmark icon and confirmation message
+  - Error handling for expired, invalid, or already used tokens
+  - Clear action buttons for next steps
+  - Token cleanup after successful verification
+  - Responsive design with consistent branding
+- **API Endpoints:**
+  - `GET /api/auth/verify-email?token={token}` - Validates and processes verification token
+  - `POST /api/auth/verify-email` - Resends verification email if needed
+- **Description:** Complete email address verification system with professional UI, token validation, automatic cleanup, and comprehensive error handling
 
 ### Auth Error Page
 **Page:** `src/app/auth/error/page.tsx`
@@ -239,9 +275,12 @@
 - `src/lib/visual/image-optimizer.ts` - Image optimization
 - `src/lib/visual/image-analyzer.ts` - Visual analytics
 
-### Authentication
-- `src/lib/auth/config.ts` - NextAuth configuration
-- `src/lib/auth/index.ts` - Auth utilities
+### Authentication & Email Services
+- `src/lib/auth/config.ts` - NextAuth configuration with email verification
+- `src/lib/auth/index.ts` - Auth utilities and session helpers
+- `src/lib/auth/demo-user.ts` - Demo user management and ID normalization helpers
+- `src/lib/config/demo.ts` - Demo mode configuration and environment awareness
+- `src/lib/notifications/email-service.ts` - Professional email service with verification templates and Mailhog integration
 
 ### Database
 - `src/lib/prisma.ts` - Prisma client singleton
@@ -275,10 +314,11 @@
 ## Database Models Summary
 
 ### Core Models
-- **User** - User accounts and authentication
+- **User** - User accounts and authentication with email verification support
 - **Workspace** - Multi-tenant workspaces
 - **UserWorkspace** - User-workspace relationships with RBAC
 - **Client** - Client management for agencies
+- **VerificationToken** - Email verification tokens with expiration (24-hour validity)
 
 ### Social Media
 - **SocialAccount** - Connected social accounts

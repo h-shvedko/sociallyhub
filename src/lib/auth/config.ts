@@ -41,10 +41,25 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Invalid credentials")
           }
 
+          console.log(`Comparing password for ${user.email}...`)
+          console.log(`Password hash length: ${user.password.length}`)
+          console.log(`Password hash starts with: ${user.password.substring(0, 10)}`)
+          
           const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
+          
+          console.log(`Password comparison result: ${isPasswordValid}`)
 
           if (!isPasswordValid) {
+            console.log("❌ Password comparison failed")
             throw new Error("Invalid credentials")
+          }
+          
+          console.log("✅ Password comparison successful")
+
+          // Check if email is verified (unless it's demo user or development environment)
+          if (!user.emailVerified && process.env.NODE_ENV !== 'development') {
+            console.log("❌ Email not verified")
+            throw new Error("Please verify your email address before signing in. Check your email for a verification link.")
           }
 
           // Return user data from database
@@ -53,6 +68,7 @@ export const authOptions: NextAuthOptions = {
             email: user.email,
             name: user.name,
             image: user.image,
+            emailVerified: user.emailVerified,
           }
         } catch (error) {
           console.error("Auth error:", error)

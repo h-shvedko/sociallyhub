@@ -75,7 +75,7 @@ check_docker_compose
 
 # Check for conflicting processes
 echo "🔍 Checking for port conflicts..."
-PORTS_TO_CHECK=(3000 3099 5432 6379)
+PORTS_TO_CHECK=(3000 3099 5432 6379 1025 8025)
 CONFLICTS_FOUND=false
 
 for port in "${PORTS_TO_CHECK[@]}"; do
@@ -255,6 +255,7 @@ echo ""
 echo "📍 Service URLs:"
 echo "   🌐 Application: http://localhost:3099"
 echo "   📊 Prisma Studio: docker-compose exec app npm run prisma:studio"
+echo "   📧 Mailhog (Email Testing): http://localhost:8025"
 echo "   🗄️  PostgreSQL: localhost:5432"
 echo "   🔴 Redis: localhost:6379"
 echo ""
@@ -264,13 +265,16 @@ echo "   🔒 Password: demo123456"
 echo ""
 echo "💡 Useful Commands:"
 echo "   📊 Open Prisma Studio: docker-compose exec app npm run prisma:studio"
+echo "   📧 View caught emails: http://localhost:8025"
 echo "   🌱 Re-run seeding: docker-compose exec app npm run db:seed"
 echo "   🔄 Run migrations: docker-compose exec app npm run prisma:migrate"
 echo "   📝 View app logs: docker-compose logs -f app"
 echo "   📝 View database logs: docker-compose logs -f postgres"
+echo "   📧 View mailhog logs: docker-compose logs -f mailhog"
 echo "   🛑 Stop all services: docker-compose down"
 echo "   🧹 Clean restart: docker-compose down -v && ./dev-local.sh"
 echo ""
 echo "🚀 All services are running in Docker containers!"
 echo "📱 Open http://localhost:3099 to start using SociallyHub"
+echo "📧 Test email registration at http://localhost:8025 (Mailhog catches all emails)"
 echo "────────────────────────────────────────────────"

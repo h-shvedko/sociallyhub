@@ -48,7 +48,11 @@
       "Bash(claude doctor)",
       "Bash(node:*)",
       "Bash(npm --version)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(./dev-local.sh:*)",
+      "Bash(timeout 60 docker-compose logs -f app)",
+      "Bash(timeout 30 docker-compose exec app npx prisma:*)",
+      "Bash(timeout 30 docker-compose exec app npm run db:seed)"
     ],
     "deny": [],
     "ask": []

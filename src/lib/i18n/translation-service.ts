@@ -37,7 +37,9 @@ class TranslationService {
 
   private async translateWithOpenAI(texts: string[], targetLanguage: string, context?: string): Promise<string[]> {
     if (!translationConfig.apiKey) {
-      throw new Error('OpenAI API key not configured')
+      // In development without API key, return original texts
+      console.warn('OpenAI API key not configured - translations disabled')
+      return texts
     }
 
     const systemPrompt = `You are a professional translator specializing in software localization. 

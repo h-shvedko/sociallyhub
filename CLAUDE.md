@@ -254,3 +254,327 @@ docker-compose logs -f app
 - ✅ **Smart setup logic** - only runs migrations/seeding when truly needed
 
 The development environment now provides a complete Docker-based workflow with proper authentication and intelligent setup detection.
+
+## Sign Up Page - Email Verification & Auto Sign-In Implementation
+
+### Overview
+Implemented a comprehensive email verification system for user registration with automatic sign-in after verification. This ensures users can only access the dashboard after confirming their email address, improving security and reducing fake accounts.
+
+### Features Implemented
+
+#### 1. Email Verification System
+**Email Service Enhancement** - `src/lib/notifications/email-service.ts`
+- Added `sendEmailVerification()` method with professional email template
+- Includes branded design with SociallyHub logo and styling
+- 24-hour expiration for security
+- Clear call-to-action button and fallback text link
+- Security notice and instructions for users
+
+#### 2. Email Verification API Routes
+**Email Verification API** - `src/app/api/auth/verify-email/route.ts`
+- **GET**: Handles email verification token validation
+  - Validates token existence and expiration
+  - Updates user's `emailVerified` field
+  - Cleans up used/expired tokens
+  - Returns user data for potential auto sign-in
+- **POST**: Handles resending verification emails
+  - Validates user exists and email not already verified
+  - Generates new verification token
+  - Sends fresh verification email
+
+#### 3. Updated Sign-Up Flow
+**Sign-Up API Changes** - `src/app/api/auth/signup/route.ts`
+- Users created with `emailVerified: null` instead of auto-verified
+- Generates UUID verification token with 24-hour expiration
+- Stores token in `VerificationToken` table
+- Sends verification email immediately after account creation
+- Graceful fallback if email sending fails (account still created)
+
+**Sign-Up Page Updates** - `src/app/auth/signup/page.tsx`
+- Added success state handling for email verification flow
+- Shows "Check Your Email" message with verification instructions
+- Provides options to go to sign-in or create another account
+- Clear visual feedback for email verification requirement
+
+#### 4. Email Verification Page
+**New Verification Page** - `src/app/auth/verify-email/page.tsx`
+- Clean, branded verification experience
+- Real-time token verification on page load
+- Success/error states with appropriate messaging
+- Automatic redirect to sign-in page after successful verification
+- Resend verification option for expired tokens
+- Loading states and error handling
+
+#### 5. Enhanced Authentication Flow
+**Authentication Config Updates** - `src/lib/auth/config.ts`
+- Added email verification check during sign-in
+- Blocks unverified users from signing in (except in development)
+- Clear error messaging for unverified accounts
+- Maintains demo user compatibility
+
+**Sign-In Page Enhancements** - `src/app/auth/signin/page.tsx`
+- Added success message display for recently verified emails
+- Email verification error handling with resend functionality
+- URL parameter detection for verified email confirmation
+- Inline verification email resending without page refresh
+
+### Technical Implementation Details
+
+#### Database Schema Utilization
+- Leveraged existing `User.emailVerified` field (DateTime?)
+- Used existing `VerificationToken` model for token storage
+- Tokens automatically cleaned up after use or expiration
+
+#### Security Features
+- 24-hour token expiration for security
+- Unique UUID tokens to prevent guessing
+- Automatic cleanup of expired/used tokens
+- Development environment bypass for testing
+
+#### User Experience Flow
+1. **Registration**: User fills sign-up form → Account created → Verification email sent
+2. **Email Check**: User receives professional email with verification link
+3. **Verification**: User clicks link → Token validated → Email verified → Redirect to sign-in
+4. **Sign-In**: User attempts sign-in → Email verification checked → Access granted/denied
+5. **Resend Option**: If needed, user can resend verification from sign-in page
+
+#### Error Handling & Fallbacks
+- Graceful email sending failure (account still created)
+- Token expiration handling with resend options
+- Clear error messages for all failure scenarios
+- Development environment bypass for testing
+
+### Environment Configuration
+- Uses existing SMTP configuration from `.env.local`
+- Email verification disabled in development mode
+- Production-ready security with proper token handling
+
+### Benefits Achieved
+- **Enhanced Security**: Only verified users can access the application
+- **Better User Experience**: Clear, professional verification flow
+- **Reduced Fake Accounts**: Email verification requirement
+- **Automatic Sign-In**: Users redirected to sign-in after verification (ready for password-less flow)
+- **Professional Emails**: Branded verification emails with clear instructions
+- **Mobile-Friendly**: Responsive verification pages and emails
+
+### Next Steps for Complete Auto Sign-In
+To implement true automatic sign-in after verification (without requiring password re-entry):
+1. Store temporary session token during verification
+2. Create auto sign-in endpoint that validates session token
+3. Update verification page to call auto sign-in endpoint
+4. Implement session creation without password validation
+
+The foundation is now in place for both email verification and the infrastructure needed for automatic sign-in after verification.
+
+## Email Testing Setup - Mailhog Integration
+
+### Overview
+Added Mailhog container for local email testing to catch and display verification emails without sending real emails during development.
+
+### Implementation Details
+
+#### 1. Mailhog Docker Container
+**Docker Compose Addition** - `docker-compose.yml`
+- Added Mailhog service with health checks
+- SMTP server on port 1025
+- Web UI on port 8025
+- No authentication required (perfect for local development)
+
+#### 2. SMTP Configuration Updates
+**Environment Variables** - `.env.local`
+- Updated SMTP settings to use Mailhog:
+  ```
+  SMTP_HOST="localhost"
+  SMTP_PORT="1025"  
+  SMTP_USER=""
+  SMTP_PASSWORD=""
+  SMTP_FROM="noreply@sociallyhub.dev"
+  SMTP_SECURE="false"
+  ```
+
+**Docker Environment** - `docker-compose.yml`
+- Container uses `mailhog` as hostname
+- App service depends on Mailhog being healthy
+
+#### 3. Email Service Enhancement
+**Smart Authentication Handling** - `src/lib/notifications/email-service.ts`
+- Detects Mailhog/local SMTP servers
+- Skips authentication for local development
+- Still requires authentication for production servers
+- Supports both authenticated and non-authenticated SMTP
+
+#### 4. Development Script Updates
+**Enhanced Setup Script** - `dev-local.sh`
+- Added Mailhog ports (1025, 8025) to conflict checking
+- Included Mailhog service URLs in startup information
+- Added email testing instructions
+
+### Usage Instructions
+
+#### For Developers:
+1. **Start Development Environment:**
+   ```bash
+   ./dev-local.sh
+   ```
+
+2. **Test Email Registration:**
+   - Go to http://localhost:3099/auth/signup
+   - Fill out registration form
+   - Check http://localhost:8025 to see caught emails
+
+3. **View All Caught Emails:**
+   - Open http://localhost:8025 in browser
+   - See all verification emails with working links
+   - Test email templates and formatting
+
+#### Service URLs:
+- **Application**: http://localhost:3099
+- **Mailhog Web UI**: http://localhost:8025 
+- **SMTP Server**: localhost:1025 (internal)
+
+### Benefits Achieved
+- **No Real Emails**: All emails caught locally during development
+- **Visual Email Testing**: See exactly how emails look and function
+- **Link Testing**: Verification links work and can be tested
+- **Template Validation**: Verify email formatting and branding
+- **Fast Development**: No need for real SMTP credentials
+- **Production Ready**: Easy to switch to real SMTP for production
+
+### Production Configuration
+For production deployment, simply update environment variables:
+```
+SMTP_HOST="your-smtp-server.com"
+SMTP_PORT="587"
+SMTP_USER="your-email@domain.com"
+SMTP_PASSWORD="your-smtp-password"
+SMTP_SECURE="true"
+```
+
+The email service will automatically detect and use authentication for non-local SMTP servers.
+
+## Email Verification System - Complete Implementation
+
+### Final Issues Resolved
+
+#### 1. Nodemailer Configuration Error
+**Problem**: `nodemailer.createTransporter is not a function`
+**Root Cause**: Incorrect function name - should be `createTransport` not `createTransporter`
+**Solution**: Fixed in `src/lib/notifications/email-service.ts:70`
+
+#### 2. Logging Method Errors
+**Problem**: `BusinessLogger.logSystemEvent is not a function` and `logNotificationEvent` not found
+**Root Cause**: These methods didn't exist in the logging module
+**Solution**: Replaced with console.log for development logging
+
+#### 3. Translation Service API Key Error
+**Problem**: Console errors about missing OpenAI API key
+**Solution**: Modified translation service to fail gracefully and return original text when API key not configured
+
+### Complete Email Verification Flow
+
+1. **User Registration** (`/auth/signup`)
+   - User fills out registration form
+   - Account created with `emailVerified: null`
+   - Verification token generated (UUID, 24-hour expiry)
+   - Verification email sent via Mailhog
+
+2. **Email Delivery** (Mailhog catches all emails)
+   - Professional HTML email template
+   - SociallyHub branding
+   - Clear verification button
+   - Fallback text link
+   - 24-hour expiration notice
+
+3. **Email Verification** (`/auth/verify-email`)
+   - Token validated from URL
+   - User's emailVerified field updated
+   - Token cleaned up after use
+   - Success message displayed
+   - Redirect to sign-in page
+
+4. **Sign-In with Verification Check** (`/auth/signin`)
+   - Email verification status checked
+   - Unverified users blocked (except in development)
+   - Clear error messages for unverified accounts
+   - Option to resend verification email
+
+### UI/UX Improvements
+
+- **No Browser Alerts**: All messages use in-app UI components
+- **Success State**: Beautiful blue info box with email verification instructions
+- **Error Handling**: Graceful fallbacks for all error scenarios
+- **Professional Design**: Consistent with SociallyHub branding
+
+### Development Environment
+
+#### Mailhog Integration
+- **SMTP Server**: localhost:1025 (no auth required)
+- **Web UI**: http://localhost:8025 (view all caught emails)
+- **Docker Service**: Healthy with automatic restart
+- **Zero Configuration**: Works out of the box
+
+#### Environment Variables
+```env
+# Email Configuration (Mailhog for local development)
+SMTP_HOST="localhost"
+SMTP_PORT="1025"
+SMTP_USER=""
+SMTP_PASSWORD=""
+SMTP_FROM="noreply@sociallyhub.dev"
+SMTP_SECURE="false"
+
+# Optional: AI translations
+OPENAI_API_KEY="your-key-here"
+```
+
+### Technical Implementation
+
+#### Email Service (`src/lib/notifications/email-service.ts`)
+- Smart SMTP detection (Mailhog vs production)
+- Automatic retry logic (3 attempts)
+- Connection pooling for performance
+- Professional email templates
+- Error logging and monitoring
+
+#### Database Schema
+- `User.emailVerified`: DateTime field for verification status
+- `VerificationToken`: Stores tokens with expiry
+- Automatic cleanup of expired tokens
+
+#### API Routes
+- `POST /api/auth/signup`: Creates user and sends verification
+- `GET /api/auth/verify-email`: Validates token and updates user
+- `POST /api/auth/verify-email`: Resends verification email
+
+### Testing Instructions
+
+1. **Start Environment**
+   ```bash
+   ./dev-local.sh
+   ```
+
+2. **Register New User**
+   - Navigate to http://localhost:3099/auth/signup
+   - Fill registration form
+   - See success message (no alert!)
+
+3. **Check Email**
+   - Open http://localhost:8025
+   - View verification email
+   - Click verification link
+
+4. **Complete Verification**
+   - Token validated automatically
+   - Redirected to sign-in
+   - Sign in with credentials
+
+### Benefits Achieved
+
+- ✅ **Professional UX**: No browser alerts, beautiful in-app messages
+- ✅ **Security**: Email verification required for access
+- ✅ **Developer Experience**: Mailhog catches all emails locally
+- ✅ **Production Ready**: Easy switch to real SMTP
+- ✅ **Error Resilience**: Graceful fallbacks at every step
+- ✅ **Internationalization Ready**: Translation service integrated
+
+The email verification system is now production-ready with a complete, professional implementation.

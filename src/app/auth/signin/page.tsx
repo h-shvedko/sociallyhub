@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { signIn, getSession } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { Loader2, Mail, Lock, Eye, EyeOff, CheckCircle } from "lucide-react"
 import { isDemoMode, getDemoCredentialsMessage } from "@/lib/config/demo"
 
 export default function SignInPage() {
@@ -18,13 +18,25 @@ export default function SignInPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isResendingVerification, setIsResendingVerification] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const [showEmailVerification, setShowEmailVerification] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    // Check if user just verified email
+    if (searchParams.get('verified') === 'true') {
+      setSuccess("Email verified successfully! You can now sign in.")
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
+    setSuccess("")
 
     try {
       const result = await signIn("credentials", {
@@ -34,7 +46,13 @@ export default function SignInPage() {
       })
 
       if (result?.error) {
-        setError("Invalid credentials. Please try again.")
+        // Check if error is related to email verification
+        if (result.error.includes("verify your email")) {
+          setShowEmailVerification(true)
+          setError("Please verify your email address before signing in.")
+        } else {
+          setError("Invalid credentials. Please try again.")
+        }
       } else {
         // Check session and redirect
         const session = await getSession()
@@ -46,6 +64,39 @@ export default function SignInPage() {
       setError("An error occurred. Please try again.")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    if (!email) {
+      setError("Please enter your email address first.")
+      return
+    }
+
+    setIsResendingVerification(true)
+    setError("")
+    
+    try {
+      const response = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccess("Verification email sent! Please check your inbox.")
+        setShowEmailVerification(false)
+      } else {
+        setError(data.message || "Failed to send verification email.")
+      }
+    } catch (error) {
+      setError("An error occurred while sending verification email.")
+    } finally {
+      setIsResendingVerification(false)
     }
   }
 
@@ -72,6 +123,34 @@ export default function SignInPage() {
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {success && (
+            <Alert variant="default" className="border-green-200 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800">{success}</AlertDescription>
+            </Alert>
+          )}
+
+          {showEmailVerification && (
+            <Alert variant="default" className="border-blue-200 bg-blue-50">
+              <Mail className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                <div className="space-y-2">
+                  <p>Your email address is not verified. Please check your email for a verification link.</p>
+                  <Button
+                    onClick={handleResendVerification}
+                    variant="outline"
+                    size="sm"
+                    disabled={isResendingVerification}
+                    className="border-blue-300 text-blue-700 hover:bg-blue-100"
+                  >
+                    {isResendingVerification && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Resend Verification Email
+                  </Button>
+                </div>
+              </AlertDescription>
             </Alert>
           )}
 

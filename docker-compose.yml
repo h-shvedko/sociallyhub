@@ -50,6 +50,13 @@ services:
       - NEXTAUTH_SECRET=dev-secret-key-change-in-production
       - NEXTAUTH_URL=http://localhost:3099
       - JWT_SECRET=dev-jwt-secret-change-in-production
+      # SMTP Configuration for Mailhog
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_USER=
+      - SMTP_PASSWORD=
+      - SMTP_FROM=noreply@sociallyhub.dev
+      - SMTP_SECURE=false
       # Enable file watching and hot reload
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=1000
@@ -73,7 +80,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailhog:
+        condition: service_healthy
     command: npm run dev:docker
+
+  # Mailhog for local email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: sociallyhub-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # Prisma Studio (Database GUI)
   prisma-studio:

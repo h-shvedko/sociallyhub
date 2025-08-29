@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer'
 import { EmailNotificationData } from './types'
-import { ErrorLogger, PerformanceLogger, BusinessLogger } from '@/lib/middleware/logging'
+import { ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 
 export interface EmailServiceConfig {
   host: string
@@ -27,7 +27,7 @@ export class EmailService {
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
         user: process.env.SMTP_USER || '',
-        pass: process.env.SMTP_PASS || ''
+        pass: process.env.SMTP_PASSWORD || ''
       },
       from: process.env.SMTP_FROM || 'noreply@sociallyhub.com',
       replyTo: process.env.SMTP_REPLY_TO,
@@ -39,23 +39,35 @@ export class EmailService {
   }
 
   private initializeTransporter(): void {
-    if (!this.config.auth.user || !this.config.auth.pass) {
-      console.warn('Email service not configured - SMTP credentials missing')
-      return
-    }
-
     try {
-      this.transporter = nodemailer.createTransporter({
+      // Check if this is Mailhog (localhost:1025) or other local SMTP without auth
+      const isMailhog = this.config.host === 'localhost' && this.config.port === 1025
+      const isLocalSMTP = this.config.host === 'localhost' || this.config.host === 'mailhog'
+      
+      // For production SMTP servers, require authentication
+      if (!isLocalSMTP && (!this.config.auth.user || !this.config.auth.pass)) {
+        console.warn('Email service not configured - SMTP credentials missing for production server')
+        return
+      }
+
+      // Create transporter config
+      const transporterConfig: any = {
         host: this.config.host,
         port: this.config.port,
         secure: this.config.secure,
-        auth: this.config.auth,
         pool: true,
         maxConnections: 5,
         maxMessages: 100,
         rateDelta: 1000,
         rateLimit: 10
-      })
+      }
+
+      // Only add auth if credentials are provided (not needed for Mailhog)
+      if (this.config.auth.user && this.config.auth.pass) {
+        transporterConfig.auth = this.config.auth
+      }
+
+      this.transporter = nodemailer.createTransport(transporterConfig)
 
       // Verify connection
       this.transporter.verify((error) => {
@@ -66,10 +78,10 @@ export class EmailService {
             { operation: 'connection_verify' }
           )
         } else {
-          BusinessLogger.logSystemEvent(
-            'email_service_initialized',
-            { host: this.config.host, port: this.config.port }
-          )
+          console.log('Email service initialized:', {
+            host: this.config.host,
+            port: this.config.port
+          })
         }
       })
 
@@ -107,16 +119,12 @@ export class EmailService {
 
         const result = await this.transporter.sendMail(mailOptions)
 
-        BusinessLogger.logNotificationEvent(
-          'email_sent',
-          'system',
-          {
-            messageId: result.messageId,
-            recipients: emailData.to.length,
-            retryCount,
-            subject: emailData.subject
-          }
-        )
+        console.log('Email sent successfully:', {
+          messageId: result.messageId,
+          recipients: emailData.to.length,
+          retryCount,
+          subject: emailData.subject
+        })
 
         timer.end({
           success: true,
@@ -166,15 +174,11 @@ export class EmailService {
       const successful = results.filter(r => r.status === 'fulfilled').length
       const failed = results.filter(r => r.status === 'rejected').length
 
-      BusinessLogger.logNotificationEvent(
-        'bulk_emails_sent',
-        'system',
-        {
-          total: emails.length,
-          successful,
-          failed
-        }
-      )
+      console.log('Bulk emails sent:', {
+        total: emails.length,
+        successful,
+        failed
+      })
 
       timer.end({
         total: emails.length,
@@ -375,6 +379,62 @@ export class EmailService {
         </div>
       `,
       text: `${inviterName} invited you to join ${workspaceName} on SociallyHub. Accept invitation: ${invitationUrl}`
+    }
+
+    await this.send(emailData)
+  }
+
+  async sendEmailVerification(userEmail: string, userName: string, verificationToken: string): Promise<void> {
+    const verificationUrl = `${process.env.NEXTAUTH_URL}/auth/verify-email?token=${verificationToken}`
+    
+    const emailData: EmailNotificationData = {
+      to: [userEmail],
+      subject: 'Verify Your Email Address - SociallyHub',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <div style="display: inline-block; background: #2563eb; padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+              <span style="color: white; font-size: 24px; font-weight: bold;">S</span>
+            </div>
+            <h1 style="color: #2563eb; margin: 0;">Verify Your Email Address</h1>
+          </div>
+          
+          <p>Hi ${userName},</p>
+          <p>Thank you for signing up for SociallyHub! To complete your registration and start managing your social media accounts, please verify your email address.</p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${verificationUrl}" style="background: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 16px; font-weight: 600;">
+              Verify Email Address
+            </a>
+          </div>
+          
+          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+            <p style="margin: 0; color: #64748b; font-size: 14px;">
+              <strong>Security Note:</strong> This verification link will expire in 24 hours for security reasons. If you didn't create an account with us, you can safely ignore this email.
+            </p>
+          </div>
+          
+          <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+          <p style="background: #f1f5f9; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 14px; word-break: break-all;">
+            ${verificationUrl}
+          </p>
+          
+          <p>Once verified, you'll be able to:</p>
+          <ul style="color: #475569;">
+            <li>Connect your social media accounts</li>
+            <li>Create and schedule posts</li>
+            <li>Access analytics and insights</li>
+            <li>Collaborate with your team</li>
+          </ul>
+          
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+          <p style="color: #64748b; font-size: 14px;">
+            Best regards,<br>
+            The SociallyHub Team
+          </p>
+        </div>
+      `,
+      text: `Hi ${userName}, thank you for signing up for SociallyHub! Please verify your email address by clicking this link: ${verificationUrl} (expires in 24 hours)`
     }
 
     await this.send(emailData)
