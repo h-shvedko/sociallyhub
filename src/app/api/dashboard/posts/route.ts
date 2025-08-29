@@ -60,7 +60,7 @@ async function getHandler(request: NextRequest) {
         },
         campaign: {
           select: {
-            title: true
+            name: true
           }
         }
       },
@@ -164,7 +164,7 @@ async function getHandler(request: NextRequest) {
         publishedAt: formatTime(),
         scheduledAt: post.status === 'SCHEDULED' ? formatTime() : null,
         engagement: formatEngagement(),
-        campaign: post.campaign?.title || null
+        campaign: post.campaign?.name || null
       }
     })
 

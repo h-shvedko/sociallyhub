@@ -99,7 +99,7 @@ async function getHandler(request: NextRequest) {
           'DIRECT_MESSAGE': 'dm',
           'COMMENT': 'comment',
           'REVIEW': 'review',
-          'MESSAGE': 'message'
+          'REPLY': 'reply'
         }
         return typeMap[type] || type.toLowerCase()
       }
@@ -116,7 +116,7 @@ async function getHandler(request: NextRequest) {
         platform: formatPlatform(item.socialAccount?.provider || 'UNKNOWN'),
         content: truncateContent(item.content || 'No content'),
         time: formatTime(),
-        type: formatType(item.type || 'MESSAGE'),
+        type: formatType(item.type || 'COMMENT'),
         status: item.status?.toLowerCase() || 'new',
         sentiment: item.sentiment?.toLowerCase() || null,
         isUrgent: item.sentiment === 'negative' || (item.slaBreachedAt && new Date(item.slaBreachedAt) <= new Date()),
