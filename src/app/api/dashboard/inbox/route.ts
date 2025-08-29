@@ -34,14 +34,14 @@ async function getHandler(request: NextRequest) {
     const inboxItems = await prisma.inboxItem.findMany({
       where: {
         workspaceId: { in: workspaceIds },
-        status: { not: 'ARCHIVED' } // Exclude archived items from dashboard
+        status: { not: 'CLOSED' } // Exclude closed items from dashboard
       },
       include: {
         socialAccount: {
           select: {
-            platform: true,
-            accountName: true,
-            accountHandle: true
+            provider: true,
+            displayName: true,
+            handle: true
           }
         },
         assignee: {
@@ -79,8 +79,8 @@ async function getHandler(request: NextRequest) {
         }
       }
 
-      // Format platform name
-      const formatPlatform = (platform: string) => {
+      // Format platform name (provider is the field name in socialAccount)
+      const formatPlatform = (provider: string) => {
         const platformMap: { [key: string]: string } = {
           'TWITTER': 'Twitter',
           'FACEBOOK': 'Facebook',
@@ -89,7 +89,7 @@ async function getHandler(request: NextRequest) {
           'YOUTUBE': 'YouTube',
           'TIKTOK': 'TikTok'
         }
-        return platformMap[platform] || platform
+        return platformMap[provider] || provider
       }
 
       // Format type
@@ -113,13 +113,13 @@ async function getHandler(request: NextRequest) {
       return {
         id: item.id,
         author: item.authorName || item.authorHandle || 'Unknown User',
-        platform: formatPlatform(item.socialAccount?.platform || 'UNKNOWN'),
+        platform: formatPlatform(item.socialAccount?.provider || 'UNKNOWN'),
         content: truncateContent(item.content || 'No content'),
         time: formatTime(),
         type: formatType(item.type || 'MESSAGE'),
         status: item.status?.toLowerCase() || 'new',
         sentiment: item.sentiment?.toLowerCase() || null,
-        isUrgent: item.priority === 'HIGH' || item.sentiment === 'NEGATIVE',
+        isUrgent: item.sentiment === 'negative' || (item.slaBreachedAt && new Date(item.slaBreachedAt) <= new Date()),
         platformHandle: item.authorHandle,
         assignee: item.assignee?.name || null
       }
@@ -129,17 +129,17 @@ async function getHandler(request: NextRequest) {
     const totalItems = await prisma.inboxItem.count({
       where: {
         workspaceId: { in: workspaceIds },
-        status: { not: 'ARCHIVED' }
+        status: { not: 'CLOSED' }
       }
     })
 
     const urgentItems = await prisma.inboxItem.count({
       where: {
         workspaceId: { in: workspaceIds },
-        status: { not: 'ARCHIVED' },
+        status: { not: 'CLOSED' },
         OR: [
-          { priority: 'HIGH' },
-          { sentiment: 'NEGATIVE' }
+          { sentiment: 'negative' },
+          { slaBreachedAt: { lte: new Date() } }
         ]
       }
     })
@@ -152,13 +152,13 @@ async function getHandler(request: NextRequest) {
         pending: await prisma.inboxItem.count({
           where: {
             workspaceId: { in: workspaceIds },
-            status: 'PENDING'
+            status: 'OPEN'
           }
         }),
         replied: await prisma.inboxItem.count({
           where: {
             workspaceId: { in: workspaceIds },
-            status: 'REPLIED'
+            status: 'CLOSED'
           }
         })
       }

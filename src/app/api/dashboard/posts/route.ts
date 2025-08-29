@@ -38,8 +38,15 @@ async function getHandler(request: NextRequest) {
       include: {
         variants: {
           select: {
-            platform: true,
-            platformPostId: true
+            socialAccountId: true,
+            providerPostId: true,
+            text: true,
+            socialAccount: {
+              select: {
+                provider: true,
+                displayName: true
+              }
+            }
           }
         },
         metrics: {
@@ -76,9 +83,9 @@ async function getHandler(request: NextRequest) {
       const shares = sharesMetric ? sharesMetric.value : 0
       const reach = reachMetric ? reachMetric.value : 0
 
-      // Get platforms
+      // Get platforms from socialAccount.provider
       const platforms = post.variants.map(v => {
-        // Convert database platform names to display names
+        // Convert database provider names to display names
         const platformMap: { [key: string]: string } = {
           'TWITTER': 'Twitter',
           'FACEBOOK': 'Facebook', 
@@ -87,7 +94,7 @@ async function getHandler(request: NextRequest) {
           'YOUTUBE': 'YouTube',
           'TIKTOK': 'TikTok'
         }
-        return platformMap[v.platform] || v.platform
+        return platformMap[v.socialAccount.provider] || v.socialAccount.provider
       })
 
       // Format engagement text
@@ -149,9 +156,9 @@ async function getHandler(request: NextRequest) {
 
       return {
         id: post.id,
-        content: typeof post.content === 'string' 
-          ? post.content 
-          : (post.content as any)?.text || 'No content',
+        content: post.baseContent || 
+          (post.variants.length > 0 ? post.variants[0].text : null) || 
+          'No content',
         platforms,
         status: post.status.toLowerCase(),
         publishedAt: formatTime(),
