@@ -1,0 +1,418 @@
+# SociallyHub Project Structure
+
+## Authentication Pages
+
+### Sign In Page
+**Page:** `src/app/auth/signin/page.tsx`
+**Related Files:**
+- `src/lib/auth/config.ts` - NextAuth configuration with demo user and session management
+- `src/lib/auth/index.ts` - Auth utilities and session helpers
+- `src/app/api/auth/[...nextauth]/route.ts` - NextAuth API route handler
+- **Database Models:** `User`, `Account`, `Session` (in `prisma/schema.prisma`)
+- **Description:** Handles user authentication with email/password and OAuth providers
+
+### Sign Up Page
+**Page:** `src/app/auth/signup/page.tsx`
+**Related Files:**
+- `src/app/api/auth/signup/route.ts` - User registration API endpoint
+- `src/lib/auth/config.ts` - Authentication configuration
+- **Database Models:** `User`, `UserWorkspace`
+- **Description:** User registration with workspace creation
+
+### Auth Error Page
+**Page:** `src/app/auth/error/page.tsx`
+**Description:** Error handling page for authentication failures
+
+## Main Dashboard Pages
+
+### Dashboard Home
+**Page:** `src/app/dashboard/page.tsx`
+**Related Files:**
+- `src/components/dashboard/overview/dashboard-overview.tsx` - Main dashboard component
+- `src/app/api/analytics/dashboard/route.ts` - Dashboard metrics API
+- `src/app/api/monitoring/metrics/route.ts` - System health metrics
+- **Database Models:** `AnalyticsMetric`, `Post`, `Campaign`
+- **Description:** Main dashboard with overview metrics, activity feed, and quick actions
+
+### Posts Management
+**Page:** `src/app/dashboard/posts/page.tsx`
+**Related Files:**
+- `src/components/dashboard/posts/post-composer.tsx` - Post creation interface
+- `src/components/dashboard/posts/post-comments-system.tsx` - Comments and feedback
+- `src/app/api/posts/route.ts` - Posts CRUD operations
+- `src/app/api/media/upload/route.ts` - Media upload endpoint
+- `src/lib/jobs/processors/post-scheduling.ts` - Post scheduling service
+- **Database Models:** `Post`, `PostVariant`, `MediaAsset`
+- **Description:** Content creation, scheduling, and management interface
+
+### Content Calendar
+**Page:** `src/app/dashboard/calendar/page.tsx`
+**Related Files:**
+- `src/components/dashboard/calendar/calendar-grid.tsx` - Calendar view component
+- `src/components/dashboard/calendar/draggable-calendar-event.tsx` - Drag & drop functionality
+- `src/components/dashboard/calendar/post-scheduler.tsx` - Scheduling interface
+- `src/components/dashboard/calendar/bulk-scheduler.tsx` - Bulk scheduling
+- `src/app/api/posts/route.ts` - Posts API for calendar operations
+- **Database Models:** `Post`, `Campaign`
+- **Description:** Visual content calendar with drag-and-drop scheduling
+
+### Analytics
+**Page:** `src/app/dashboard/analytics/page.tsx`
+**Related Files:**
+- `src/components/dashboard/analytics/analytics-dashboard.tsx` - Main analytics component
+- `src/components/dashboard/analytics/engagement-metrics.tsx` - Engagement tracking
+- `src/components/dashboard/analytics/performance-comparison.tsx` - Platform comparison
+- `src/components/dashboard/analytics/real-time-updates.tsx` - Live metrics
+- `src/app/api/analytics/dashboard/route.ts` - Analytics data API
+- `src/app/api/analytics/platform/route.ts` - Platform-specific analytics
+- `src/lib/analytics/user-analytics.ts` - Analytics service
+- **Database Models:** `AnalyticsMetric`, `UserSession`, `UserAction`
+- **Description:** Comprehensive analytics dashboard with real-time metrics
+
+### Inbox
+**Page:** `src/app/dashboard/inbox/page.tsx`
+**Related Files:**
+- `src/components/dashboard/inbox/inbox-dashboard.tsx` - Unified inbox interface
+- `src/components/dashboard/inbox/conversation-view.tsx` - Message threads
+- `src/components/dashboard/inbox/sentiment-analysis.tsx` - Sentiment tracking
+- `src/components/dashboard/inbox/automated-responses.tsx` - Auto-reply system
+- `src/app/api/inbox/route.ts` - Inbox messages API
+- `src/app/api/inbox/[id]/reply/route.ts` - Reply handling
+- `src/lib/audience/sentiment-analyzer.ts` - Sentiment analysis service
+- **Database Models:** `InboxItem`, `Conversation`, `SentimentAnalysis`
+- **Description:** Unified social media inbox with sentiment analysis
+
+### Campaigns
+**Page:** `src/app/dashboard/campaigns/page.tsx`
+**Related Files:**
+- `src/components/dashboard/campaigns/campaign-dashboard.tsx` - Campaign overview
+- `src/components/dashboard/campaigns/create-campaign-dialog.tsx` - Campaign creation
+- `src/components/dashboard/campaigns/campaign-analytics.tsx` - Campaign metrics
+- `src/components/dashboard/campaigns/ab-testing-dashboard.tsx` - A/B testing
+- `src/components/dashboard/campaigns/budget-management.tsx` - Budget tracking
+- `src/app/api/campaigns/route.ts` - Campaigns CRUD API
+- `src/app/api/campaigns/stats/route.ts` - Campaign statistics
+- **Database Models:** `Campaign`, `CampaignPost`, `ContentABTest`
+- **Description:** Marketing campaign management with A/B testing
+
+### Team Management
+**Page:** `src/app/dashboard/team/page.tsx`
+**Related Files:**
+- `src/components/dashboard/team/team-manager.tsx` - Team overview
+- `src/components/dashboard/team/team-invitation-system.tsx` - Invite members
+- `src/components/dashboard/team/role-permission-interface.tsx` - RBAC management
+- `src/components/dashboard/team/approval-workflow.tsx` - Content approval
+- `src/components/dashboard/team/team-activity-feed.tsx` - Activity tracking
+- `src/app/api/team/route.ts` - Team management API
+- **Database Models:** `UserWorkspace`, `AuditEvent`
+- **Description:** Team collaboration with role-based permissions
+
+### Social Accounts
+**Page:** `src/app/dashboard/accounts/page.tsx`
+**Related Files:**
+- `src/components/dashboard/accounts/social-accounts-manager.tsx` - Account management
+- `src/app/api/accounts/route.ts` - Social accounts API
+- `src/app/api/social/connect/route.ts` - OAuth connection handler
+- **Database Models:** `SocialAccount`
+- **Description:** Connected social media accounts management
+
+### Clients
+**Page:** `src/app/dashboard/clients/page.tsx`
+**Related Files:**
+- `src/components/dashboard/clients/client-dashboard.tsx` - Client overview
+- `src/components/dashboard/clients/client-card.tsx` - Client display
+- `src/components/dashboard/clients/client-onboarding-flow.tsx` - Onboarding
+- `src/components/dashboard/clients/client-reporting-system.tsx` - Reports
+- `src/app/api/clients/route.ts` - Clients CRUD API
+- `src/app/api/clients/stats/route.ts` - Client statistics
+- **Database Models:** `Client`
+- **Description:** Multi-client workspace management
+
+### Assets Library
+**Page:** `src/app/dashboard/assets/page.tsx`
+**Related Files:**
+- `src/components/dashboard/assets/assets-manager.tsx` - Media library
+- `src/app/api/upload/route.ts` - File upload endpoint
+- `src/app/api/images/route.ts` - Image management
+- `src/lib/image-optimization.ts` - Image processing service
+- **Database Models:** `Asset`, `MediaAsset`
+- **Description:** Digital asset management system
+
+### Templates
+**Page:** `src/app/dashboard/templates/page.tsx`
+**Related Files:**
+- `src/components/dashboard/templates/template-manager.tsx` - Template management
+- **Database Models:** `Template`, `ResponseTemplate`
+- **Description:** Content and response template management
+
+### Automation
+**Page:** `src/app/dashboard/automation/page.tsx`
+**Related Files:**
+- `src/components/dashboard/automation/automation-dashboard.tsx` - Automation overview
+- `src/components/dashboard/automation/automation-rule-form.tsx` - Rule creation
+- `src/components/dashboard/automation/smart-responses.tsx` - Auto-responses
+- `src/app/api/automation/rules/route.ts` - Automation rules API
+- `src/app/api/automation/smart-responses/route.ts` - Smart responses API
+- `src/lib/automation/smart-response-system.ts` - Response generation
+- `src/lib/automation/trend-analyzer.ts` - Trend analysis
+- `src/lib/automation/content-gap-analyzer.ts` - Content gaps
+- **Database Models:** `AutomationRule`, `SmartResponse`, `TrendAnalysis`
+- **Description:** Marketing automation and AI-powered responses
+
+### Monitoring
+**Page:** `src/app/dashboard/monitoring/page.tsx`
+**Related Files:**
+- `src/components/dashboard/monitoring/monitoring-dashboard.tsx` - System monitoring
+- `src/app/api/monitoring/metrics/route.ts` - System metrics API
+- `src/app/api/monitoring/alerts/route.ts` - Alert management
+- `src/lib/monitoring/alerts.ts` - Alert service
+- `src/lib/performance/performance-monitor.ts` - Performance tracking
+- **Database Models:** `Alert`, `SystemMetric`
+- **Description:** Real-time system monitoring and alerting
+
+### Settings
+**Page:** `src/app/dashboard/settings/page.tsx`
+**Related Files:**
+- `src/app/api/notifications/preferences/route.ts` - Notification settings
+- **Database Models:** `UserWorkspace`, `NotificationPreference`
+- **Description:** User and workspace settings management
+
+### Profile
+**Page:** `src/app/dashboard/profile/page.tsx`
+**Related Files:**
+- **Database Models:** `User`, `UserLanguagePreference`
+- **Description:** User profile management
+
+### Billing
+**Page:** `src/app/dashboard/billing/page.tsx`
+**Related Files:**
+- **Database Models:** `Workspace`, `Subscription`
+- **Description:** Subscription and billing management
+
+### Help Center
+**Page:** `src/app/dashboard/help/page.tsx`
+**Related Files:**
+- `src/components/dashboard/help/help-center.tsx` - Help documentation
+- **Description:** Documentation and support resources
+
+### Post Composer
+**Page:** `src/app/dashboard/compose/page.tsx`
+**Related Files:**
+- `src/components/dashboard/posts/post-composer.tsx` - Enhanced composer
+- `src/app/api/ai/content/generate/route.ts` - AI content generation
+- `src/app/api/ai/hashtags/suggest/route.ts` - Hashtag suggestions
+- `src/app/api/ai/performance/predict/route.ts` - Performance prediction
+- `src/lib/ai/ai-service.ts` - AI service layer
+- **Database Models:** `Post`, `AIContentSuggestion`, `HashtagSuggestion`
+- **Description:** Advanced post creation with AI assistance
+
+### Workspace
+**Page:** `src/app/dashboard/workspace/page.tsx`
+**Related Files:**
+- **Database Models:** `Workspace`, `UserWorkspace`
+- **Description:** Workspace configuration and management
+
+### Showcase
+**Page:** `src/app/dashboard/showcase/page.tsx`
+**Description:** Feature showcase and demos
+
+## Public Pages
+
+### Landing Page
+**Page:** `src/app/page.tsx`
+**Description:** Main landing page with product information
+
+### About Page
+**Page:** `src/app/about/page.tsx`
+**Description:** Company and product information
+
+### Test Page
+**Page:** `src/app/test/page.tsx`
+**Description:** Development testing page
+
+## Core Services & Libraries
+
+### AI Services
+- `src/lib/ai/ai-service.ts` - Main AI service with OpenAI integration
+- `src/lib/ai/ab-testing-service.ts` - A/B testing service
+- `src/lib/ai/image-analyzer.ts` - Image analysis service
+- `src/lib/visual/image-optimizer.ts` - Image optimization
+- `src/lib/visual/image-analyzer.ts` - Visual analytics
+
+### Authentication
+- `src/lib/auth/config.ts` - NextAuth configuration
+- `src/lib/auth/index.ts` - Auth utilities
+
+### Database
+- `src/lib/prisma.ts` - Prisma client singleton
+- `src/lib/database/query-optimizer.ts` - Query optimization
+
+### Background Jobs
+- `src/lib/jobs/queue-manager.ts` - BullMQ queue management
+- `src/lib/jobs/job-scheduler.ts` - Job scheduling
+- `src/lib/jobs/processors/*` - Job processors
+
+### Caching
+- `src/lib/cache/cache-manager.ts` - Redis cache management
+- `src/lib/cache/next-cache.ts` - Next.js caching
+
+### Monitoring & Logging
+- `src/lib/logger.ts` - Winston logger configuration
+- `src/lib/middleware/logging.ts` - Request/response logging
+- `src/lib/monitoring/alerts.ts` - Alert system
+- `src/lib/performance/performance-monitor.ts` - Performance tracking
+
+### Notifications
+- `src/lib/notifications/notification-manager.ts` - Notification orchestration
+- `src/lib/notifications/email-service.ts` - Email notifications
+- `src/lib/notifications/webhook-service.ts` - Webhook notifications
+- `src/lib/notifications/websocket-manager.ts` - Real-time notifications
+
+### Internationalization
+- `src/lib/i18n/translation-service.ts` - Translation service
+- `src/lib/i18n/config.ts` - i18n configuration
+
+## Database Models Summary
+
+### Core Models
+- **User** - User accounts and authentication
+- **Workspace** - Multi-tenant workspaces
+- **UserWorkspace** - User-workspace relationships with RBAC
+- **Client** - Client management for agencies
+
+### Social Media
+- **SocialAccount** - Connected social accounts
+- **Post** - Content posts
+- **PostVariant** - Platform-specific variations
+- **Campaign** - Marketing campaigns
+- **InboxItem** - Social media messages
+- **Conversation** - Message threads
+
+### Analytics & AI
+- **AnalyticsMetric** - Performance metrics
+- **AIContentSuggestion** - AI-generated content
+- **SentimentAnalysis** - Sentiment tracking
+- **AudienceSegment** - Audience clustering
+- **ContentABTest** - A/B testing data
+
+### System
+- **AuditEvent** - Activity logging
+- **Alert** - System alerts
+- **AutomationRule** - Automation configuration
+- **NotificationPreference** - User preferences
+
+## Testing Infrastructure
+
+### Unit & Integration Tests (`__tests__/`)
+
+#### Test Setup
+- `__tests__/setup/global-setup.js` - Jest global setup for test environment initialization
+- `__tests__/setup/global-teardown.js` - Jest global teardown for cleanup after tests
+- `__tests__/utils/test-helpers.ts` - Shared test utilities and mock data generators
+
+#### Component Tests
+- `__tests__/components/ui/button.test.tsx` - UI component unit tests for button component
+- `__tests__/components/dashboard/overview-cards.test.tsx` - Dashboard overview cards testing
+- `__tests__/components/forms/post-creation-form.test.tsx` - Form validation and submission tests
+
+#### API Tests
+- `__tests__/api/auth.test.ts` - Authentication API endpoint tests (login, signup, session)
+- `__tests__/api/posts.test.ts` - Posts API CRUD operations testing
+- `__tests__/api/version.test.ts` - API versioning and health check tests
+
+#### Performance Tests
+- `__tests__/performance/api-performance.test.ts` - API response time and load testing
+
+**Description:** Comprehensive unit and integration testing suite using Jest and React Testing Library for ensuring code quality and preventing regressions.
+
+### End-to-End Tests (`e2e/`)
+
+#### E2E Setup
+- `e2e/global-setup.ts` - Playwright global setup for browser automation
+- `e2e/global-teardown.ts` - Cleanup after E2E test runs
+
+#### Feature Tests
+- `e2e/auth.spec.ts` - Authentication flow E2E tests (login, logout, registration)
+- `e2e/dashboard.spec.ts` - Dashboard functionality and navigation tests
+
+#### Quality Assurance
+- `e2e/visual/visual-regression.spec.ts` - Visual regression testing to catch UI changes
+- `e2e/accessibility/accessibility.spec.ts` - WCAG compliance and accessibility testing
+- `e2e/performance/performance.spec.ts` - Core Web Vitals and performance metrics testing
+
+**Description:** End-to-end testing using Playwright for full user journey validation, visual regression, and accessibility compliance.
+
+## Docker Configuration (`docker/`)
+
+### Database Initialization
+- `docker/postgres/init.sql` - PostgreSQL database initialization script with schema setup
+
+### Container Configuration
+- `docker/entrypoint.sh` - Docker container entrypoint script for application startup
+- `Dockerfile` - Multi-stage Docker build configuration for production deployment
+- `docker-compose.yml` - Local development environment orchestration with all services
+
+### Monitoring Stack
+- `docker/monitoring/prometheus.yml` - Prometheus configuration for metrics collection
+- `docker/monitoring/loki.yml` - Loki configuration for log aggregation
+- `docker/monitoring/promtail.yml` - Promtail configuration for log shipping to Loki
+
+**Description:** Complete Docker containerization setup for local development and production deployment with integrated monitoring stack.
+
+## Kubernetes Deployment (`k8s/`)
+
+### Cluster Configuration
+- `k8s/namespace.yaml` - Kubernetes namespace definition for resource isolation
+- `k8s/configmap.yaml` - Application configuration and environment variables
+- `k8s/secrets.yaml` - Sensitive data storage (API keys, database credentials)
+
+### Service Deployments
+- `k8s/postgres-deployment.yaml` - PostgreSQL database deployment with persistent storage
+- `k8s/redis-deployment.yaml` - Redis cache deployment for sessions and job queues
+- `k8s/app-deployment.yaml` - Main application deployment with auto-scaling configuration
+
+### Networking
+- `k8s/ingress.yaml` - Ingress controller configuration for external access and SSL
+
+**Description:** Production-ready Kubernetes manifests for deploying SociallyHub in a cloud-native environment with high availability and scalability.
+
+## Automation Scripts (`scripts/`)
+
+### Backup Scripts
+- `scripts/backup/postgres-backup.sh` - Automated PostgreSQL database backup script
+- `scripts/backup/redis-backup.sh` - Redis data export and backup script
+- `scripts/backup/backup-cron.yaml` - Kubernetes CronJob for scheduled backups
+
+### Deployment Scripts
+- `scripts/deploy/deploy.sh` - Production deployment automation script with health checks
+- `scripts/deploy/rollback.sh` - Quick rollback script for failed deployments
+
+**Description:** Utility scripts for database backups, deployment automation, and disaster recovery procedures.
+
+## CI/CD Configuration (`.github/`)
+
+### GitHub Actions Workflows
+- `.github/workflows/ci.yml` - Continuous Integration workflow
+  - Runs on every push and pull request
+  - Executes linting, type checking, unit tests, and builds
+  - Validates Docker image creation
+  
+- `.github/workflows/deploy.yml` - Continuous Deployment workflow
+  - Triggered on main branch merges
+  - Builds and pushes Docker images to registry
+  - Deploys to staging/production Kubernetes clusters
+  - Runs smoke tests post-deployment
+
+- `.github/workflows/cron-tests.yml` - Scheduled testing workflow
+  - Daily E2E test runs against production
+  - Weekly performance and accessibility audits
+  - Monthly security vulnerability scanning
+
+### Pull Request Template
+- `.github/PULL_REQUEST_TEMPLATE.md` - Standardized PR template with checklist
+  - Description requirements
+  - Testing checklist
+  - Documentation updates
+  - Breaking changes notification
+
+**Description:** GitHub Actions CI/CD pipelines for automated testing, building, and deployment with comprehensive quality gates and security scanning.
