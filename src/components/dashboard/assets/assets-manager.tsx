@@ -219,12 +219,13 @@ export function AssetsManager({ workspaceId }: AssetsManagerProps) {
             id="file-upload"
             accept="image/*,video/*,.pdf,.doc,.docx"
           />
-          <label htmlFor="file-upload">
-            <Button disabled={isUploading} className="cursor-pointer">
-              <Upload className="h-4 w-4 mr-2" />
-              {isUploading ? 'Uploading...' : 'Upload Files'}
-            </Button>
-          </label>
+          <Button 
+            disabled={isUploading} 
+            onClick={() => document.getElementById('file-upload')?.click()}
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            {isUploading ? 'Uploading...' : 'Upload Files'}
+          </Button>
         </div>
       </div>
 
@@ -429,12 +430,10 @@ export function AssetsManager({ workspaceId }: AssetsManagerProps) {
             }
           </p>
           {!searchQuery && selectedFilter === 'all' && (
-            <label htmlFor="file-upload">
-              <Button className="cursor-pointer">
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Files
-              </Button>
-            </label>
+            <Button onClick={() => document.getElementById('file-upload')?.click()}>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Files
+            </Button>
           )}
         </div>
       )}

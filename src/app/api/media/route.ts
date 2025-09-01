@@ -51,32 +51,21 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
-      skip: offset,
-      include: {
-        workspace: {
-          include: {
-            userWorkspaces: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      skip: offset
+    })
+
+    // Get current user info for uploader display
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true }
     })
 
     // Transform assets to match frontend interface
     const transformedAssets = assets.map(asset => {
-      // Find the uploader from metadata or default to workspace owner
-      const uploadedBy = asset.workspace.userWorkspaces.find(uw => uw.role === 'OWNER')?.user || {
-        name: 'Unknown User',
-        email: 'unknown@sociallyhub.com'
+      // Use current user as uploader (in most cases assets are uploaded by the current user)
+      const uploadedBy = {
+        name: currentUser?.name || 'Unknown User',
+        email: currentUser?.email || 'unknown@sociallyhub.com'
       }
 
       return {
