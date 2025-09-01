@@ -54,24 +54,38 @@ export async function GET(request: NextRequest) {
     })
 
     // Transform templates to match frontend interface
-    const transformedTemplates = templates.map(template => ({
-      id: template.id,
-      name: template.name,
-      description: template.description,
-      content: template.content,
-      type: template.type,
-      category: 'General', // Default category since it's not in the model
-      tags: [], // Default empty tags since it's not in the model
-      platforms: ['twitter', 'linkedin', 'facebook'], // Default platforms
-      variables: template.variables,
-      usage_count: 0, // Would need separate tracking table
-      created_at: template.createdAt.toISOString(),
-      updated_at: template.updatedAt.toISOString(),
-      created_by: {
-        name: currentUser?.name || 'Unknown User',
-        email: currentUser?.email || 'unknown@sociallyhub.com'
+    const transformedTemplates = templates.map(template => {
+      // Map database type back to frontend-friendly type
+      const getFrontendType = (dbType: string) => {
+        switch (dbType) {
+          case 'POST':
+            return 'SOCIAL_POST'
+          case 'RESPONSE':
+            return 'EMAIL'
+          default:
+            return 'SOCIAL_POST'
+        }
       }
-    }))
+
+      return {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        content: template.content,
+        type: getFrontendType(template.type),
+        category: 'General', // Default category since it's not in the model
+        tags: [], // Default empty tags since it's not in the model
+        platforms: ['twitter', 'linkedin', 'facebook'], // Default platforms
+        variables: template.variables,
+        usage_count: 0, // Would need separate tracking table
+        created_at: template.createdAt.toISOString(),
+        updated_at: template.updatedAt.toISOString(),
+        created_by: {
+          name: currentUser?.name || 'Unknown User',
+          email: currentUser?.email || 'unknown@sociallyhub.com'
+        }
+      }
+    })
 
     const total = await prisma.template.count({ where })
 
@@ -125,13 +139,28 @@ export async function POST(request: NextRequest) {
       match => match[1].trim()
     )
 
+    // Map frontend type to database TemplateType enum
+    const getValidTemplateType = (inputType: string) => {
+      switch (inputType?.toUpperCase()) {
+        case 'EMAIL':
+        case 'SOCIAL_POST':
+        case 'POST':
+          return 'POST'
+        case 'RESPONSE':
+        case 'AUTO_RESPONSE':
+          return 'RESPONSE'
+        default:
+          return 'POST'
+      }
+    }
+
     const template = await prisma.template.create({
       data: {
         workspaceId,
         name,
         description,
         content,
-        type: type || 'POST',
+        type: getValidTemplateType(type),
         variables: variables || extractedVariables
       }
     })
@@ -142,12 +171,24 @@ export async function POST(request: NextRequest) {
       select: { name: true, email: true }
     })
 
+    // Map database type back to frontend type for response
+    const getFrontendType = (dbType: string) => {
+      switch (dbType) {
+        case 'POST':
+          return 'SOCIAL_POST'
+        case 'RESPONSE':
+          return 'EMAIL'
+        default:
+          return 'SOCIAL_POST'
+      }
+    }
+
     return NextResponse.json({
       id: template.id,
       name: template.name,
       description: template.description,
       content: template.content,
-      type: template.type,
+      type: getFrontendType(template.type),
       category: 'General',
       tags: [],
       platforms: ['twitter', 'linkedin', 'facebook'],
