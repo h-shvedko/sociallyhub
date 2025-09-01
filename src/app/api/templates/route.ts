@@ -74,8 +74,8 @@ export async function GET(request: NextRequest) {
         content: template.content,
         type: getFrontendType(template.type),
         category: 'General', // Default category since it's not in the model
-        tags: template.tags,
-        platforms: template.platforms.map(p => p.toLowerCase()),
+        tags: template.tags || [],
+        platforms: (template.platforms || []).map(p => p.toLowerCase()),
         variables: template.variables,
         usage_count: 0, // Would need separate tracking table
         created_at: template.createdAt.toISOString(),
@@ -197,8 +197,8 @@ export async function POST(request: NextRequest) {
       content: template.content,
       type: getFrontendType(template.type),
       category: 'General',
-      tags: template.tags,
-      platforms: template.platforms.map(p => p.toLowerCase()),
+      tags: template.tags || [],
+      platforms: (template.platforms || []).map(p => p.toLowerCase()),
       variables: template.variables,
       usage_count: 0,
       created_at: template.createdAt.toISOString(),
