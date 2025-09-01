@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
@@ -25,43 +26,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
+    const formData = await request.formData()
+    const workspaceId = formData.get('workspaceId') as string
+
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Ensure user exists in database (handles both demo and regular users)
-    let existingUser = await prisma.user.findUnique({
-      where: { id: userId }
-    })
-    
-    if (!existingUser) {
-      // Try finding by email (handles demo user case)
-      const userByEmail = await prisma.user.findUnique({
-        where: { email: session.user.email || 'demo@sociallyhub.com' }
-      })
-      
-      if (userByEmail) {
-        console.log(`User exists by email but different ID. Session ID: ${session.user.id}, DB ID: ${userByEmail.id}`)
-        existingUser = userByEmail
-      } else {
-        // Create user record if it doesn't exist
-        existingUser = await prisma.user.create({
-          data: {
-            id: userId,
-            email: session.user.email || 'unknown@sociallyhub.com',
-            name: session.user.name || 'User',
-            emailVerified: new Date()
-          }
-        })
-      }
-    }
-
-    // Get user's primary workspace
+    // Verify user has access to workspace
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { 
-        userId: existingUser.id,
+      where: {
+        userId,
+        workspaceId: workspaceId,
         role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
       }
     })
@@ -73,37 +50,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const formData = await request.formData()
-    const files = formData.getAll('files') as File[]
+    const file = formData.get('file') as File
 
-    if (!files || files.length === 0) {
+    if (!file) {
       return NextResponse.json(
-        { error: 'No files provided' },
+        { error: 'No file provided' },
         { status: 400 }
       )
     }
 
-    const uploadResults = []
+    // Validate file
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({
+        error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`
+      }, { status: 400 })
+    }
 
-    for (const file of files) {
-      // Validate file
-      if (file.size > MAX_FILE_SIZE) {
-        uploadResults.push({
-          filename: file.name,
-          error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`
-        })
-        continue
-      }
+    if (!ALLOWED_TYPES[file.type as keyof typeof ALLOWED_TYPES]) {
+      return NextResponse.json({
+        error: 'File type not supported'
+      }, { status: 400 })
+    }
 
-      if (!ALLOWED_TYPES[file.type as keyof typeof ALLOWED_TYPES]) {
-        uploadResults.push({
-          filename: file.name,
-          error: 'File type not supported'
-        })
-        continue
-      }
-
-      try {
+    try {
         // Generate unique filename
         const fileExtension = ALLOWED_TYPES[file.type as keyof typeof ALLOWED_TYPES]
         const uniqueFilename = `${uuidv4()}${fileExtension}`
@@ -135,130 +104,63 @@ export async function POST(request: NextRequest) {
           duration = 60.0 // Placeholder
         }
 
-        // Create asset record in database
-        const asset = await prisma.asset.create({
-          data: {
-            workspaceId: userWorkspace.workspaceId,
-            filename: uniqueFilename,
-            originalName: file.name,
-            mimeType: file.type,
-            size: file.size,
-            url: `/uploads/media/${uniqueFilename}`,
-            thumbnailUrl: file.type.startsWith('image/') ? `/uploads/media/${uniqueFilename}` : null,
-            width,
-            height,
-            duration,
-            metadata: {
-              uploadedBy: existingUser.id,
-              uploadedAt: new Date().toISOString()
-            },
-            tags: []
-          }
-        })
+      // Create asset record in database
+      const asset = await prisma.asset.create({
+        data: {
+          workspaceId: userWorkspace.workspaceId,
+          filename: uniqueFilename,
+          originalName: file.name,
+          mimeType: file.type,
+          size: file.size,
+          url: `/uploads/media/${uniqueFilename}`,
+          thumbnailUrl: file.type.startsWith('image/') ? `/uploads/media/${uniqueFilename}` : null,
+          width,
+          height,
+          duration,
+          metadata: {
+            uploadedBy: userId,
+            uploadedAt: new Date().toISOString()
+          },
+          tags: []
+        }
+      })
 
-        uploadResults.push({
-          id: asset.id,
-          filename: file.name,
-          url: asset.url,
-          thumbnailUrl: asset.thumbnailUrl,
-          size: asset.size,
-          mimeType: asset.mimeType,
+      // Get user info for response
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true }
+      })
+
+      return NextResponse.json({
+        id: asset.id,
+        filename: asset.filename,
+        originalName: asset.originalName,
+        mimeType: asset.mimeType,
+        size: asset.size,
+        url: asset.url,
+        thumbnailUrl: asset.thumbnailUrl,
+        uploadedBy: {
+          name: user?.name || 'Unknown User',
+          email: user?.email || 'unknown@sociallyhub.com'
+        },
+        createdAt: asset.createdAt.toISOString(),
+        metadata: {
           width: asset.width,
           height: asset.height,
-          duration: asset.duration,
-          success: true
-        })
+          duration: asset.duration
+        },
+        tags: asset.tags || []
+      })
 
-      } catch (error) {
-        console.error('Error uploading file:', error)
-        uploadResults.push({
-          filename: file.name,
-          error: 'Failed to upload file'
-        })
-      }
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      return NextResponse.json({
+        error: 'Failed to upload file'
+      }, { status: 500 })
     }
-
-    return NextResponse.json({
-      success: true,
-      results: uploadResults
-    })
 
   } catch (error) {
     console.error('Error in media upload:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-// GET /api/media/upload - Get uploaded media (with pagination)
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const limit = parseInt(searchParams.get('limit') || '20')
-    const offset = parseInt(searchParams.get('offset') || '0')
-    const type = searchParams.get('type') // 'image' or 'video'
-
-    // Get user's workspaces
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: { userId: existingUser.id },
-      select: { workspaceId: true }
-    })
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-    // Build where clause
-    const where: any = {
-      workspaceId: { in: workspaceIds }
-    }
-
-    if (type) {
-      where.mimeType = {
-        startsWith: type + '/'
-      }
-    }
-
-    const assets = await prisma.asset.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-      select: {
-        id: true,
-        filename: true,
-        originalName: true,
-        mimeType: true,
-        size: true,
-        url: true,
-        thumbnailUrl: true,
-        width: true,
-        height: true,
-        duration: true,
-        tags: true,
-        createdAt: true
-      }
-    })
-
-    const total = await prisma.asset.count({ where })
-
-    return NextResponse.json({
-      assets,
-      pagination: {
-        limit,
-        offset,
-        total,
-        hasMore: offset + limit < total
-      }
-    })
-
-  } catch (error) {
-    console.error('Error fetching media:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

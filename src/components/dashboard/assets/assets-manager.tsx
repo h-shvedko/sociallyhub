@@ -78,37 +78,11 @@ export function AssetsManager({ workspaceId }: AssetsManagerProps) {
         setAssets(data.assets || [])
       } else {
         console.error('Failed to fetch assets')
-        // Demo data fallback
-        setAssets([
-          {
-            id: '1',
-            filename: 'hero-image.jpg',
-            originalName: 'Hero Image.jpg',
-            mimeType: 'image/jpeg',
-            size: 2048576,
-            url: '/demo/hero-image.jpg',
-            thumbnailUrl: '/demo/hero-image-thumb.jpg',
-            uploadedBy: { name: 'Demo User', email: 'demo@sociallyhub.com' },
-            createdAt: new Date().toISOString(),
-            metadata: { width: 1920, height: 1080 },
-            tags: ['hero', 'banner', 'marketing']
-          },
-          {
-            id: '2',
-            filename: 'product-video.mp4',
-            originalName: 'Product Demo Video.mp4',
-            mimeType: 'video/mp4',
-            size: 15728640,
-            url: '/demo/product-video.mp4',
-            uploadedBy: { name: 'Demo User', email: 'demo@sociallyhub.com' },
-            createdAt: new Date(Date.now() - 86400000).toISOString(),
-            metadata: { width: 1920, height: 1080, duration: 120 },
-            tags: ['product', 'demo', 'video']
-          }
-        ])
+        setAssets([])
       }
     } catch (error) {
       console.error('Error fetching assets:', error)
+      setAssets([])
     } finally {
       setIsLoading(false)
     }
@@ -170,6 +144,9 @@ export function AssetsManager({ workspaceId }: AssetsManagerProps) {
         if (response.ok) {
           const newAsset = await response.json()
           setAssets(prev => [newAsset, ...prev])
+        } else {
+          const error = await response.json()
+          console.error('Upload failed:', error.error)
         }
       }
     } catch (error) {
