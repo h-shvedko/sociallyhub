@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,43 +28,37 @@ interface ABTestingDashboardProps {
 export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboardProps) {
   const [activeTests, setActiveTests] = useState<any[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Load A/B tests from database
+  useEffect(() => {
+    loadABTests()
+  }, [])
+
+  const loadABTests = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/ab-tests')
+      if (response.ok) {
+        const data = await response.json()
+        setActiveTests(data.abTests || [])
+      } else {
+        console.error('Failed to load A/B tests')
+      }
+    } catch (error) {
+      console.error('Error loading A/B tests:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleCreateABTest = async (testData: any) => {
     try {
-      // Here you would normally make an API call to create the test
-      console.log('Creating A/B test:', testData)
-      
-      // For now, just add it to local state
-      const newTest = {
-        id: `test_${Date.now()}`,
-        ...testData,
-        status: 'SETUP',
-        startDate: new Date().toISOString(),
-        variants: [
-          { 
-            ...testData.variantA, 
-            id: 'A', 
-            traffic: testData.splitPercentage[0], 
-            conversions: 0, 
-            conversionRate: 0 
-          },
-          { 
-            ...testData.variantB, 
-            id: 'B', 
-            traffic: 100 - testData.splitPercentage[0], 
-            conversions: 0, 
-            conversionRate: 0 
-          }
-        ],
-        winner: null,
-        confidenceLevel: testData.confidenceLevel,
-        campaignName: campaigns.find(c => c.id === testData.campaignId)?.name || 'Unknown Campaign'
-      }
-      
-      setActiveTests(prev => [...prev, newTest])
+      // API call is handled in the dialog, we just need to refresh the list
+      await loadABTests()
       setIsCreateOpen(false)
     } catch (error) {
-      console.error('Error creating A/B test:', error)
+      console.error('Error after creating A/B test:', error)
     }
   }
 

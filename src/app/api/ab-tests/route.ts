@@ -32,13 +32,6 @@ export async function GET(request: NextRequest) {
       where: {
         workspaceId: { in: workspaceIds }
       },
-      include: {
-        variants: {
-          include: {
-            executions: true
-          }
-        }
-      },
       orderBy: { createdAt: 'desc' }
     })
 
@@ -46,40 +39,51 @@ export async function GET(request: NextRequest) {
       where: {
         workspaceId: { in: workspaceIds }
       },
-      include: {
-        variants: {
-          include: {
-            executions: true
-          }
-        }
-      },
       orderBy: { createdAt: 'desc' }
+    })
+
+    // Get execution counts for each test
+    const contentExecutions = await prisma.aBTestExecution.groupBy({
+      by: ['abTestId'],
+      where: {
+        abTestId: { in: contentTests.map(t => t.id) }
+      },
+      _count: { id: true }
     })
 
     // Combine and format for dashboard
     const allTests = [
-      ...contentTests.map(test => ({
-        id: test.id,
-        type: 'content',
-        name: test.name,
-        description: test.description,
-        status: test.status,
-        campaignId: test.campaignId,
-        variants: test.variants.length,
-        executions: test.variants.reduce((sum, v) => sum + v.executions.length, 0),
-        createdAt: test.createdAt
-      })),
-      ...imageTests.map(test => ({
-        id: test.id,
-        type: 'image',
-        name: test.name,
-        description: test.description,
-        status: test.status,
-        campaignId: test.campaignId,
-        variants: test.variants.length,
-        executions: test.variants.reduce((sum, v) => sum + v.executions.length, 0),
-        createdAt: test.createdAt
-      }))
+      ...contentTests.map(test => {
+        const variants = test.variants as any[] || []
+        const executionCount = contentExecutions.find(e => e.abTestId === test.id)?._count.id || 0
+        
+        return {
+          id: test.id,
+          type: 'content',
+          name: test.testName,
+          description: test.description,
+          status: test.status,
+          campaignId: test.campaignId,
+          variants: variants.length + 1, // variants + control
+          executions: executionCount,
+          createdAt: test.createdAt
+        }
+      }),
+      ...imageTests.map(test => {
+        const variantAssetIds = test.variantAssetIds as string[] || []
+        
+        return {
+          id: test.id,
+          type: 'image',
+          name: test.testName,
+          description: test.description,
+          status: test.status,
+          campaignId: test.campaignId || null,
+          variants: variantAssetIds.length + 1, // variants + control
+          executions: 0, // Image tests don't use ABTestExecution
+          createdAt: test.createdAt
+        }
+      })
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     return NextResponse.json({ abTests: allTests })
@@ -123,34 +127,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Campaign not found or access denied' }, { status: 404 })
     }
 
-    // Create content A/B test (could also create image test based on type)
+    // Create content A/B test using correct schema structure
     const abTest = await prisma.contentABTest.create({
       data: {
         workspaceId,
         campaignId: data.campaignId,
-        name: data.testName,
+        testName: data.testName,
         description: data.description,
-        trafficSplit: data.splitPercentage[0], // percentage for variant A
-        testMetrics: data.metrics,
-        status: 'ACTIVE',
-        variants: {
-          create: [
-            {
-              name: data.variantA.name,
-              content: data.variantA.content,
-              trafficPercentage: data.splitPercentage[0]
-            },
-            {
-              name: data.variantB.name,
-              content: data.variantB.content,
-              trafficPercentage: 100 - data.splitPercentage[0]
-            }
-          ]
+        testType: 'CONTENT',
+        startDate: new Date(),
+        status: 'RUNNING',
+        sampleSize: data.minSampleSize,
+        confidenceLevel: data.confidenceLevel / 100, // Convert percentage to decimal
+        
+        // Control content (Variant A)
+        controlContent: data.variantA.content,
+        controlTitle: data.variantA.name,
+        controlHashtags: [],
+        controlMediaIds: [],
+        
+        // Variants stored as JSON
+        variants: [
+          {
+            name: data.variantB.name,
+            content: data.variantB.content,
+            trafficPercentage: 100 - data.splitPercentage[0],
+            hashtags: [],
+            mediaIds: []
+          }
+        ],
+        
+        // Traffic split as JSON
+        trafficSplit: {
+          control: data.splitPercentage[0],
+          variants: [100 - data.splitPercentage[0]]
         }
-      },
-      include: {
-        variants: true,
-        campaign: true
       }
     })
 

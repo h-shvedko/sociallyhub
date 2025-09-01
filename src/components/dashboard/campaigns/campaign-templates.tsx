@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,24 +14,37 @@ interface CampaignTemplatesProps {
 export function CampaignTemplates({ workspaceId }: CampaignTemplatesProps) {
   const [templates, setTemplates] = useState<any[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Load templates from database
+  useEffect(() => {
+    loadTemplates()
+  }, [workspaceId])
+
+  const loadTemplates = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/templates?workspaceId=${workspaceId}&type=POST`)
+      if (response.ok) {
+        const data = await response.json()
+        setTemplates(data.templates || [])
+      } else {
+        console.error('Failed to load templates')
+      }
+    } catch (error) {
+      console.error('Error loading templates:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleCreateTemplate = async (templateData: any) => {
     try {
-      console.log('Creating template:', templateData)
-      
-      // For now, just add it to local state
-      const newTemplate = {
-        id: `template_${Date.now()}`,
-        ...templateData,
-        usageCount: 0,
-        rating: 0,
-        createdAt: new Date().toISOString()
-      }
-      
-      setTemplates(prev => [...prev, newTemplate])
+      // API call is handled in the dialog, we just need to refresh the list
+      await loadTemplates()
       setIsCreateOpen(false)
     } catch (error) {
-      console.error('Error creating template:', error)
+      console.error('Error after creating template:', error)
     }
   }
 

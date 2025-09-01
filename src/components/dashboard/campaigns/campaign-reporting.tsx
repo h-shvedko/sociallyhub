@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,24 +16,37 @@ interface CampaignReportingProps {
 export function CampaignReporting({ workspaceId, campaigns }: CampaignReportingProps) {
   const [reports, setReports] = useState<any[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Load reports from database
+  useEffect(() => {
+    loadReports()
+  }, [])
+
+  const loadReports = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/campaign-reports')
+      if (response.ok) {
+        const data = await response.json()
+        setReports(data.reports || [])
+      } else {
+        console.error('Failed to load reports')
+      }
+    } catch (error) {
+      console.error('Error loading reports:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleCreateReport = async (reportData: any) => {
     try {
-      console.log('Creating report:', reportData)
-      
-      // For now, just add it to local state
-      const newReport = {
-        id: `report_${Date.now()}`,
-        ...reportData,
-        createdAt: new Date().toISOString(),
-        status: 'READY',
-        downloadUrl: '#'
-      }
-      
-      setReports(prev => [...prev, newReport])
+      // API call is handled in the dialog, we just need to refresh the list
+      await loadReports()
       setIsCreateOpen(false)
     } catch (error) {
-      console.error('Error creating report:', error)
+      console.error('Error after creating report:', error)
     }
   }
 
