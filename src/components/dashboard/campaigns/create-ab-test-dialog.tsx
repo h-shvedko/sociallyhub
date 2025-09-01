@@ -58,22 +58,43 @@ export function CreateABTestDialog({
     confidenceLevel: 95
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onCreate(formData)
-    // Reset form
-    setFormData({
-      campaignId: '',
-      testName: '',
-      description: '',
-      variantA: { name: 'Variant A', content: '' },
-      variantB: { name: 'Variant B', content: '' },
-      splitPercentage: [50],
-      metrics: ['conversions'],
-      minSampleSize: 100,
-      confidenceLevel: 95
-    })
-    onOpenChange(false)
+    
+    try {
+      const response = await fetch('/api/ab-tests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Failed to create A/B test')
+      }
+
+      const result = await response.json()
+      onCreate(result.abTest)
+
+      // Reset form
+      setFormData({
+        campaignId: '',
+        testName: '',
+        description: '',
+        variantA: { name: 'Variant A', content: '' },
+        variantB: { name: 'Variant B', content: '' },
+        splitPercentage: [50],
+        metrics: ['conversions'],
+        minSampleSize: 100,
+        confidenceLevel: 95
+      })
+      onOpenChange(false)
+    } catch (error) {
+      console.error('Error creating A/B test:', error)
+      alert('Failed to create A/B test: ' + (error as Error).message)
+    }
   }
 
   return (

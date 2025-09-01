@@ -30,6 +30,7 @@ model Workspace {
   socialAccounts SocialAccount[]
   posts          Post[]
   campaigns      Campaign[]
+  campaignReports CampaignReport[]
   assets         Asset[]
   templates      Template[]
   inboxItems     InboxItem[]
@@ -330,6 +331,28 @@ model Campaign {
   posts     Post[]
 
   @@map("campaigns")
+}
+
+model CampaignReport {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  type        String   // PERFORMANCE, EXECUTIVE, DETAILED, AB_TEST, CUSTOM
+  format      String   // PDF, EXCEL, CSV, HTML
+  frequency   String   // ON_DEMAND, DAILY, WEEKLY, MONTHLY
+  campaigns   Json     // Array of campaign IDs
+  sections    Json     // Included report sections
+  recipients  String?  // Email recipients
+  status      String   @default("READY") // READY, GENERATING, COMPLETED, FAILED
+  downloadUrl String?
+  generatedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_reports")
 }
 
 // ========================================

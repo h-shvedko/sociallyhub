@@ -70,29 +70,62 @@ export function CreateTemplateDialog({
   const [currentObjective, setCurrentObjective] = useState('')
   const [currentHashtag, setCurrentHashtag] = useState('')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onCreate(formData)
-    // Reset form
-    setFormData({
-      name: '',
-      description: '',
-      category: CampaignType.CUSTOM,
-      platforms: [],
-      objectives: [],
-      content: {
-        text: '',
-        hashtags: [],
-        variables: []
-      },
-      scheduling: {
-        frequency: 'CUSTOM',
-        times: [],
-        timezone: 'UTC'
-      },
-      isReusable: true
-    })
-    onOpenChange(false)
+    
+    try {
+      // Transform form data to match API expectations
+      const templateData = {
+        workspaceId: 'demo-workspace', // TODO: Get from user's actual workspace
+        name: formData.name,
+        description: formData.description,
+        content: formData.content.text,
+        type: 'POST',
+        variables: formData.content.variables.map(v => v.name || v),
+        platforms: formData.platforms,
+        tags: [formData.category, ...formData.content.hashtags]
+      }
+
+      const response = await fetch('/api/templates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(templateData)
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Failed to create template')
+      }
+
+      const result = await response.json()
+      onCreate(result)
+
+      // Reset form
+      setFormData({
+        name: '',
+        description: '',
+        category: CampaignType.CUSTOM,
+        platforms: [],
+        objectives: [],
+        content: {
+          text: '',
+          hashtags: [],
+          variables: []
+        },
+        scheduling: {
+          frequency: 'CUSTOM',
+          times: [],
+          timezone: 'UTC'
+        },
+        isReusable: true
+      })
+      onOpenChange(false)
+    } catch (error) {
+      console.error('Error creating template:', error)
+      alert('Failed to create template: ' + (error as Error).message)
+    }
   }
 
   const handlePlatformToggle = (platform: string) => {

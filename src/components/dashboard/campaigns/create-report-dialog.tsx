@@ -59,29 +59,50 @@ export function CreateReportDialog({
     description: ''
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onCreate(formData)
-    // Reset form
-    setFormData({
-      name: '',
-      type: 'PERFORMANCE',
-      format: 'PDF',
-      frequency: 'ON_DEMAND',
-      campaigns: [],
-      includeSections: {
-        overview: true,
-        performance: true,
-        demographics: false,
-        content: false,
-        budget: false,
-        abTests: false,
-        recommendations: false
-      },
-      recipients: '',
-      description: ''
-    })
-    onOpenChange(false)
+    
+    try {
+      const response = await fetch('/api/campaign-reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Failed to create report')
+      }
+
+      const result = await response.json()
+      onCreate(result.report)
+
+      // Reset form
+      setFormData({
+        name: '',
+        type: 'PERFORMANCE',
+        format: 'PDF',
+        frequency: 'ON_DEMAND',
+        campaigns: [],
+        includeSections: {
+          overview: true,
+          performance: true,
+          demographics: false,
+          content: false,
+          budget: false,
+          abTests: false,
+          recommendations: false
+        },
+        recipients: '',
+        description: ''
+      })
+      onOpenChange(false)
+    } catch (error) {
+      console.error('Error creating report:', error)
+      alert('Failed to create report: ' + (error as Error).message)
+    }
   }
 
   const handleCampaignToggle = (campaignId: string) => {
