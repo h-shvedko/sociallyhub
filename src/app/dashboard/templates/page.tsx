@@ -24,7 +24,7 @@ export default async function TemplatesPage() {
   const userWorkspace = await prisma.userWorkspace.findFirst({
     where: {
       userId,
-      role: 'OWNER'
+      role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
     },
     select: {
       workspaceId: true
