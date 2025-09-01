@@ -92,39 +92,7 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
         setTemplates(data.templates || [])
       } else {
         console.error('Failed to fetch templates')
-        // Demo data fallback
-        setTemplates([
-          {
-            id: '1',
-            name: 'Product Launch Announcement',
-            description: 'Template for announcing new product launches',
-            content: '🎉 Exciting News! We\'re thrilled to announce the launch of {{product_name}}!\n\n{{product_description}}\n\n✨ Key Features:\n{{features}}\n\n👉 Get yours now: {{link}}\n\n#{{product_name}} #NewProduct #Innovation',
-            type: 'SOCIAL_POST',
-            category: 'Marketing',
-            tags: ['product', 'launch', 'announcement'],
-            platforms: ['twitter', 'linkedin', 'facebook'],
-            variables: ['product_name', 'product_description', 'features', 'link'],
-            usage_count: 15,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            created_by: { name: 'Demo User', email: 'demo@sociallyhub.com' }
-          },
-          {
-            id: '2',
-            name: 'Weekly Newsletter',
-            description: 'Weekly company newsletter template',
-            content: 'Hello {{subscriber_name}},\n\nWelcome to this week\'s newsletter!\n\n📈 This Week\'s Highlights:\n{{highlights}}\n\n📚 Featured Content:\n{{featured_content}}\n\n🎯 Upcoming Events:\n{{events}}\n\nBest regards,\nThe {{company_name}} Team',
-            type: 'EMAIL',
-            category: 'Newsletter',
-            tags: ['newsletter', 'weekly', 'email'],
-            platforms: ['email'],
-            variables: ['subscriber_name', 'highlights', 'featured_content', 'events', 'company_name'],
-            usage_count: 8,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            updated_at: new Date(Date.now() - 86400000).toISOString(),
-            created_by: { name: 'Demo User', email: 'demo@sociallyhub.com' }
-          }
-        ])
+        setTemplates([])
       }
     } catch (error) {
       console.error('Error fetching templates:', error)
@@ -525,7 +493,7 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
                 className="font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                Use {{variable_name}} syntax for dynamic content that can be replaced when using the template.
+                Use {`{{variable_name}}`} syntax for dynamic content that can be replaced when using the template.
               </p>
             </div>
             
