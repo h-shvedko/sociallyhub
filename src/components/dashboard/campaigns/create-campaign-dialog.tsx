@@ -18,6 +18,7 @@ import {
   DialogDescription, 
   DialogHeader, 
   DialogTitle,
+  DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog'
 import { DatePickerWithRange } from '@/components/ui/date-picker-with-range'
@@ -58,7 +59,9 @@ export function CreateCampaignDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {children}
+      <DialogTrigger asChild>
+        {children}
+      </DialogTrigger>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Create New Campaign</DialogTitle>

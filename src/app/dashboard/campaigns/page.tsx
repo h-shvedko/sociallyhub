@@ -1,8 +1,10 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/auth-options'
+import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { CampaignDashboard } from '@/components/dashboard/campaigns/campaign-dashboard'
+import { prisma } from '@/lib/prisma'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 export const metadata: Metadata = {
   title: 'Campaign Management | SociallyHub',
@@ -16,9 +18,22 @@ export default async function CampaignsPage() {
     redirect('/auth/signin')
   }
 
-  // Get workspace ID from session or database
-  // For now, we'll use a demo workspace ID
-  const workspaceId = 'demo-workspace-id'
+  // Get workspace ID from user's primary workspace
+  const userId = await normalizeUserId(session.user.id)
+  
+  const userWorkspace = await prisma.userWorkspace.findFirst({
+    where: {
+      userId,
+      role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
+    },
+    select: {
+      workspaceId: true
+    }
+  })
 
-  return <CampaignDashboard workspaceId={workspaceId} />
+  if (!userWorkspace) {
+    redirect('/dashboard/setup')
+  }
+
+  return <CampaignDashboard workspaceId={userWorkspace.workspaceId} />
 }
