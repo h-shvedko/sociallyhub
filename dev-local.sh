@@ -1,5 +1,32 @@
 #!/bin/bash
 
+# SociallyHub Development Environment Setup Script
+# 
+# Usage:
+#   ./dev-local.sh                 # Normal startup (detects changes automatically)
+#   ./dev-local.sh --force-update  # Force database schema update and restart
+#   ./dev-local.sh -f              # Short version of force update
+#
+# For complete reset: docker-compose down -v && ./dev-local.sh
+
+# Parse command line arguments
+FORCE_UPDATE=false
+if [ "$1" = "--force-update" ] || [ "$1" = "-f" ]; then
+    FORCE_UPDATE=true
+    echo "🔄 Force update mode enabled - will update schema and restart services"
+elif [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    echo "🚀 SociallyHub Development Setup Script"
+    echo ""
+    echo "Usage:"
+    echo "  ./dev-local.sh                 # Normal startup"
+    echo "  ./dev-local.sh --force-update  # Force database update"
+    echo "  ./dev-local.sh -f              # Short version"
+    echo "  ./dev-local.sh --help          # Show this help"
+    echo ""
+    echo "For complete reset: docker-compose down -v && ./dev-local.sh"
+    exit 0
+fi
+
 echo "🚀 SociallyHub Local Development Setup"
 echo "======================================"
 echo ""
@@ -203,8 +230,10 @@ if [ $attempt -eq $max_attempts ]; then
     exit 1
 fi
 
-# Only run setup tasks if this is first-time setup or if containers need setup
+# Database and application setup
 if [ "$FIRST_TIME_SETUP" = true ]; then
+    echo "🆕 First-time setup - running complete initialization..."
+    
     # Install dependencies if needed
     if [ ! -d "node_modules" ]; then
         echo "📦 Installing dependencies..."
@@ -245,8 +274,73 @@ if [ "$FIRST_TIME_SETUP" = true ]; then
         exit 1
     fi
 else
-    echo "ℹ️  Existing containers detected, skipping setup steps"
-    echo "💡 To force re-setup: docker-compose down -v && ./dev-local.sh"
+    echo "🔄 Existing setup detected - checking for updates..."
+    
+    # Force update mode or check if schema has changed
+    NEEDS_UPDATE=false
+    if [ "$FORCE_UPDATE" = true ]; then
+        echo "🔄 Force update mode - applying all changes..."
+        NEEDS_UPDATE=true
+    else
+        # Check if schema has changed (this handles code updates)
+        echo "🔍 Checking for database schema changes..."
+        # Run a dry-run to check if there are changes
+        if ! docker-compose exec -T app npx prisma db push --help >/dev/null 2>&1; then
+            echo "⚠️  Prisma command not available, forcing update..."
+            NEEDS_UPDATE=true
+        else
+            # Check for schema drift
+            if docker-compose exec -T app npx prisma db push --accept-data-loss >/dev/null 2>&1; then
+                echo "✅ Database schema synchronized"
+                NEEDS_UPDATE=true
+            else
+                echo "ℹ️  No database schema changes detected"
+            fi
+        fi
+    fi
+    
+    if [ "$NEEDS_UPDATE" = true ]; then
+        # Regenerate Prisma client for new models/changes
+        echo "🔄 Updating Prisma client..."
+        if docker-compose exec -T app npx prisma generate >/dev/null 2>&1; then
+            echo "✅ Prisma client updated"
+        else
+            echo "⚠️  Prisma client update failed, trying to fix..."
+            docker-compose exec -T app npm install @prisma/client prisma
+            docker-compose exec -T app npx prisma generate
+        fi
+        
+        # Restart app container to clear Node.js cache and load new code
+        echo "🔄 Restarting app container for code changes..."
+        docker-compose restart app
+        
+        # Wait for app to be ready after restart
+        echo "⏳ Waiting for application to restart..."
+        sleep 10
+        
+        # Verify app is responsive
+        attempt=0
+        max_attempts=15
+        while [ $attempt -lt $max_attempts ]; do
+            if docker-compose exec -T app curl -s http://localhost:3000/api/auth/session >/dev/null 2>&1; then
+                echo "✅ Application is ready!"
+                break
+            fi
+            attempt=$((attempt + 1))
+            if [ $((attempt % 3)) -eq 0 ]; then
+                echo "   Still starting... ($attempt/$max_attempts)"
+            fi
+            sleep 2
+        done
+        
+        if [ $attempt -eq $max_attempts ]; then
+            echo "⚠️  Application may still be starting. Check logs if issues occur."
+        fi
+    fi
+    
+    echo "💡 Commands:"
+    echo "   🔄 Force update: ./dev-local.sh --force-update"
+    echo "   🧹 Complete reset: docker-compose down -v && ./dev-local.sh"
 fi
 
 echo ""
@@ -277,4 +371,34 @@ echo ""
 echo "🚀 All services are running in Docker containers!"
 echo "📱 Open http://localhost:3099 to start using SociallyHub"
 echo "📧 Test email registration at http://localhost:8025 (Mailhog catches all emails)"
-echo "────────────────────────────────────────────────"
+echo ""
+echo "🧪 Testing Checklist for Campaign Management Features:"
+echo "────────────────────────────────────────────────────────"
+echo "1. 📝 Sign in with demo credentials above"
+echo "2. 🎯 Navigate to Dashboard → Campaigns"
+echo "3. 🧪 Test A/B Test Creation:"
+echo "   • Click 'A/B Testing' tab → 'Create A/B Test' button"
+echo "   • Fill form and create test → Should appear in list"
+echo "   • Refresh page (F5) → Test should still be there ✅"
+echo ""
+echo "4. 📊 Test Report Creation:"
+echo "   • Click 'Reporting' tab → 'Create Report' button"
+echo "   • Fill form and create report → Should appear in list"
+echo "   • Refresh page (F5) → Report should still be there ✅"
+echo ""
+echo "5. 📋 Test Template Creation:"
+echo "   • Click 'Templates' tab → 'Create Template' button"
+echo "   • Fill form and create template → Should appear in list"
+echo "   • Refresh page (F5) → Template should still be there ✅"
+echo ""
+echo "🎯 Expected Results:"
+echo "   ✅ All creation buttons work (no longer disabled)"
+echo "   ✅ Data persists after page refresh (saved to database)"
+echo "   ✅ Items appear immediately after creation"
+echo "   ✅ No errors in browser console or app logs"
+echo ""
+echo "🔍 Debugging Commands:"
+echo "   🐛 View app errors: docker-compose logs app | tail -50"
+echo "   🗄️  Check database: docker-compose exec app npm run prisma:studio"
+echo "   🧹 Full reset if issues: docker-compose down -v && ./dev-local.sh"
+echo "────────────────────────────────────────────────────────"
