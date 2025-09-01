@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import { 
   Plus, 
   Search, 
@@ -74,6 +75,15 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
     platforms: [] as string[]
   })
 
+  const availablePlatforms = [
+    { id: 'twitter', label: 'Twitter', color: 'bg-blue-100 text-blue-800' },
+    { id: 'facebook', label: 'Facebook', color: 'bg-blue-100 text-blue-800' },
+    { id: 'instagram', label: 'Instagram', color: 'bg-pink-100 text-pink-800' },
+    { id: 'linkedin', label: 'LinkedIn', color: 'bg-blue-100 text-blue-800' },
+    { id: 'youtube', label: 'YouTube', color: 'bg-red-100 text-red-800' },
+    { id: 'tiktok', label: 'TikTok', color: 'bg-gray-100 text-gray-800' }
+  ]
+
   useEffect(() => {
     fetchTemplates()
   }, [workspaceId])
@@ -131,6 +141,7 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
       const templateData = {
         ...formData,
         tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
+        platforms: formData.platforms,
         workspaceId
       }
 
@@ -157,7 +168,8 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
     try {
       const templateData = {
         ...formData,
-        tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+        tags: formData.tags.split(',').map(tag => tag.trim()).filter(Boolean),
+        platforms: formData.platforms
       }
 
       const response = await fetch(`/api/templates/${editingTemplate.id}`, {
@@ -227,6 +239,23 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
       tags: '',
       platforms: []
     })
+  }
+
+  const insertVariable = (variableName: string) => {
+    const variable = `{{${variableName}}}`
+    setFormData(prev => ({
+      ...prev,
+      content: prev.content + variable
+    }))
+  }
+
+  const togglePlatform = (platformId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      platforms: prev.platforms.includes(platformId)
+        ? prev.platforms.filter(p => p !== platformId)
+        : [...prev.platforms, platformId]
+    }))
   }
 
   const getTypeIcon = (type: Template['type']) => {
@@ -492,9 +521,60 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
                 rows={8}
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">
-                Use {`{{variable_name}}`} syntax for dynamic content that can be replaced when using the template.
-              </p>
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Use {`{{variable_name}}`} syntax for dynamic content that can be replaced when using the template.
+                </p>
+                <div className="bg-muted p-3 rounded-md">
+                  <h4 className="text-sm font-medium mb-2">Common Variables:</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">User Info:</div>
+                      <div className="space-x-2">
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('user_name')}>
+                          {`{{user_name}}`}
+                        </Badge>
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('user_email')}>
+                          {`{{user_email}}`}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Business:</div>
+                      <div className="space-x-2">
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('company_name')}>
+                          {`{{company_name}}`}
+                        </Badge>
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('brand_name')}>
+                          {`{{brand_name}}`}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Content:</div>
+                      <div className="space-x-2">
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('post_title')}>
+                          {`{{post_title}}`}
+                        </Badge>
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('description')}>
+                          {`{{description}}`}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Platform:</div>
+                      <div className="space-x-2">
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('platform_name')}>
+                          {`{{platform_name}}`}
+                        </Badge>
+                        <Badge variant="outline" className="cursor-pointer" onClick={() => insertVariable('campaign_name')}>
+                          {`{{campaign_name}}`}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             
             <div className="space-y-2">
@@ -505,6 +585,32 @@ export function TemplateManager({ workspaceId }: TemplateManagerProps) {
                 onChange={(e) => setFormData(prev => ({ ...prev, tags: e.target.value }))}
                 placeholder="Enter tags separated by commas"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Platforms</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {availablePlatforms.map((platform) => (
+                  <div key={platform.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={platform.id}
+                      checked={formData.platforms.includes(platform.id)}
+                      onCheckedChange={() => togglePlatform(platform.id)}
+                    />
+                    <Label 
+                      htmlFor={platform.id} 
+                      className="text-sm font-normal cursor-pointer flex items-center space-x-2"
+                    >
+                      <Badge className={cn("text-xs", platform.color)}>
+                        {platform.label}
+                      </Badge>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Select which social media platforms this template is designed for.
+              </p>
             </div>
             
             <div className="flex justify-end space-x-2">

@@ -74,8 +74,8 @@ export async function GET(request: NextRequest) {
         content: template.content,
         type: getFrontendType(template.type),
         category: 'General', // Default category since it's not in the model
-        tags: [], // Default empty tags since it's not in the model
-        platforms: ['twitter', 'linkedin', 'facebook'], // Default platforms
+        tags: template.tags,
+        platforms: template.platforms.map(p => p.toLowerCase()),
         variables: template.variables,
         usage_count: 0, // Would need separate tracking table
         created_at: template.createdAt.toISOString(),
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { workspaceId, name, description, content, type, variables } = body
+    const { workspaceId, name, description, content, type, variables, platforms, tags } = body
 
     if (!workspaceId || !name || !content) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -154,6 +154,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Map platform strings to SocialProvider enum
+    const validPlatforms = platforms?.filter((p: string) => 
+      ['TWITTER', 'FACEBOOK', 'INSTAGRAM', 'LINKEDIN', 'YOUTUBE', 'TIKTOK'].includes(p.toUpperCase())
+    ).map((p: string) => p.toUpperCase()) || []
+
     const template = await prisma.template.create({
       data: {
         workspaceId,
@@ -161,7 +166,9 @@ export async function POST(request: NextRequest) {
         description,
         content,
         type: getValidTemplateType(type),
-        variables: variables || extractedVariables
+        variables: variables || extractedVariables,
+        platforms: validPlatforms,
+        tags: tags || []
       }
     })
 
@@ -190,8 +197,8 @@ export async function POST(request: NextRequest) {
       content: template.content,
       type: getFrontendType(template.type),
       category: 'General',
-      tags: [],
-      platforms: ['twitter', 'linkedin', 'facebook'],
+      tags: template.tags,
+      platforms: template.platforms.map(p => p.toLowerCase()),
       variables: template.variables,
       usage_count: 0,
       created_at: template.createdAt.toISOString(),

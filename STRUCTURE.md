@@ -339,9 +339,22 @@
 ### Templates
 **Page:** `src/app/dashboard/templates/page.tsx`
 **Related Files:**
-- `src/components/dashboard/templates/template-manager.tsx` - Template management
-- **Database Models:** `Template`, `ResponseTemplate`
-- **Description:** Content and response template management
+- `src/components/dashboard/templates/template-manager.tsx` - Complete template management with CRUD operations
+- `src/app/api/templates/route.ts` - Template collection API (GET, POST, DELETE)
+- `src/app/api/templates/[id]/route.ts` - Individual template API (GET, PATCH, DELETE)
+- **Database Models:** `Template` with SocialProvider[] platforms and String[] tags
+- **Features:**
+  - Complete CRUD operations for content templates
+  - Variable system with `{{variable_name}}` syntax and automatic extraction
+  - Platform-specific templates with checkbox selection (Twitter, Facebook, Instagram, LinkedIn, YouTube, TikTok)
+  - Clickable variable suggestions organized by category (User Info, Business, Content, Platform)
+  - Real tags storage as string array in database
+  - Template type mapping between frontend (EMAIL, SOCIAL_POST) and database enum (POST, RESPONSE)
+  - Search and filter functionality by type and category
+  - Template duplication and bulk operations
+  - Workspace isolation with role-based permissions (OWNER, ADMIN, PUBLISHER)
+- **Variable Categories:** user_name, user_email, company_name, brand_name, post_title, description, platform_name, campaign_name
+- **Description:** Professional template management system with variable interpolation, platform targeting, and database-driven content creation
 
 ### Automation Center (Enterprise-Grade AI Platform)
 **Page:** `src/app/dashboard/automation/page.tsx`

@@ -293,16 +293,18 @@ model Asset {
 }
 
 model Template {
-  id          String       @id @default(cuid())
+  id          String          @id @default(cuid())
   workspaceId String
   name        String
   description String?
-  content     String       // Template content with variables
-  variables   String[]     // List of variables like ["product", "url"]
-  type        TemplateType @default(POST)
-  isGlobal    Boolean      @default(false) // Global vs personal templates
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  content     String          // Template content with variables
+  variables   String[]        // List of variables like ["product", "url"]
+  platforms   SocialProvider[] @default([]) // Platforms this template is designed for
+  tags        String[]        @default([]) // Tags for organization
+  type        TemplateType    @default(POST)
+  isGlobal    Boolean         @default(false) // Global vs personal templates
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
