@@ -1,17 +1,39 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Layout, Plus, Copy, Star, Clock } from 'lucide-react'
+import { CreateTemplateDialog } from './create-template-dialog'
 
 interface CampaignTemplatesProps {
   workspaceId: string
 }
 
 export function CampaignTemplates({ workspaceId }: CampaignTemplatesProps) {
-  const templates: any[] = []
+  const [templates, setTemplates] = useState<any[]>([])
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+
+  const handleCreateTemplate = async (templateData: any) => {
+    try {
+      console.log('Creating template:', templateData)
+      
+      // For now, just add it to local state
+      const newTemplate = {
+        id: `template_${Date.now()}`,
+        ...templateData,
+        usageCount: 0,
+        rating: 0,
+        createdAt: new Date().toISOString()
+      }
+      
+      setTemplates(prev => [...prev, newTemplate])
+      setIsCreateOpen(false)
+    } catch (error) {
+      console.error('Error creating template:', error)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -22,10 +44,16 @@ export function CampaignTemplates({ workspaceId }: CampaignTemplatesProps) {
             Reusable campaign templates to speed up campaign creation
           </p>
         </div>
-        <Button onClick={() => console.log('Create Template clicked')} disabled>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Template
-        </Button>
+        <CreateTemplateDialog
+          open={isCreateOpen}
+          onOpenChange={setIsCreateOpen}
+          onCreate={handleCreateTemplate}
+        >
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Template
+          </Button>
+        </CreateTemplateDialog>
       </div>
 
       {/* Template Grid */}
@@ -40,7 +68,7 @@ export function CampaignTemplates({ workspaceId }: CampaignTemplatesProps) {
                   <p className="text-sm text-muted-foreground mb-4">
                     Create your first template to speed up campaign creation
                   </p>
-                  <Button onClick={() => console.log('Create Template clicked')} disabled>
+                  <Button onClick={() => setIsCreateOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     Create Template
                   </Button>

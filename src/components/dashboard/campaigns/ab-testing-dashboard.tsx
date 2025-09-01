@@ -18,6 +18,7 @@ import {
   Calendar
 } from 'lucide-react'
 import { Campaign } from '@/types/campaign'
+import { CreateABTestDialog } from './create-ab-test-dialog'
 
 interface ABTestingDashboardProps {
   workspaceId: string
@@ -25,7 +26,47 @@ interface ABTestingDashboardProps {
 }
 
 export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboardProps) {
-  const [activeTests] = useState([])
+  const [activeTests, setActiveTests] = useState<any[]>([])
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+
+  const handleCreateABTest = async (testData: any) => {
+    try {
+      // Here you would normally make an API call to create the test
+      console.log('Creating A/B test:', testData)
+      
+      // For now, just add it to local state
+      const newTest = {
+        id: `test_${Date.now()}`,
+        ...testData,
+        status: 'SETUP',
+        startDate: new Date().toISOString(),
+        variants: [
+          { 
+            ...testData.variantA, 
+            id: 'A', 
+            traffic: testData.splitPercentage[0], 
+            conversions: 0, 
+            conversionRate: 0 
+          },
+          { 
+            ...testData.variantB, 
+            id: 'B', 
+            traffic: 100 - testData.splitPercentage[0], 
+            conversions: 0, 
+            conversionRate: 0 
+          }
+        ],
+        winner: null,
+        confidenceLevel: testData.confidenceLevel,
+        campaignName: campaigns.find(c => c.id === testData.campaignId)?.name || 'Unknown Campaign'
+      }
+      
+      setActiveTests(prev => [...prev, newTest])
+      setIsCreateOpen(false)
+    } catch (error) {
+      console.error('Error creating A/B test:', error)
+    }
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -46,10 +87,17 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
             Compare different versions of your campaigns to optimize performance
           </p>
         </div>
-        <Button onClick={() => console.log('Create A/B Test clicked')} disabled>
-          <Plus className="h-4 w-4 mr-2" />
-          Create A/B Test
-        </Button>
+        <CreateABTestDialog
+          open={isCreateOpen}
+          onOpenChange={setIsCreateOpen}
+          campaigns={campaigns}
+          onCreate={handleCreateABTest}
+        >
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create A/B Test
+          </Button>
+        </CreateABTestDialog>
       </div>
 
       {/* Overview Stats */}
@@ -124,7 +172,7 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                 <p className="text-sm text-muted-foreground mb-4">
                   Create your first A/B test to compare campaign variations
                 </p>
-                <Button onClick={() => console.log('Create A/B Test clicked')} disabled>
+                <Button onClick={() => setIsCreateOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Create A/B Test
                 </Button>

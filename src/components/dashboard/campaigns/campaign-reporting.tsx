@@ -1,11 +1,12 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FileText, Download, Calendar, Mail, Plus } from 'lucide-react'
 import { Campaign } from '@/types/campaign'
+import { CreateReportDialog } from './create-report-dialog'
 
 interface CampaignReportingProps {
   workspaceId: string
@@ -13,7 +14,28 @@ interface CampaignReportingProps {
 }
 
 export function CampaignReporting({ workspaceId, campaigns }: CampaignReportingProps) {
-  const reports: any[] = []
+  const [reports, setReports] = useState<any[]>([])
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+
+  const handleCreateReport = async (reportData: any) => {
+    try {
+      console.log('Creating report:', reportData)
+      
+      // For now, just add it to local state
+      const newReport = {
+        id: `report_${Date.now()}`,
+        ...reportData,
+        createdAt: new Date().toISOString(),
+        status: 'READY',
+        downloadUrl: '#'
+      }
+      
+      setReports(prev => [...prev, newReport])
+      setIsCreateOpen(false)
+    } catch (error) {
+      console.error('Error creating report:', error)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -24,10 +46,17 @@ export function CampaignReporting({ workspaceId, campaigns }: CampaignReportingP
             Generate and schedule automated reports for your campaigns
           </p>
         </div>
-        <Button onClick={() => console.log('Create Report clicked')} disabled>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Report
-        </Button>
+        <CreateReportDialog
+          open={isCreateOpen}
+          onOpenChange={setIsCreateOpen}
+          campaigns={campaigns}
+          onCreate={handleCreateReport}
+        >
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Report
+          </Button>
+        </CreateReportDialog>
       </div>
 
       {/* Report Templates */}
@@ -42,7 +71,7 @@ export function CampaignReporting({ workspaceId, campaigns }: CampaignReportingP
                   <p className="text-sm text-muted-foreground mb-4">
                     Create your first report to track campaign performance
                   </p>
-                  <Button onClick={() => console.log('Create Report clicked')} disabled>
+                  <Button onClick={() => setIsCreateOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     Create Report
                   </Button>
