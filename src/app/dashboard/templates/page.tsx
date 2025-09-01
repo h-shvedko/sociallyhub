@@ -21,17 +21,25 @@ export default async function TemplatesPage() {
   // Get workspace ID from user's primary workspace
   const userId = await normalizeUserId(session.user.id)
   
+  // Debug logging
+  console.log('Templates page - Session user ID:', session.user.id)
+  console.log('Templates page - Normalized user ID:', userId)
+  
   const userWorkspace = await prisma.userWorkspace.findFirst({
     where: {
       userId,
       role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
     },
     select: {
-      workspaceId: true
+      workspaceId: true,
+      role: true
     }
   })
+  
+  console.log('Templates page - UserWorkspace found:', userWorkspace)
 
   if (!userWorkspace) {
+    console.log('Templates page - No workspace found, redirecting to setup')
     redirect('/dashboard/setup')
   }
 
