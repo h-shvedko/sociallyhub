@@ -127,24 +127,25 @@ export function AutomationRuleForm({ rule, workspaceId, onSave, onCancel }: Auto
 
   return (
     <Dialog open={true} onOpenChange={onCancel}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Bot className="w-5 h-5" />
             {rule?.id ? 'Edit Automation Rule' : 'Create Automation Rule'}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-          <Tabs value={currentTab} onValueChange={setCurrentTab}>
-            <TabsList className="grid w-full grid-cols-4">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <Tabs value={currentTab} onValueChange={setCurrentTab} className="flex-1 min-h-0 flex flex-col">
+            <TabsList className="grid w-full grid-cols-4 flex-shrink-0">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
               <TabsTrigger value="triggers">Triggers</TabsTrigger>
               <TabsTrigger value="actions">Actions</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="basic" className="space-y-6 mt-6">
+            <div className="flex-1 min-h-0 overflow-y-auto px-1">
+              <TabsContent value="basic" className="space-y-6 mt-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Rule Information</CardTitle>
@@ -234,15 +235,133 @@ export function AutomationRuleForm({ rule, workspaceId, onSave, onCancel }: Auto
                     Define when this rule should be triggered
                   </p>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8">
-                    <Zap className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Trigger Configuration</h3>
-                    <p className="text-gray-600 mb-4">
-                      Advanced trigger configuration will be available in the next update
-                    </p>
-                    <Badge variant="outline">Coming Soon</Badge>
-                  </div>
+                <CardContent className="space-y-4">
+                  {formData.ruleType === 'SMART_RESPONSE' && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Trigger Platforms</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {['TWITTER', 'FACEBOOK', 'INSTAGRAM', 'LINKEDIN'].map(platform => (
+                            <div key={platform} className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                id={platform}
+                                checked={formData.triggers.platforms?.includes(platform) || false}
+                                onChange={(e) => {
+                                  const platforms = formData.triggers.platforms || []
+                                  if (e.target.checked) {
+                                    setFormData({
+                                      ...formData,
+                                      triggers: {
+                                        ...formData.triggers,
+                                        platforms: [...platforms, platform]
+                                      }
+                                    })
+                                  } else {
+                                    setFormData({
+                                      ...formData,
+                                      triggers: {
+                                        ...formData.triggers,
+                                        platforms: platforms.filter(p => p !== platform)
+                                      }
+                                    })
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={platform}>{platform}</Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="keywords">Keywords (one per line)</Label>
+                        <Textarea
+                          id="keywords"
+                          placeholder="help&#10;support&#10;question"
+                          value={formData.triggers.keywords?.join('\n') || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            triggers: {
+                              ...formData.triggers,
+                              keywords: e.target.value.split('\n').filter(k => k.trim())
+                            }
+                          })}
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Sentiment Filter</Label>
+                        <Select
+                          value={formData.triggers.sentiment || 'all'}
+                          onValueChange={(value) => setFormData({
+                            ...formData,
+                            triggers: { ...formData.triggers, sentiment: value }
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Sentiments</SelectItem>
+                            <SelectItem value="positive">Positive Only</SelectItem>
+                            <SelectItem value="negative">Negative Only</SelectItem>
+                            <SelectItem value="neutral">Neutral Only</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+
+                  {formData.ruleType === 'CONTENT_SUGGESTION' && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Trending Topics</Label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="trending"
+                            checked={formData.triggers.useTrending || false}
+                            onChange={(e) => setFormData({
+                              ...formData,
+                              triggers: { ...formData.triggers, useTrending: e.target.checked }
+                            })}
+                          />
+                          <Label htmlFor="trending">Monitor trending topics</Label>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="schedule">Content Schedule</Label>
+                        <Select
+                          value={formData.triggers.schedule || 'daily'}
+                          onValueChange={(value) => setFormData({
+                            ...formData,
+                            triggers: { ...formData.triggers, schedule: value }
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="hourly">Every Hour</SelectItem>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+
+                  {['CRISIS_MANAGEMENT', 'SCHEDULING_OPTIMIZATION', 'TREND_MONITORING', 'ENGAGEMENT_FOLLOW_UP'].includes(formData.ruleType) && (
+                    <div className="text-center py-4">
+                      <Zap className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">
+                        Advanced triggers for {selectedType?.name} will be available soon
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -255,15 +374,125 @@ export function AutomationRuleForm({ rule, workspaceId, onSave, onCancel }: Auto
                     Define what actions should be taken when this rule is triggered
                   </p>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8">
-                    <Settings className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Action Configuration</h3>
-                    <p className="text-gray-600 mb-4">
-                      Advanced action configuration will be available in the next update
-                    </p>
-                    <Badge variant="outline">Coming Soon</Badge>
-                  </div>
+                <CardContent className="space-y-4">
+                  {formData.ruleType === 'SMART_RESPONSE' && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="responseTemplate">Response Template</Label>
+                        <Textarea
+                          id="responseTemplate"
+                          placeholder="Thank you for your message! We'll get back to you within 24 hours."
+                          value={formData.actions.responseTemplate || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            actions: { ...formData.actions, responseTemplate: e.target.value }
+                          })}
+                          rows={3}
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label>Response Tone</Label>
+                        <Select
+                          value={formData.actions.tone || 'professional'}
+                          onValueChange={(value) => setFormData({
+                            ...formData,
+                            actions: { ...formData.actions, tone: value }
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="professional">Professional</SelectItem>
+                            <SelectItem value="friendly">Friendly</SelectItem>
+                            <SelectItem value="casual">Casual</SelectItem>
+                            <SelectItem value="formal">Formal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="delay">Response Delay (minutes)</Label>
+                        <Input
+                          id="delay"
+                          type="number"
+                          min="0"
+                          max="1440"
+                          value={formData.actions.delayMinutes || 0}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            actions: { ...formData.actions, delayMinutes: parseInt(e.target.value) || 0 }
+                          })}
+                        />
+                        <p className="text-sm text-gray-500">0 = Immediate response</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {formData.ruleType === 'CONTENT_SUGGESTION' && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Content Categories</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {['Educational', 'Promotional', 'Behind-the-scenes', 'User-generated'].map(category => (
+                            <div key={category} className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                id={category}
+                                checked={formData.actions.categories?.includes(category) || false}
+                                onChange={(e) => {
+                                  const categories = formData.actions.categories || []
+                                  if (e.target.checked) {
+                                    setFormData({
+                                      ...formData,
+                                      actions: {
+                                        ...formData.actions,
+                                        categories: [...categories, category]
+                                      }
+                                    })
+                                  } else {
+                                    setFormData({
+                                      ...formData,
+                                      actions: {
+                                        ...formData.actions,
+                                        categories: categories.filter(c => c !== category)
+                                      }
+                                    })
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={category}>{category}</Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="suggestionsCount">Number of Suggestions</Label>
+                        <Input
+                          id="suggestionsCount"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={formData.actions.suggestionsCount || 3}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            actions: { ...formData.actions, suggestionsCount: parseInt(e.target.value) || 3 }
+                          })}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {['CRISIS_MANAGEMENT', 'SCHEDULING_OPTIMIZATION', 'TREND_MONITORING', 'ENGAGEMENT_FOLLOW_UP'].includes(formData.ruleType) && (
+                    <div className="text-center py-4">
+                      <Settings className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">
+                        Advanced actions for {selectedType?.name} will be available soon
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -330,9 +559,10 @@ export function AutomationRuleForm({ rule, workspaceId, onSave, onCancel }: Auto
                 </CardContent>
               </Card>
             </TabsContent>
+            </div>
           </Tabs>
 
-          <div className="flex justify-between pt-6 border-t">
+          <div className="flex justify-between pt-4 border-t flex-shrink-0">
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>

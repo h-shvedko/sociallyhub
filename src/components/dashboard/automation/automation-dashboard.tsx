@@ -27,6 +27,7 @@ import { AutomationRuleList } from './automation-rule-list'
 import { AutomationMetrics } from './automation-metrics'
 import { AutomationRuleForm } from './automation-rule-form'
 import { SmartResponses } from './smart-responses'
+import { ContentIntelligence } from './content-intelligence'
 
 interface AutomationDashboardProps {
   workspaceId: string
@@ -34,7 +35,19 @@ interface AutomationDashboardProps {
 
 export function AutomationDashboard({ workspaceId }: AutomationDashboardProps) {
   const [automationRules, setAutomationRules] = useState<any[]>([])
-  const [metrics, setMetrics] = useState<any>(null)
+  const [metrics, setMetrics] = useState<any>({
+    totalRules: 0,
+    activeRules: 0,
+    totalExecutions: 0,
+    successfulExecutions: 0,
+    averageResponseTime: 0,
+    timeSaved: 0,
+    engagementIncrease: 0,
+    errorRate: 0,
+    recentExecutions: [],
+    topPerformingRules: [],
+    recommendations: []
+  })
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [selectedRule, setSelectedRule] = useState<any>(null)
@@ -55,9 +68,24 @@ export function AutomationDashboard({ workspaceId }: AutomationDashboardProps) {
       const metricsData = await metricsResponse.json()
       
       setAutomationRules(Array.isArray(rules) ? rules : [])
-      setMetrics(metricsData)
+      
+      // Ensure metrics always has valid properties
+      setMetrics({
+        totalRules: metricsData?.totalRules ?? 0,
+        activeRules: metricsData?.activeRules ?? 0,
+        totalExecutions: metricsData?.totalExecutions ?? 0,
+        successfulExecutions: metricsData?.successfulExecutions ?? 0,
+        averageResponseTime: metricsData?.averageResponseTime ?? 0,
+        timeSaved: metricsData?.timeSaved ?? 0,
+        engagementIncrease: metricsData?.engagementIncrease ?? 0,
+        errorRate: metricsData?.errorRate ?? 0,
+        recentExecutions: metricsData?.recentExecutions ?? [],
+        topPerformingRules: metricsData?.topPerformingRules ?? [],
+        recommendations: metricsData?.recommendations ?? []
+      })
     } catch (error) {
       console.error('Error fetching automation data:', error)
+      // Keep default metrics on error
     } finally {
       setLoading(false)
     }
@@ -167,7 +195,7 @@ export function AutomationDashboard({ workspaceId }: AutomationDashboardProps) {
 
         <TabsContent value="overview" className="space-y-6">
           {/* Automation Metrics Overview */}
-          {metrics && <AutomationMetrics metrics={metrics} />}
+          <AutomationMetrics metrics={metrics} />
 
           {/* Automation Types Grid */}
           <div>
@@ -252,31 +280,16 @@ export function AutomationDashboard({ workspaceId }: AutomationDashboardProps) {
           <AutomationRuleList
             rules={automationRules}
             onToggleStatus={toggleRuleStatus}
-            onEdit={setSelectedRule}
+            onEdit={(rule) => {
+              setSelectedRule(rule)
+              setShowCreateForm(true)
+            }}
             onRefresh={fetchAutomationData}
           />
         </TabsContent>
 
         <TabsContent value="content">
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Content Intelligence</CardTitle>
-                <p className="text-sm text-gray-600">
-                  AI-powered content suggestions and trend analysis
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <Bot className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                  <p className="text-gray-600">Content Intelligence dashboard coming soon</p>
-                  <Button variant="outline" className="mt-4">
-                    Enable Content Intelligence
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <ContentIntelligence workspaceId={workspaceId} />
         </TabsContent>
 
         <TabsContent value="responses">

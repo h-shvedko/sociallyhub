@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
 import { BusinessLogger } from '@/lib/middleware/logging'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,9 +20,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access to workspace
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: {
-        userId: session.user.id,
+        userId,
         workspaceId: workspaceId
       }
     })
@@ -73,9 +75,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to workspace and sufficient permissions
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: {
-        userId: session.user.id,
+        userId,
         workspaceId: workspaceId,
         role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
       }

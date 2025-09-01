@@ -77,9 +77,11 @@ export function SmartResponses({ workspaceId }: SmartResponsesProps) {
       setLoading(true)
       const response = await fetch(`/api/automation/smart-responses?workspaceId=${workspaceId}`)
       const data = await response.json()
-      setResponses(data)
+      // Ensure data is an array
+      setResponses(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error fetching smart responses:', error)
+      setResponses([])
     } finally {
       setLoading(false)
     }
@@ -105,14 +107,14 @@ export function SmartResponses({ workspaceId }: SmartResponsesProps) {
     }
   }
 
-  const filteredResponses = responses.filter(response => {
-    const matchesSearch = response.originalMessage.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         response.suggestedResponse.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = filterStatus === 'all' || response.status.toLowerCase() === filterStatus
-    const matchesUrgency = filterUrgency === 'all' || response.urgency.toLowerCase() === filterUrgency
+  const filteredResponses = Array.isArray(responses) ? responses.filter(response => {
+    const matchesSearch = response.originalMessage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         response.suggestedResponse?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesStatus = filterStatus === 'all' || response.status?.toLowerCase() === filterStatus
+    const matchesUrgency = filterUrgency === 'all' || response.urgency?.toLowerCase() === filterUrgency
     
     return matchesSearch && matchesStatus && matchesUrgency
-  })
+  }) : []
 
   const getUrgencyColor = (urgency: string) => {
     switch (urgency.toLowerCase()) {
