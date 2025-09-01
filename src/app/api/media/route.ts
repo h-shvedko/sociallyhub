@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
 import { normalizeUserId } from '@/lib/auth/demo-user'
+import { unlink } from 'fs/promises'
+import { join } from 'path'
 
 export async function GET(request: NextRequest) {
   try {
@@ -136,6 +138,31 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
+    // First, get the assets to delete so we can remove the files from storage
+    const assetsToDelete = await prisma.asset.findMany({
+      where: {
+        id: { in: assetIds },
+        workspaceId: workspaceId
+      },
+      select: {
+        id: true,
+        filename: true,
+        url: true
+      }
+    })
+
+    // Delete physical files from storage
+    for (const asset of assetsToDelete) {
+      try {
+        // Convert URL path to file system path
+        const filePath = join(process.cwd(), 'public', asset.url.replace(/^\//, ''))
+        await unlink(filePath)
+      } catch (fileError) {
+        console.warn(`Failed to delete file ${asset.filename}:`, fileError)
+        // Continue even if file deletion fails (file might already be deleted)
+      }
+    }
+
     // Delete assets from database
     await prisma.asset.deleteMany({
       where: {
@@ -144,7 +171,10 @@ export async function DELETE(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ 
+      success: true,
+      deletedCount: assetsToDelete.length 
+    })
 
   } catch (error) {
     console.error('Error deleting assets:', error)
