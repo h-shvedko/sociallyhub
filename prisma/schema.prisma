@@ -317,6 +317,8 @@ model Campaign {
   clientId    String?
   name        String
   description String?
+  status      String   @default("DRAFT") // DRAFT, SCHEDULED, ACTIVE, PAUSED, COMPLETED, CANCELLED
+  type        String   @default("CUSTOM") // BRAND_AWARENESS, LEAD_GENERATION, ENGAGEMENT, etc.
   startDate   DateTime?
   endDate     DateTime?
   objectives  Json?    // Campaign goals and KPIs

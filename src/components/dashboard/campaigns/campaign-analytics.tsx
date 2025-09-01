@@ -36,52 +36,49 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
   const [selectedCampaign, setSelectedCampaign] = useState<string>('all')
   const [dateRange, setDateRange] = useState<string>('30d')
   const [isLoading, setIsLoading] = useState(false)
+  const [analyticsData, setAnalyticsData] = useState<any>(null)
 
-  const mockAnalyticsData = {
-    overview: {
-      totalReach: 125000,
-      totalImpressions: 450000,
-      totalEngagement: 18500,
-      totalClicks: 3200,
-      totalConversions: 185,
-      totalSpent: 2500,
-      averageROI: 7.4,
-      averageCTR: 0.71,
-      averageEngagementRate: 4.1
-    },
-    performance: [
-      { date: '2024-01-01', reach: 5200, engagement: 180, clicks: 45, conversions: 3 },
-      { date: '2024-01-02', reach: 6100, engagement: 220, clicks: 52, conversions: 4 },
-      { date: '2024-01-03', reach: 4800, engagement: 160, clicks: 38, conversions: 2 },
-      // ... more data points
-    ],
-    demographics: {
-      ageGroups: {
-        '18-24': 25,
-        '25-34': 35,
-        '35-44': 20,
-        '45-54': 15,
-        '55+': 5
+  // Calculate real analytics data from campaigns
+  const calculateAnalyticsData = () => {
+    const filteredCampaigns = selectedCampaign === 'all' 
+      ? campaigns 
+      : campaigns.filter(c => c.id === selectedCampaign)
+
+    const totalBudget = filteredCampaigns.reduce((sum, campaign) => {
+      return sum + (campaign.objectives?.budget?.totalBudget || 0)
+    }, 0)
+
+    const spentBudget = filteredCampaigns.reduce((sum, campaign) => {
+      return sum + (campaign.objectives?.budget?.spentAmount || 0)
+    }, 0)
+
+    return {
+      overview: {
+        totalReach: 0,
+        totalImpressions: 0,
+        totalEngagement: 0,
+        totalClicks: 0,
+        totalConversions: 0,
+        totalSpent: spentBudget,
+        averageROI: 0,
+        averageCTR: 0,
+        averageEngagementRate: 0
       },
-      genders: {
-        'Male': 45,
-        'Female': 50,
-        'Other': 5
+      performance: [],
+      demographics: {
+        ageGroups: {},
+        genders: {},
+        locations: {}
       },
-      locations: {
-        'United States': 40,
-        'United Kingdom': 20,
-        'Canada': 15,
-        'Australia': 10,
-        'Other': 15
-      }
-    },
-    topPosts: [
-      { id: '1', content: 'Amazing product launch post...', engagement: 1200, reach: 15000 },
-      { id: '2', content: 'Customer testimonial story...', engagement: 980, reach: 12000 },
-      { id: '3', content: 'Behind the scenes content...', engagement: 850, reach: 10500 }
-    ]
+      topPosts: []
+    }
   }
+
+  useEffect(() => {
+    setAnalyticsData(calculateAnalyticsData())
+  }, [selectedCampaign, dateRange, campaigns])
+
+  const data = analyticsData || calculateAnalyticsData()
 
   return (
     <div className="space-y-6">
@@ -122,11 +119,11 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
         </div>
         
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={isLoading}>
+          <Button variant="outline" size="sm" disabled={isLoading} onClick={() => console.log('Refresh analytics clicked')}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => console.log('Export analytics clicked')} disabled>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
@@ -142,10 +139,10 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {mockAnalyticsData.overview.totalReach.toLocaleString()}
+              {data.overview.totalReach.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
-              +12.5% from last period
+              No data available
             </p>
           </CardContent>
         </Card>
@@ -157,10 +154,10 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {mockAnalyticsData.overview.totalEngagement.toLocaleString()}
+              {data.overview.totalEngagement.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
-              {mockAnalyticsData.overview.averageEngagementRate}% engagement rate
+              {data.overview.averageEngagementRate}% engagement rate
             </p>
           </CardContent>
         </Card>
@@ -172,10 +169,10 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {mockAnalyticsData.overview.totalConversions}
+              {data.overview.totalConversions}
             </div>
             <p className="text-xs text-muted-foreground">
-              {mockAnalyticsData.overview.averageCTR}% click-through rate
+              {data.overview.averageCTR}% click-through rate
             </p>
           </CardContent>
         </Card>
@@ -187,10 +184,10 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {mockAnalyticsData.overview.averageROI}%
+              {data.overview.averageROI}%
             </div>
             <p className="text-xs text-muted-foreground">
-              ${mockAnalyticsData.overview.totalSpent.toLocaleString()} spent
+              ${data.overview.totalSpent.toLocaleString()} spent
             </p>
           </CardContent>
         </Card>
@@ -232,7 +229,7 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
                 <CardTitle>Age Groups</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {Object.entries(mockAnalyticsData.demographics.ageGroups).map(([age, percentage]) => (
+                {Object.entries(data.demographics.ageGroups).map(([age, percentage]) => (
                   <div key={age} className="flex items-center justify-between">
                     <span className="text-sm">{age}</span>
                     <Badge variant="outline">{percentage}%</Badge>
@@ -246,7 +243,7 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
                 <CardTitle>Gender</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {Object.entries(mockAnalyticsData.demographics.genders).map(([gender, percentage]) => (
+                {Object.entries(data.demographics.genders).map(([gender, percentage]) => (
                   <div key={gender} className="flex items-center justify-between">
                     <span className="text-sm">{gender}</span>
                     <Badge variant="outline">{percentage}%</Badge>
@@ -260,7 +257,7 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
                 <CardTitle>Top Locations</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {Object.entries(mockAnalyticsData.demographics.locations).map(([location, percentage]) => (
+                {Object.entries(data.demographics.locations).map(([location, percentage]) => (
                   <div key={location} className="flex items-center justify-between">
                     <span className="text-sm">{location}</span>
                     <Badge variant="outline">{percentage}%</Badge>
@@ -278,7 +275,7 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {mockAnalyticsData.topPosts.map((post, index) => (
+                {data.topPosts.map((post, index) => (
                   <div key={post.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="flex items-center gap-3">
                       <Badge variant="outline" className="w-6 h-6 p-0 flex items-center justify-center">

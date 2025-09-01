@@ -25,38 +25,7 @@ interface ABTestingDashboardProps {
 }
 
 export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboardProps) {
-  const [activeTests] = useState([
-    {
-      id: '1',
-      campaignId: '1',
-      campaignName: 'Summer Sale Campaign',
-      testName: 'Headline Comparison',
-      status: 'RUNNING',
-      startDate: '2024-01-15',
-      endDate: '2024-01-30',
-      variants: [
-        { id: 'A', name: 'Variant A', traffic: 50, conversions: 45, conversionRate: 4.5 },
-        { id: 'B', name: 'Variant B', traffic: 50, conversions: 62, conversionRate: 6.2 }
-      ],
-      winner: null,
-      confidenceLevel: 85
-    },
-    {
-      id: '2',
-      campaignId: '2', 
-      campaignName: 'Product Launch',
-      testName: 'Image vs Video',
-      status: 'COMPLETED',
-      startDate: '2024-01-01',
-      endDate: '2024-01-14',
-      variants: [
-        { id: 'A', name: 'Image Post', traffic: 50, conversions: 78, conversionRate: 7.8 },
-        { id: 'B', name: 'Video Post', traffic: 50, conversions: 96, conversionRate: 9.6 }
-      ],
-      winner: 'B',
-      confidenceLevel: 95
-    }
-  ])
+  const [activeTests] = useState([])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -77,7 +46,7 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
             Compare different versions of your campaigns to optimize performance
           </p>
         </div>
-        <Button>
+        <Button onClick={() => console.log('Create A/B Test clicked')} disabled>
           <Plus className="h-4 w-4 mr-2" />
           Create A/B Test
         </Button>
@@ -121,9 +90,9 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">+23%</div>
+            <div className="text-2xl font-bold text-green-600">-</div>
             <p className="text-xs text-muted-foreground">
-              Conversion rate improvement
+              No data available
             </p>
           </CardContent>
         </Card>
@@ -134,9 +103,9 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">90%</div>
+            <div className="text-2xl font-bold">-</div>
             <p className="text-xs text-muted-foreground">
-              Average across all tests
+              No data available
             </p>
           </CardContent>
         </Card>
@@ -155,7 +124,7 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                 <p className="text-sm text-muted-foreground mb-4">
                   Create your first A/B test to compare campaign variations
                 </p>
-                <Button>
+                <Button onClick={() => console.log('Create A/B Test clicked')} disabled>
                   <Plus className="h-4 w-4 mr-2" />
                   Create A/B Test
                 </Button>

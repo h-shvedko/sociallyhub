@@ -122,11 +122,11 @@ export async function POST(request: NextRequest) {
           clientId: clientId || null,
           name,
           description: description || null,
+          type,
+          status,
           startDate: startDate ? new Date(startDate) : null,
           endDate: endDate ? new Date(endDate) : null,
           objectives: {
-            type,
-            status,
             objectives: objectives.map((obj: any) => ({
               ...obj,
               id: `obj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,

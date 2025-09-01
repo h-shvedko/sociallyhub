@@ -14,6 +14,29 @@ interface BudgetManagementProps {
 }
 
 export function BudgetManagement({ workspaceId, campaigns }: BudgetManagementProps) {
+  // Calculate real budget data from campaigns
+  const totalBudget = campaigns.reduce((sum, campaign) => {
+    const budget = campaign.objectives?.budget?.totalBudget || 0
+    return sum + budget
+  }, 0)
+
+  const spentBudget = campaigns.reduce((sum, campaign) => {
+    const spent = campaign.objectives?.budget?.spentAmount || 0
+    return sum + spent
+  }, 0)
+
+  const remainingBudget = totalBudget - spentBudget
+  const spentPercentage = totalBudget > 0 ? (spentBudget / totalBudget) * 100 : 0
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -23,7 +46,7 @@ export function BudgetManagement({ workspaceId, campaigns }: BudgetManagementPro
             Track and manage campaign budgets and spending
           </p>
         </div>
-        <Button variant="outline">
+        <Button variant="outline" onClick={() => console.log('Budget Settings clicked')} disabled>
           <Settings className="h-4 w-4 mr-2" />
           Budget Settings
         </Button>
@@ -37,8 +60,8 @@ export function BudgetManagement({ workspaceId, campaigns }: BudgetManagementPro
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$15,750</div>
-            <p className="text-xs text-muted-foreground">Across all campaigns</p>
+            <div className="text-2xl font-bold">{formatCurrency(totalBudget)}</div>
+            <p className="text-xs text-muted-foreground">Across {campaigns.length} campaigns</p>
           </CardContent>
         </Card>
 
@@ -48,8 +71,8 @@ export function BudgetManagement({ workspaceId, campaigns }: BudgetManagementPro
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$8,430</div>
-            <p className="text-xs text-muted-foreground">53.5% of total budget</p>
+            <div className="text-2xl font-bold">{formatCurrency(spentBudget)}</div>
+            <p className="text-xs text-muted-foreground">{spentPercentage.toFixed(1)}% of total budget</p>
           </CardContent>
         </Card>
 
@@ -59,8 +82,8 @@ export function BudgetManagement({ workspaceId, campaigns }: BudgetManagementPro
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$7,320</div>
-            <p className="text-xs text-muted-foreground">46.5% remaining</p>
+            <div className="text-2xl font-bold">{formatCurrency(remainingBudget)}</div>
+            <p className="text-xs text-muted-foreground">{(100 - spentPercentage).toFixed(1)}% remaining</p>
           </CardContent>
         </Card>
 
@@ -70,8 +93,8 @@ export function BudgetManagement({ workspaceId, campaigns }: BudgetManagementPro
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2</div>
-            <p className="text-xs text-muted-foreground">Budget alerts active</p>
+            <div className="text-2xl font-bold">0</div>
+            <p className="text-xs text-muted-foreground">No active alerts</p>
           </CardContent>
         </Card>
       </div>
