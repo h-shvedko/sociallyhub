@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { Campaign } from '@/types/campaign'
 import { CreateABTestDialog } from './create-ab-test-dialog'
+import { ABTestDetailsDialog } from './ab-test-details-dialog'
 
 interface ABTestingDashboardProps {
   workspaceId: string
@@ -28,6 +29,8 @@ interface ABTestingDashboardProps {
 export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboardProps) {
   const [activeTests, setActiveTests] = useState<any[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [selectedTest, setSelectedTest] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   // Load A/B tests from database
@@ -59,6 +62,34 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
       setIsCreateOpen(false)
     } catch (error) {
       console.error('Error after creating A/B test:', error)
+    }
+  }
+
+  const handleViewDetails = (test: any) => {
+    setSelectedTest(test)
+    setIsDetailsOpen(true)
+  }
+
+  const handleStopTest = async (testId: string) => {
+    if (!confirm('Are you sure you want to stop this test? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/ab-tests/${testId}/stop`, {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        await loadABTests()
+        alert('A/B test stopped successfully')
+      } else {
+        const error = await response.json()
+        alert(`Failed to stop test: ${error.error}`)
+      }
+    } catch (error) {
+      console.error('Error stopping test:', error)
+      alert('Failed to stop test')
     }
   }
 
@@ -190,7 +221,11 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                         {test.status.toLowerCase()}
                       </Badge>
                       {test.status === 'RUNNING' && (
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleStopTest(test.id)}
+                        >
                           <Pause className="h-4 w-4 mr-2" />
                           Stop Test
                         </Button>
@@ -274,7 +309,11 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewDetails(test)}
+                      >
                         View Details
                       </Button>
                       {test.status === 'COMPLETED' && test.winner && (
@@ -325,6 +364,13 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
           </div>
         </CardContent>
       </Card>
+
+      {/* A/B Test Details Dialog */}
+      <ABTestDetailsDialog
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        test={selectedTest}
+      />
     </div>
   )
 }
