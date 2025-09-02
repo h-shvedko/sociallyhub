@@ -250,10 +250,13 @@
 
 #### Core Campaign Management
 - `src/components/dashboard/campaigns/campaign-dashboard.tsx` - Campaign overview with real data integration
+- `src/components/dashboard/campaigns/campaign-details-dialog.tsx` - **NEW** Comprehensive campaign details and budget editing dialog
+- `src/components/dashboard/campaigns/campaign-card.tsx` - Campaign card display with real budget data
 - `src/components/dashboard/campaigns/create-campaign-dialog.tsx` - Campaign creation with proper dialog functionality
 - `src/app/api/campaigns/route.ts` - Campaigns CRUD API with workspace validation
 - `src/app/api/campaigns/stats/route.ts` - Campaign statistics and performance metrics
-- `src/app/api/campaigns/[id]/route.ts` - Individual campaign management
+- `src/app/api/campaigns/[id]/route.ts` - Individual campaign management with budget and type updates
+- `src/app/api/campaigns/analytics/route.ts` - **NEW** Real-time campaign analytics with database aggregation
 
 #### A/B Testing System (NEW - Database Integrated)
 - `src/components/dashboard/campaigns/ab-testing-dashboard.tsx` - A/B testing management with database loading
@@ -282,12 +285,40 @@
   - Email recipient configuration for automated distribution
   - Report status tracking (Ready, Generating, Completed, Failed)
 
+#### Campaign Analytics System (NEW - Real Database Implementation)
+- `src/components/dashboard/campaigns/campaign-analytics.tsx` - **ENHANCED** Real-time analytics dashboard with database integration
+- `src/app/api/campaigns/analytics/route.ts` - **NEW** Comprehensive analytics aggregation API
+- **Data Sources:** `AnalyticsMetric`, `Campaign`, `Post` tables with complex query aggregation
+- **Features:**
+  - Real-time performance metrics (reach, engagement, clicks, conversions, ROI)
+  - Campaign filtering and date range selection (7d, 30d, 90d, 1y)
+  - Platform-specific performance breakdowns
+  - Top-performing content ranking by engagement
+  - Professional loading states and empty state handling
+  - Performance trends over time with daily aggregation
+  - Demographic insights and platform distribution analysis
+
+#### Campaign Details & Budget Management (NEW)
+- `src/components/dashboard/campaigns/campaign-details-dialog.tsx` - **NEW** Multi-tab campaign management interface
+- **Features:**
+  - **Overview Tab:** Campaign information editing (name, description, status, type, timeline)
+  - **Budget Tab:** Complete budget management with real-time calculations
+    - Multi-currency support (USD, EUR, GBP, CAD) with proper formatting
+    - Budget progress visualization with alert thresholds (75% warning, 90% critical)
+    - Total budget, spent amount, daily budget, and remaining budget tracking
+  - **Performance Tab:** Analytics integration (future enhancement placeholder)
+  - Real-time state updates - changes visible immediately without page refresh
+  - Professional validation and error handling throughout
+
 #### Campaign Templates System (Enhanced)
-- `src/components/dashboard/campaigns/campaign-templates.tsx` - Template management with database loading
+- `src/components/dashboard/campaigns/campaign-templates.tsx` - **ENHANCED** Template management with functional buttons
 - `src/components/dashboard/campaigns/create-template-dialog.tsx` - Template creation dialog with API integration
 - `src/app/api/templates/route.ts` - **ENHANCED** Template API with workspace validation
 - **Database Model:** `Template` - Enhanced existing model
 - **Features:**
+  - **Template Preview Dialog:** Comprehensive template preview with content, platforms, tags
+  - **Use Template Functionality:** Navigation to Posts composer with template pre-fill
+  - **Real Database Display:** Actual template data instead of mock content
   - Multi-platform template creation (Twitter, Facebook, Instagram, LinkedIn, YouTube, TikTok)
   - Variable system with {{variable_name}} syntax
   - Hashtag management with automatic # prefix handling
@@ -297,6 +328,14 @@
   - Platform-specific content optimization
 
 #### Database Schema Enhancements
+- **Campaign**: **ENHANCED** existing model with budget management
+  - **NEW** `budget` JSON field: `{totalBudget, spentAmount, dailyBudget, currency}`
+  - Enhanced API endpoints for budget and type updates
+  - Real-time budget calculations and progress tracking
+- **BudgetSettings**: **NEW** model for workspace budget preferences
+  - Fields: defaultCurrency, warningThreshold, criticalThreshold, limits, reporting
+  - Workspace-level budget configuration and alert settings
+  - Multi-currency support with automated threshold notifications
 - **CampaignReport**: **NEW** model for storing report configurations and metadata
   - Fields: name, description, type, format, frequency, campaigns (JSON), sections (JSON)
   - Status tracking, download URLs, generation timestamps
@@ -320,7 +359,11 @@
 - **Professional Design**: Consistent UI components with loading states and success feedback
 
 #### Critical Issues Fixed
-- **Disabled Buttons**: All creation buttons (A/B Test, Report, Template) now fully functional
+- **Disabled Buttons**: All creation buttons (A/B Test, Report, Template) and action buttons (Use Template, Preview, View Details) now fully functional
+- **Template Functionality**: Use Template navigates to Posts composer with pre-fill, Preview shows comprehensive dialog
+- **Analytics Mock Data**: Completely removed all placeholder data - analytics now shows real database metrics
+- **Campaign Details**: Fixed broken "View Details" button with comprehensive budget management dialog
+- **Real-time Updates**: Campaign budget changes and template creation visible immediately without page refresh
 - **Data Persistence**: Eliminated local state-only storage - everything saves to database
 - **Schema Compatibility**: Fixed ContentABTest API to use correct JSON structure
 - **API Integration**: All dialogs now call proper API endpoints instead of mock operations
