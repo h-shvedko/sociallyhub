@@ -5,11 +5,11 @@ RUN apk add --no-cache dumb-init
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files first
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production=false && npm cache clean --force
+# Install all dependencies (including dev dependencies for development)
+RUN npm ci && npm cache clean --force
 
 # Copy source code
 COPY . .
@@ -20,11 +20,15 @@ RUN npx prisma generate
 # Create necessary directories
 RUN mkdir -p /app/.next /app/uploads /app/logs
 
+# Copy and make startup script executable
+COPY docker/start-dev.sh /usr/local/bin/start-dev.sh
+RUN chmod +x /usr/local/bin/start-dev.sh
+
 # Expose port
 EXPOSE 3000
 
 # Use dumb-init for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
-CMD ["npm", "run", "dev:docker"]
+# Start the application using our startup script
+CMD ["/usr/local/bin/start-dev.sh"]
