@@ -5,6 +5,13 @@
 
 set -e  # Exit on any error
 
+# Check for clean start flag
+CLEAN_START=false
+if [ "$1" = "--clean" ] || [ "$1" = "-c" ]; then
+    CLEAN_START=true
+    echo "🧹 Clean start requested - will remove all volumes and rebuild from scratch"
+fi
+
 echo "🚀 Starting SociallyHub Development Environment..."
 echo "=================================================="
 
@@ -102,11 +109,17 @@ if grep -q "version:" docker-compose.yml; then
     print_success "Removed obsolete version from docker-compose.yml"
 fi
 
-# Clean up any existing volumes and containers
-print_step "Cleaning up Docker resources..."
-docker-compose down -v > /dev/null 2>&1 || true
-docker system prune -f > /dev/null 2>&1 || true
-print_success "Cleaned up Docker resources"
+# Clean up Docker resources based on mode
+if [ "$CLEAN_START" = true ]; then
+    print_step "Performing clean start - removing all volumes and containers..."
+    docker-compose down -v > /dev/null 2>&1 || true
+    docker system prune -f > /dev/null 2>&1 || true
+    print_success "Cleaned up all Docker resources"
+else
+    print_step "Cleaning up Docker containers (preserving volumes)..."
+    docker-compose down > /dev/null 2>&1 || true
+    print_success "Cleaned up Docker containers"
+fi
 
 # Build and start services
 print_step "Building and starting services..."
@@ -141,10 +154,10 @@ while ! docker-compose exec -T redis redis-cli ping > /dev/null 2>&1; do
 done
 print_success "Redis is ready"
 
-# Install/update dependencies
-print_step "Installing dependencies..."
-docker-compose exec -T app npm ci
-print_success "Dependencies installed"
+# Ensure dependencies are properly installed
+print_step "Ensuring dependencies are up to date..."
+docker-compose exec -T app npm ci --only=production=false
+print_success "Dependencies verified and updated"
 
 # Run database migrations
 print_step "Setting up database..."
@@ -205,6 +218,7 @@ echo "🔧 Useful Commands:"
 echo "   📊 View logs:       docker-compose logs -f"
 echo "   🔄 Restart app:     docker-compose restart app"
 echo "   🛑 Stop all:        docker-compose down"
-echo "   🗑️  Clean reset:     docker-compose down -v && ./start-dev.sh"
+echo "   🗑️  Clean reset:     ./start-dev.sh --clean"
+echo "   🔧 Normal restart:  ./start-dev.sh"
 echo ""
 print_success "Setup complete! Happy coding! 🚀"

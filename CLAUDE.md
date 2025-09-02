@@ -183,6 +183,39 @@ Full enterprise-grade platform with analytics, campaign management, and comprehe
 - Dashboard layout converted to server component
 - Resolved page refresh authentication issues
 
+#### Node.js Version Fix & Docker Optimization (Latest)
+**Problem Resolved**: `npm warn EBADENGINE Unsupported engine` and `Cannot find module 'next/package.json'` errors
+
+**Root Causes Fixed**:
+- Docker containers using Node.js 18 while system/dependencies required Node.js 20+
+- Volume mount conflicts overriding container's node_modules
+- Incomplete dependency installation causing module resolution failures
+
+**Complete Solution Applied**:
+- **Updated All Dockerfiles**: Changed from `node:18-alpine` to `node:20-alpine` (Dockerfile, Dockerfile.dev, Dockerfile.prod)
+- **Enhanced Development Environment**: Added `dumb-init`, improved dependency installation, better signal handling
+- **Fixed Volume Strategy**: Replaced anonymous volume exclusion with named volume preservation (`node_modules:/app/node_modules`)
+- **Enhanced Start Script**: Added `--clean` flag for complete rebuilds, improved dependency verification
+- **Version Management**: Added `.nvmrc` file and `engines` field in package.json for Node.js >=20.0.0
+
+**Files Modified**:
+- `Dockerfile.dev`, `Dockerfile`, `Dockerfile.prod` - Updated to Node.js 20
+- `docker-compose.yml` - Named volume for node_modules, applied to app and prisma-studio services
+- `start-dev.sh` - Added clean start option and better volume management
+- `package.json` - Added engines specification
+- `.nvmrc` - New file specifying Node.js 20
+
+**Usage**:
+- **Clean rebuild**: `./start-dev.sh --clean` (removes all volumes)
+- **Normal restart**: `./start-dev.sh` (preserves volumes for speed)
+
+**Benefits**:
+✅ Module resolution errors eliminated
+✅ Consistent Node.js 20 environment across all containers
+✅ Proper npm package installation without version conflicts
+✅ Faster development with preserved volumes
+✅ Enhanced error handling and debugging capabilities
+
 ## Database Schema
 
 ### Core Models
