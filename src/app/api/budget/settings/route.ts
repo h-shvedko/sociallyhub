@@ -41,22 +41,15 @@ export async function GET(request: NextRequest) {
         data: {
           workspaceId,
           defaultCurrency: 'USD',
-          budgetAlerts: {
-            enabled: true,
-            warningThreshold: 75,
-            criticalThreshold: 90,
-            emailNotifications: true,
-            slackNotifications: false
-          },
-          budgetLimits: {
-            autoStop: false
-          },
-          reporting: {
-            frequency: 'weekly',
-            recipients: [],
-            includeCostAnalysis: true,
-            includeForecast: true
-          }
+          warningThreshold: 75,
+          criticalThreshold: 90,
+          enableEmailAlerts: true,
+          enablePushAlerts: true,
+          autoStopAtLimit: false,
+          reportFrequency: 'monthly',
+          enableAutomatedReports: false,
+          includeProjections: true,
+          includeRecommendations: true
         }
       })
     }
@@ -98,18 +91,42 @@ export async function POST(request: NextRequest) {
     const budgetSettings = await prisma.budgetSettings.upsert({
       where: { workspaceId },
       update: {
-        defaultCurrency: settings.defaultCurrency,
-        budgetAlerts: settings.budgetAlerts,
-        budgetLimits: settings.budgetLimits,
-        reporting: settings.reporting,
+        defaultCurrency: settings.defaultCurrency || 'USD',
+        budgetPeriod: settings.budgetPeriod || 'monthly',
+        warningThreshold: settings.warningThreshold || 75,
+        criticalThreshold: settings.criticalThreshold || 90,
+        enableEmailAlerts: settings.enableEmailAlerts ?? true,
+        enablePushAlerts: settings.enablePushAlerts ?? true,
+        emailRecipients: settings.emailRecipients || [],
+        dailyLimit: settings.dailyLimit,
+        monthlyLimit: settings.monthlyLimit,
+        perCampaignLimit: settings.perCampaignLimit,
+        autoStopAtLimit: settings.autoStopAtLimit ?? false,
+        reportFrequency: settings.reportFrequency || 'monthly',
+        enableAutomatedReports: settings.enableAutomatedReports ?? false,
+        reportRecipients: settings.reportRecipients || [],
+        includeProjections: settings.includeProjections ?? true,
+        includeRecommendations: settings.includeRecommendations ?? true,
         updatedAt: new Date()
       },
       create: {
         workspaceId,
-        defaultCurrency: settings.defaultCurrency,
-        budgetAlerts: settings.budgetAlerts,
-        budgetLimits: settings.budgetLimits,
-        reporting: settings.reporting
+        defaultCurrency: settings.defaultCurrency || 'USD',
+        budgetPeriod: settings.budgetPeriod || 'monthly',
+        warningThreshold: settings.warningThreshold || 75,
+        criticalThreshold: settings.criticalThreshold || 90,
+        enableEmailAlerts: settings.enableEmailAlerts ?? true,
+        enablePushAlerts: settings.enablePushAlerts ?? true,
+        emailRecipients: settings.emailRecipients || [],
+        dailyLimit: settings.dailyLimit,
+        monthlyLimit: settings.monthlyLimit,
+        perCampaignLimit: settings.perCampaignLimit,
+        autoStopAtLimit: settings.autoStopAtLimit ?? false,
+        reportFrequency: settings.reportFrequency || 'monthly',
+        enableAutomatedReports: settings.enableAutomatedReports ?? false,
+        reportRecipients: settings.reportRecipients || [],
+        includeProjections: settings.includeProjections ?? true,
+        includeRecommendations: settings.includeRecommendations ?? true
       }
     })
 

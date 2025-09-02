@@ -94,7 +94,9 @@ export async function PATCH(
         startDate,
         endDate,
         objectives,
-        status
+        status,
+        type,
+        budget
       } = body
 
       const campaign = await prisma.campaign.update({
@@ -102,6 +104,9 @@ export async function PATCH(
         data: {
           ...(name && { name }),
           ...(description !== undefined && { description }),
+          ...(type && { type }),
+          ...(budget && { budget }),
+          ...(status && { status }),
           ...(startDate && { startDate: new Date(startDate) }),
           ...(endDate && { endDate: new Date(endDate) }),
           ...(objectives && { 
@@ -111,12 +116,6 @@ export async function PATCH(
                 ...obj,
                 id: obj.id || `obj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
               }))
-            }
-          }),
-          ...(status && { 
-            objectives: {
-              ...(typeof objectives === 'object' ? objectives : {}),
-              status
             }
           }),
           updatedAt: new Date()
@@ -137,8 +136,10 @@ export async function PATCH(
       })
 
       return NextResponse.json({
-        ...campaign,
-        postCount: campaign._count.posts
+        campaign: {
+          ...campaign,
+          postCount: campaign._count.posts
+        }
       })
     } catch (error) {
       console.error('Error updating campaign:', error)

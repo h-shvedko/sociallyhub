@@ -79,6 +79,7 @@ model Workspace {
   
   // Custom Dashboard Relations
   customDashboards      CustomDashboard[] @relation("WorkspaceCustomDashboards")
+  budgetSettings        BudgetSettings? @relation("WorkspaceBudgetSettings")
 
   @@map("workspaces")
 }
@@ -323,6 +324,7 @@ model Campaign {
   startDate   DateTime?
   endDate     DateTime?
   objectives  Json?    // Campaign goals and KPIs
+  budget      Json?    // Budget configuration: {totalBudget: number, spentAmount: number, dailyBudget: number, currency: string}
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -2118,4 +2120,41 @@ model CustomDashboard {
   @@index([userId, workspaceId])
   @@index([workspaceId, isPublic])
   @@map("custom_dashboards")
+}
+
+model BudgetSettings {
+  id                    String   @id @default(cuid())
+  workspaceId           String   @unique
+  
+  // General Settings
+  defaultCurrency       String   @default("USD")
+  budgetPeriod         String   @default("monthly") // monthly, quarterly, yearly
+  
+  // Alert Settings
+  warningThreshold     Int      @default(75)  // Percentage
+  criticalThreshold    Int      @default(90)  // Percentage
+  enableEmailAlerts    Boolean  @default(true)
+  enablePushAlerts     Boolean  @default(true)
+  emailRecipients      String[] @default([])
+  
+  // Budget Limits
+  dailyLimit           Float?
+  monthlyLimit         Float?
+  perCampaignLimit     Float?
+  autoStopAtLimit      Boolean  @default(false)
+  
+  // Reporting
+  reportFrequency      String   @default("monthly") // daily, weekly, monthly
+  enableAutomatedReports Boolean @default(false)
+  reportRecipients     String[] @default([])
+  includeProjections   Boolean  @default(true)
+  includeRecommendations Boolean @default(true)
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  // Relations
+  workspace            Workspace @relation("WorkspaceBudgetSettings", fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  @@map("budget_settings")
 }
