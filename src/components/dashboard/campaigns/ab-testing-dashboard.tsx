@@ -20,6 +20,7 @@ import {
 import { Campaign } from '@/types/campaign'
 import { CreateABTestDialog } from './create-ab-test-dialog'
 import { ABTestDetailsDialog } from './ab-test-details-dialog'
+import { StopTestConfirmationDialog } from './stop-test-confirmation-dialog'
 
 interface ABTestingDashboardProps {
   workspaceId: string
@@ -30,8 +31,11 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
   const [activeTests, setActiveTests] = useState<any[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [isStopConfirmOpen, setIsStopConfirmOpen] = useState(false)
   const [selectedTest, setSelectedTest] = useState<any>(null)
+  const [testToStop, setTestToStop] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [stoppingTest, setStoppingTest] = useState(false)
 
   // Load A/B tests from database
   useEffect(() => {
@@ -77,17 +81,21 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
     console.log('Details dialog should open:', { test, isOpen: true })
   }
 
-  const handleStopTest = async (testId: string) => {
-    console.log('Stop Test clicked for ID:', testId)
-    
-    if (!confirm('Are you sure you want to stop this test? This action cannot be undone.')) {
-      console.log('User cancelled stop test')
-      return
-    }
+  const handleStopTest = (test: any) => {
+    console.log('Stop Test clicked for test:', test)
+    setTestToStop(test)
+    setIsStopConfirmOpen(true)
+  }
+
+  const confirmStopTest = async () => {
+    if (!testToStop) return
+
+    console.log('Confirming stop test for ID:', testToStop.id)
+    setStoppingTest(true)
 
     try {
       console.log('Making API call to stop test')
-      const response = await fetch(`/api/ab-tests/${testId}/stop`, {
+      const response = await fetch(`/api/ab-tests/${testToStop.id}/stop`, {
         method: 'POST'
       })
 
@@ -95,15 +103,21 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
 
       if (response.ok) {
         await loadABTests()
-        alert('A/B test stopped successfully')
+        setIsStopConfirmOpen(false)
+        setTestToStop(null)
+        // You could add a success toast here instead of alert
+        console.log('Test stopped successfully')
       } else {
         const error = await response.json()
         console.error('Stop test error:', error)
+        // You could add an error toast here instead of alert
         alert(`Failed to stop test: ${error.error}`)
       }
     } catch (error) {
       console.error('Error stopping test:', error)
       alert('Failed to stop test')
+    } finally {
+      setStoppingTest(false)
     }
   }
 
@@ -240,7 +254,7 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                           size="sm"
                           onClick={(e) => {
                             console.log('Stop button clicked!', e)
-                            handleStopTest(test.id)
+                            handleStopTest(test)
                           }}
                         >
                           <Pause className="h-4 w-4 mr-2" />
@@ -390,6 +404,15 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
         open={isDetailsOpen}
         onOpenChange={setIsDetailsOpen}
         test={selectedTest}
+      />
+
+      {/* Stop Test Confirmation Dialog */}
+      <StopTestConfirmationDialog
+        open={isStopConfirmOpen}
+        onOpenChange={setIsStopConfirmOpen}
+        onConfirm={confirmStopTest}
+        testName={testToStop?.testName || ''}
+        loading={stoppingTest}
       />
     </div>
   )
