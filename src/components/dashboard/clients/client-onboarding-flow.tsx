@@ -193,10 +193,65 @@ export function ClientOnboardingFlow({
     return 'upcoming'
   }
 
-  const handleStepComplete = () => {
+  const handleStepComplete = async () => {
     setCompletedSteps(prev => new Set([...prev, currentStep]))
-    if (currentStep < (template?.steps.length || 0) - 1) {
+    
+    // If this is the last step, complete the onboarding
+    if (currentStep === (template?.steps.length || 0) - 1) {
+      await handleCompleteOnboarding()
+    } else {
       setCurrentStep(currentStep + 1)
+    }
+  }
+
+  const handleCompleteOnboarding = async () => {
+    setIsLoading(true)
+    
+    try {
+      // Create the client with all collected data
+      const clientPayload = {
+        name: clientData.name || 'New Client',
+        tags: clientData.tags || [],
+        // Add any other collected data from the onboarding steps
+        teamMembers,
+        socialAccounts: socialAccounts.filter(account => account.connected),
+        trainingCompleted: trainingProgress.filter(item => item.completed).length,
+        onboardingCompleted: true
+      }
+
+      const response = await fetch('/api/clients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(clientPayload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create client')
+      }
+
+      const newClient = await response.json()
+
+      // Show success message using a more professional approach
+      console.log('✅ Onboarding completed successfully! Client created:', newClient)
+      
+      // Call the onComplete callback if provided
+      if (onComplete) {
+        onComplete(newClient)
+      } else {
+        // If no callback provided, redirect to clients page
+        setTimeout(() => {
+          window.location.href = '/dashboard/clients'
+        }, 1000) // Small delay to show the success state
+      }
+      
+    } catch (error) {
+      console.error('Error completing onboarding:', error)
+      // You can replace this with a proper toast notification in a production app
+      alert('❌ Failed to complete onboarding. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -288,6 +343,19 @@ export function ClientOnboardingFlow({
               onChange={(e) => setClientData({ ...clientData, website: e.target.value })}
             />
           </div>
+        </div>
+        <div>
+          <Label htmlFor="tags">Tags</Label>
+          <Input 
+            id="tags"
+            placeholder="Enter tags separated by commas (e.g., Enterprise, Technology, Priority)"
+            value={clientData.tags ? clientData.tags.join(', ') : ''}
+            onChange={(e) => {
+              const tagString = e.target.value
+              const tags = tagString.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+              setClientData({ ...clientData, tags })
+            }}
+          />
         </div>
         <div>
           <Label htmlFor="notes">Notes</Label>
@@ -1092,9 +1160,18 @@ export function ClientOnboardingFlow({
             >
               Skip
             </Button>
-            <Button onClick={handleStepComplete}>
-              {currentStep === template.steps.length - 1 ? 'Complete Onboarding' : 'Next Step'}
-              <ArrowRight className="h-4 w-4 ml-2" />
+            <Button onClick={handleStepComplete} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></div>
+                  {currentStep === template.steps.length - 1 ? 'Completing...' : 'Processing...'}
+                </>
+              ) : (
+                <>
+                  {currentStep === template.steps.length - 1 ? 'Complete Onboarding' : 'Next Step'}
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </>
+              )}
             </Button>
           </div>
         </div>
