@@ -45,6 +45,10 @@ import { ClientCard } from './client-card'
 import { ClientStats as ClientStatsComponent } from './client-stats'
 import { ClientFilters } from './client-filters'
 import { ClientOnboardingFlow } from './client-onboarding-flow'
+import { ClientDetailsDialog } from './client-details-dialog'
+import { EditClientDialog } from './edit-client-dialog'
+import { SendMessageDialog } from './send-message-dialog'
+import { DeleteClientDialog } from './delete-client-dialog'
 
 interface ClientDashboardProps {
   workspaceId: string
@@ -60,6 +64,12 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  
+  // Dialog states
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showMessageDialog, setShowMessageDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const fetchClients = async () => {
     try {
@@ -152,6 +162,41 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
       default:
         return 'bg-gray-100 text-gray-800'
     }
+  }
+
+  // Action handlers
+  const handleViewClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowDetailsDialog(true)
+  }
+
+  const handleEditClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowEditDialog(true)
+  }
+
+  const handleMessageClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowMessageDialog(true)
+  }
+
+  const handleDeleteClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowDeleteDialog(true)
+  }
+
+  const handleClientUpdated = (updatedClient: Client) => {
+    setClients(prevClients => 
+      prevClients.map(client => 
+        client.id === updatedClient.id ? updatedClient : client
+      )
+    )
+  }
+
+  const handleClientDeleted = (clientId: string) => {
+    setClients(prevClients => 
+      prevClients.filter(client => client.id !== clientId)
+    )
   }
 
   if (showOnboarding) {
@@ -275,9 +320,10 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
                   <ClientCard 
                     key={client.id} 
                     client={client} 
-                    onView={(client) => setSelectedClient(client)}
-                    onEdit={(client) => console.log('Edit:', client)}
-                    onDelete={(client) => console.log('Delete:', client)}
+                    onView={handleViewClient}
+                    onEdit={handleEditClient}
+                    onMessage={handleMessageClient}
+                    onDelete={handleDeleteClient}
                   />
                 ))}
               </div>
@@ -312,9 +358,10 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
                 <ClientCard 
                   key={client.id} 
                   client={client}
-                  onView={(client) => setSelectedClient(client)}
-                  onEdit={(client) => console.log('Edit:', client)}
-                  onDelete={(client) => console.log('Delete:', client)}
+                  onView={handleViewClient}
+                  onEdit={handleEditClient}
+                  onMessage={handleMessageClient}
+                  onDelete={handleDeleteClient}
                 />
               ))}
           </div>
@@ -328,9 +375,10 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
                 <ClientCard 
                   key={client.id} 
                   client={client}
-                  onView={(client) => setSelectedClient(client)}
-                  onEdit={(client) => console.log('Edit:', client)}
-                  onDelete={(client) => console.log('Delete:', client)}
+                  onView={handleViewClient}
+                  onEdit={handleEditClient}
+                  onMessage={handleMessageClient}
+                  onDelete={handleDeleteClient}
                 />
               ))}
           </div>
@@ -387,6 +435,33 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog Components */}
+      <ClientDetailsDialog
+        client={selectedClient}
+        open={showDetailsDialog}
+        onOpenChange={setShowDetailsDialog}
+      />
+
+      <EditClientDialog
+        client={selectedClient}
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        onClientUpdated={handleClientUpdated}
+      />
+
+      <SendMessageDialog
+        client={selectedClient}
+        open={showMessageDialog}
+        onOpenChange={setShowMessageDialog}
+      />
+
+      <DeleteClientDialog
+        client={selectedClient}
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onClientDeleted={handleClientDeleted}
+      />
     </div>
   )
 }
