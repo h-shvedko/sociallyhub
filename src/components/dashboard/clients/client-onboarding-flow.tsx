@@ -32,7 +32,23 @@ import {
   Calendar,
   Mail,
   Phone,
-  Globe
+  Globe,
+  UserPlus,
+  Shield,
+  Key,
+  Users,
+  Facebook,
+  Twitter,
+  Instagram,
+  Linkedin,
+  Youtube,
+  Link,
+  BookOpen,
+  Video,
+  Download,
+  Play,
+  CheckSquare,
+  GraduationCap
 } from 'lucide-react'
 import { 
   Client, 
@@ -60,6 +76,32 @@ export function ClientOnboardingFlow({
   const [clientData, setClientData] = useState<Partial<Client>>({})
   const [isLoading, setIsLoading] = useState(false)
   const [template, setTemplate] = useState<OnboardingTemplate | null>(null)
+  
+  // State for Account Setup
+  const [teamMembers, setTeamMembers] = useState([
+    { id: '1', name: '', email: '', role: 'VIEWER', status: 'pending' }
+  ])
+  
+  // State for Social Media Integration
+  const [socialAccounts, setSocialAccounts] = useState([
+    { platform: 'FACEBOOK', connected: false, accountName: '', accountId: '' },
+    { platform: 'TWITTER', connected: false, accountName: '', accountId: '' },
+    { platform: 'INSTAGRAM', connected: false, accountName: '', accountId: '' },
+    { platform: 'LINKEDIN', connected: false, accountName: '', accountId: '' },
+    { platform: 'YOUTUBE', connected: false, accountName: '', accountId: '' }
+  ])
+  
+  // State for Training & Documentation
+  const [trainingProgress, setTrainingProgress] = useState([
+    { id: '1', title: 'Platform Overview', completed: false, type: 'video', duration: '15 min' },
+    { id: '2', title: 'Creating Your First Post', completed: false, type: 'video', duration: '20 min' },
+    { id: '3', title: 'Understanding Analytics', completed: false, type: 'document', duration: '10 min' },
+    { id: '4', title: 'Team Collaboration', completed: false, type: 'video', duration: '25 min' },
+    { id: '5', title: 'Best Practices Guide', completed: false, type: 'document', duration: '15 min' }
+  ])
+  const [kickoffScheduled, setKickoffScheduled] = useState(false)
+  const [kickoffDate, setKickoffDate] = useState('')
+  const [kickoffTime, setKickoffTime] = useState('')
 
   // Mock onboarding template
   const mockTemplate: OnboardingTemplate = {
@@ -483,6 +525,466 @@ export function ClientOnboardingFlow({
     </Card>
   )
 
+  const addTeamMember = () => {
+    setTeamMembers([...teamMembers, {
+      id: Date.now().toString(),
+      name: '',
+      email: '',
+      role: 'VIEWER',
+      status: 'pending'
+    }])
+  }
+
+  const removeTeamMember = (id: string) => {
+    setTeamMembers(teamMembers.filter(member => member.id !== id))
+  }
+
+  const updateTeamMember = (id: string, field: string, value: string) => {
+    setTeamMembers(teamMembers.map(member => 
+      member.id === id ? { ...member, [field]: value } : member
+    ))
+  }
+
+  const toggleSocialAccount = (platform: string) => {
+    setSocialAccounts(accounts => accounts.map(account =>
+      account.platform === platform ? { ...account, connected: !account.connected } : account
+    ))
+  }
+
+  const updateSocialAccount = (platform: string, field: string, value: string) => {
+    setSocialAccounts(accounts => accounts.map(account =>
+      account.platform === platform ? { ...account, [field]: value } : account
+    ))
+  }
+
+  const toggleTrainingItem = (id: string) => {
+    setTrainingProgress(items => items.map(item =>
+      item.id === id ? { ...item, completed: !item.completed } : item
+    ))
+  }
+
+  const renderAccountSetup = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <UserPlus className="h-5 w-5" />
+          Account Setup
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Team Members Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-base font-medium">Team Members</Label>
+            <Button variant="outline" size="sm" onClick={addTeamMember}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Member
+            </Button>
+          </div>
+          
+          <div className="space-y-3">
+            {teamMembers.map((member, index) => (
+              <div key={member.id} className="grid grid-cols-12 gap-3 items-end p-4 border rounded-lg">
+                <div className="col-span-3">
+                  <Label>Name</Label>
+                  <Input
+                    placeholder="Full Name"
+                    value={member.name}
+                    onChange={(e) => updateTeamMember(member.id, 'name', e.target.value)}
+                  />
+                </div>
+                <div className="col-span-4">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    placeholder="email@company.com"
+                    value={member.email}
+                    onChange={(e) => updateTeamMember(member.id, 'email', e.target.value)}
+                  />
+                </div>
+                <div className="col-span-3">
+                  <Label>Role</Label>
+                  <Select value={member.role} onValueChange={(value) => updateTeamMember(member.id, 'role', value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="OWNER">Owner</SelectItem>
+                      <SelectItem value="ADMIN">Admin</SelectItem>
+                      <SelectItem value="PUBLISHER">Publisher</SelectItem>
+                      <SelectItem value="ANALYST">Analyst</SelectItem>
+                      <SelectItem value="VIEWER">Viewer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removeTeamMember(member.id)}
+                    disabled={teamMembers.length === 1}
+                    className="w-full"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Permissions Overview */}
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Role Permissions</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-3 border rounded-lg">
+                <Shield className="h-4 w-4 text-red-500" />
+                <div>
+                  <p className="font-medium">Owner</p>
+                  <p className="text-sm text-muted-foreground">Full access to all features</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 border rounded-lg">
+                <Key className="h-4 w-4 text-orange-500" />
+                <div>
+                  <p className="font-medium">Admin</p>
+                  <p className="text-sm text-muted-foreground">Manage users and settings</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 border rounded-lg">
+                <Users className="h-4 w-4 text-blue-500" />
+                <div>
+                  <p className="font-medium">Publisher</p>
+                  <p className="text-sm text-muted-foreground">Create and publish content</p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-3 border rounded-lg">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <div>
+                  <p className="font-medium">Analyst</p>
+                  <p className="text-sm text-muted-foreground">View analytics and reports</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 border rounded-lg">
+                <AlertCircle className="h-4 w-4 text-gray-500" />
+                <div>
+                  <p className="font-medium">Viewer</p>
+                  <p className="text-sm text-muted-foreground">Read-only access</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Security Settings */}
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Security Settings</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Two-Factor Authentication</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select 2FA method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="email">Email verification</SelectItem>
+                  <SelectItem value="sms">SMS verification</SelectItem>
+                  <SelectItem value="app">Authenticator app</SelectItem>
+                  <SelectItem value="none">Disabled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Password Policy</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select policy" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Standard (8+ chars)</SelectItem>
+                  <SelectItem value="strong">Strong (12+ chars, mixed)</SelectItem>
+                  <SelectItem value="enterprise">Enterprise (16+ chars, special)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  const renderSocialMediaIntegration = () => {
+    const getPlatformIcon = (platform: string) => {
+      switch (platform) {
+        case 'FACEBOOK': return <Facebook className="h-5 w-5 text-blue-600" />
+        case 'TWITTER': return <Twitter className="h-5 w-5 text-sky-500" />
+        case 'INSTAGRAM': return <Instagram className="h-5 w-5 text-pink-600" />
+        case 'LINKEDIN': return <Linkedin className="h-5 w-5 text-blue-700" />
+        case 'YOUTUBE': return <Youtube className="h-5 w-5 text-red-600" />
+        default: return <Link className="h-5 w-5" />
+      }
+    }
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link className="h-5 w-5" />
+            Social Media Integration
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Platform Connections */}
+          <div className="space-y-4">
+            <Label className="text-base font-medium">Connect Social Media Accounts</Label>
+            <div className="space-y-3">
+              {socialAccounts.map((account) => (
+                <div key={account.platform} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    {getPlatformIcon(account.platform)}
+                    <div>
+                      <p className="font-medium">{account.platform}</p>
+                      {account.connected && account.accountName && (
+                        <p className="text-sm text-muted-foreground">@{account.accountName}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {account.connected ? (
+                      <>
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          Connected
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleSocialAccount(account.platform)}
+                        >
+                          Disconnect
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleSocialAccount(account.platform)}
+                      >
+                        Connect
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Account Configuration */}
+          <div className="space-y-4">
+            <Label className="text-base font-medium">Account Configuration</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Default Posting Time</Label>
+                <Input type="time" />
+              </div>
+              <div>
+                <Label>Time Zone</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select timezone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="utc">UTC</SelectItem>
+                    <SelectItem value="est">Eastern Time</SelectItem>
+                    <SelectItem value="pst">Pacific Time</SelectItem>
+                    <SelectItem value="cst">Central Time</SelectItem>
+                    <SelectItem value="mst">Mountain Time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Publishing Settings */}
+          <div className="space-y-4">
+            <Label className="text-base font-medium">Publishing Settings</Label>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <p className="font-medium">Auto-publish approved posts</p>
+                  <p className="text-sm text-muted-foreground">Automatically publish posts when approved</p>
+                </div>
+                <Button variant="outline" size="sm">Enable</Button>
+              </div>
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <p className="font-medium">Cross-platform posting</p>
+                  <p className="text-sm text-muted-foreground">Post to multiple platforms simultaneously</p>
+                </div>
+                <Button variant="outline" size="sm">Configure</Button>
+              </div>
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <p className="font-medium">Content adaptation</p>
+                  <p className="text-sm text-muted-foreground">Automatically adapt content for each platform</p>
+                </div>
+                <Button variant="outline" size="sm">Setup</Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const renderTrainingDocumentation = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <GraduationCap className="h-5 w-5" />
+          Training & Documentation
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Training Progress */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-base font-medium">Training Materials</Label>
+            <Badge variant="outline">
+              {trainingProgress.filter(item => item.completed).length} of {trainingProgress.length} complete
+            </Badge>
+          </div>
+          <div className="space-y-3">
+            {trainingProgress.map((item) => (
+              <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => toggleTrainingItem(item.id)}
+                    className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                      item.completed 
+                        ? 'bg-green-500 border-green-500 text-white' 
+                        : 'border-muted-foreground hover:border-green-500'
+                    }`}
+                  >
+                    {item.completed && <CheckSquare className="h-3 w-3" />}
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {item.type === 'video' ? (
+                      <Video className="h-4 w-4 text-blue-500" />
+                    ) : (
+                      <BookOpen className="h-4 w-4 text-green-500" />
+                    )}
+                    <div>
+                      <p className="font-medium">{item.title}</p>
+                      <p className="text-sm text-muted-foreground">{item.duration}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm">
+                    <Play className="h-4 w-4 mr-1" />
+                    {item.type === 'video' ? 'Watch' : 'Read'}
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Kickoff Meeting */}
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Kickoff Meeting</Label>
+          {!kickoffScheduled ? (
+            <div className="p-4 border-2 border-dashed border-muted-foreground/25 rounded-lg text-center">
+              <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+              <p className="font-medium mb-2">Schedule Your Kickoff Meeting</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Let's schedule a 60-minute session to get you started with the platform
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-md mx-auto">
+                <div>
+                  <Label>Date</Label>
+                  <Input
+                    type="date"
+                    value={kickoffDate}
+                    onChange={(e) => setKickoffDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Time</Label>
+                  <Input
+                    type="time"
+                    value={kickoffTime}
+                    onChange={(e) => setKickoffTime(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button 
+                className="mt-4"
+                onClick={() => setKickoffScheduled(true)}
+                disabled={!kickoffDate || !kickoffTime}
+              >
+                Schedule Meeting
+              </Button>
+            </div>
+          ) : (
+            <div className="p-4 border border-green-200 bg-green-50 rounded-lg">
+              <div className="flex items-center gap-2 text-green-700 mb-2">
+                <CheckCircle2 className="h-5 w-5" />
+                <p className="font-medium">Kickoff Meeting Scheduled</p>
+              </div>
+              <p className="text-sm text-green-600">
+                {new Date(kickoffDate).toLocaleDateString()} at {kickoffTime}
+              </p>
+              <p className="text-sm text-green-600 mt-1">
+                You'll receive a calendar invitation and meeting link via email.
+              </p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => setKickoffScheduled(false)}>
+                Reschedule
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Additional Resources */}
+        <div className="space-y-4">
+          <Label className="text-base font-medium">Additional Resources</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 border rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <BookOpen className="h-5 w-5 text-blue-500" />
+                <p className="font-medium">Knowledge Base</p>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Comprehensive guides and tutorials
+              </p>
+              <Button variant="outline" size="sm">
+                Browse Articles
+              </Button>
+            </div>
+            <div className="p-4 border rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Video className="h-5 w-5 text-green-500" />
+                <p className="font-medium">Video Library</p>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Step-by-step video tutorials
+              </p>
+              <Button variant="outline" size="sm">
+                Watch Videos
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
@@ -494,44 +996,11 @@ export function ClientOnboardingFlow({
       case 3:
         return renderBrandGuidelines()
       case 4:
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Account Setup</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Create user accounts and set up team permissions...
-              </p>
-            </CardContent>
-          </Card>
-        )
+        return renderAccountSetup()
       case 5:
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Social Media Integration</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Connect social media accounts and configure settings...
-              </p>
-            </CardContent>
-          </Card>
-        )
+        return renderSocialMediaIntegration()
       case 6:
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Training & Documentation</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Provide training materials and schedule kickoff meeting...
-              </p>
-            </CardContent>
-          </Card>
-        )
+        return renderTrainingDocumentation()
       default:
         return null
     }
