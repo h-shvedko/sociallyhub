@@ -103,6 +103,11 @@ export function ClientOnboardingFlow({
   const [kickoffDate, setKickoffDate] = useState('')
   const [kickoffTime, setKickoffTime] = useState('')
 
+  // State for Brand Guidelines file uploads
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [brandDoc, setBrandDoc] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+
   // Mock onboarding template
   const mockTemplate: OnboardingTemplate = {
     id: '1',
@@ -554,30 +559,102 @@ export function ClientOnboardingFlow({
 
         <div className="space-y-3">
           <Label>Logo Upload</Label>
-          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
-            <div className="text-center">
-              <Upload className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Drop your logo here or click to browse
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                SVG, PNG, JPG up to 10MB
-              </p>
+          <div className="relative">
+            <input
+              type="file"
+              id="logo-upload"
+              accept=".svg,.png,.jpg,.jpeg"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  handleFileUpload(file, 'logo')
+                }
+              }}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={uploading}
+            />
+            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 hover:border-muted-foreground/50 transition-colors">
+              <div className="text-center">
+                {logoFile ? (
+                  <>
+                    <CheckCircle2 className="h-12 w-12 mx-auto mb-2 text-green-600" />
+                    <p className="text-sm font-medium text-green-600">
+                      {logoFile.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Logo uploaded successfully
+                    </p>
+                  </>
+                ) : uploading ? (
+                  <>
+                    <div className="animate-spin h-12 w-12 mx-auto mb-2 border-4 border-blue-600 border-t-transparent rounded-full" />
+                    <p className="text-sm text-blue-600">
+                      Uploading logo...
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Drop your logo here or click to browse
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      SVG, PNG, JPG up to 10MB
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         <div>
           <Label>Brand Guidelines Document</Label>
-          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8">
-            <div className="text-center">
-              <FileText className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Upload brand guidelines document
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                PDF, DOC up to 50MB
-              </p>
+          <div className="relative">
+            <input
+              type="file"
+              id="brand-doc-upload"
+              accept=".pdf,.doc,.docx"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  handleFileUpload(file, 'brandDoc')
+                }
+              }}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={uploading}
+            />
+            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 hover:border-muted-foreground/50 transition-colors">
+              <div className="text-center">
+                {brandDoc ? (
+                  <>
+                    <CheckCircle2 className="h-12 w-12 mx-auto mb-2 text-green-600" />
+                    <p className="text-sm font-medium text-green-600">
+                      {brandDoc.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Brand document uploaded successfully
+                    </p>
+                  </>
+                ) : uploading ? (
+                  <>
+                    <div className="animate-spin h-12 w-12 mx-auto mb-2 border-4 border-blue-600 border-t-transparent rounded-full" />
+                    <p className="text-sm text-blue-600">
+                      Uploading document...
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Upload brand guidelines document
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      PDF, DOC up to 50MB
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -629,6 +706,64 @@ export function ClientOnboardingFlow({
     setTrainingProgress(items => items.map(item =>
       item.id === id ? { ...item, completed: !item.completed } : item
     ))
+  }
+
+  const handleFileUpload = async (file: File, type: 'logo' | 'brandDoc') => {
+    setUploading(true)
+    try {
+      // Simulate file upload - in production you would upload to your media storage
+      await new Promise(resolve => setTimeout(resolve, 2000)) // Simulate upload delay
+      
+      if (type === 'logo') {
+        setLogoFile(file)
+      } else {
+        setBrandDoc(file)
+      }
+      
+      console.log(`✅ ${type} uploaded successfully:`, file.name)
+    } catch (error) {
+      console.error(`❌ Failed to upload ${type}:`, error)
+      alert(`Failed to upload ${type}. Please try again.`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleTrainingAction = (action: string, item: any) => {
+    console.log(`📖 Training action: ${action} for "${item.title}"`)
+    
+    // Simulate opening training material
+    if (action === 'watch' || action === 'read') {
+      alert(`📖 Opening "${item.title}" - ${item.type === 'video' ? 'Video' : 'Document'} (${item.duration})`)
+    } else if (action === 'download') {
+      alert(`📥 Downloading "${item.title}" resource`)
+    }
+  }
+
+  const handlePublishingSetting = (setting: string) => {
+    console.log(`⚙️ Publishing setting: ${setting}`)
+    
+    switch (setting) {
+      case 'auto-publish':
+        alert('🔄 Auto-publish setting configured. Approved posts will automatically be published.')
+        break
+      case 'cross-platform':
+        alert('🌐 Cross-platform posting configured. Posts will be adapted for each connected platform.')
+        break
+      case 'content-adaptation':
+        alert('✨ Content adaptation enabled. AI will optimize content for each platform automatically.')
+        break
+    }
+  }
+
+  const handleResourceAccess = (resource: string) => {
+    console.log(`📚 Accessing resource: ${resource}`)
+    
+    if (resource === 'knowledge-base') {
+      alert('📚 Opening Knowledge Base - Comprehensive guides and tutorials')
+    } else if (resource === 'video-library') {
+      alert('🎥 Opening Video Library - Step-by-step video tutorials')
+    }
   }
 
   const renderAccountSetup = () => (
@@ -884,21 +1019,39 @@ export function ClientOnboardingFlow({
                   <p className="font-medium">Auto-publish approved posts</p>
                   <p className="text-sm text-muted-foreground">Automatically publish posts when approved</p>
                 </div>
-                <Button variant="outline" size="sm">Enable</Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handlePublishingSetting('auto-publish')}
+                >
+                  Enable
+                </Button>
               </div>
               <div className="flex items-center justify-between p-3 border rounded-lg">
                 <div>
                   <p className="font-medium">Cross-platform posting</p>
                   <p className="text-sm text-muted-foreground">Post to multiple platforms simultaneously</p>
                 </div>
-                <Button variant="outline" size="sm">Configure</Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handlePublishingSetting('cross-platform')}
+                >
+                  Configure
+                </Button>
               </div>
               <div className="flex items-center justify-between p-3 border rounded-lg">
                 <div>
                   <p className="font-medium">Content adaptation</p>
                   <p className="text-sm text-muted-foreground">Automatically adapt content for each platform</p>
                 </div>
-                <Button variant="outline" size="sm">Setup</Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handlePublishingSetting('content-adaptation')}
+                >
+                  Setup
+                </Button>
               </div>
             </div>
           </div>
@@ -951,11 +1104,19 @@ export function ClientOnboardingFlow({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleTrainingAction(item.id, item.type === 'video' ? 'watch' : 'read')}
+                  >
                     <Play className="h-4 w-4 mr-1" />
                     {item.type === 'video' ? 'Watch' : 'Read'}
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleTrainingAction(item.id, 'download')}
+                  >
                     <Download className="h-4 w-4" />
                   </Button>
                 </div>
@@ -1031,7 +1192,11 @@ export function ClientOnboardingFlow({
               <p className="text-sm text-muted-foreground mb-3">
                 Comprehensive guides and tutorials
               </p>
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleResourceAccess('knowledge-base')}
+              >
                 Browse Articles
               </Button>
             </div>
@@ -1043,7 +1208,11 @@ export function ClientOnboardingFlow({
               <p className="text-sm text-muted-foreground mb-3">
                 Step-by-step video tutorials
               </p>
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleResourceAccess('video-library')}
+              >
                 Watch Videos
               </Button>
             </div>

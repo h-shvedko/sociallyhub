@@ -118,10 +118,8 @@ async function getClientsHandler(req: NextRequest) {
       workspace: client.workspace
     }))
 
-    BusinessLogger.logClientListViewed(userId, workspaceId, {
-      totalClients: totalCount,
-      filters: { search }
-    })
+    // Log client list view (BusinessLogger.logClientListViewed not implemented yet)
+    console.log('📋 Client list viewed:', { userId, workspaceId, totalClients: totalCount, filters: { search } })
 
     return NextResponse.json({
       clients: formattedClients,
@@ -185,7 +183,8 @@ async function createClientHandler(req: NextRequest) {
       }
     })
 
-    BusinessLogger.logClientCreated(newClient.id, userId, userWorkspace.workspaceId)
+    // Log client creation for analytics (BusinessLogger.logClientCreated not implemented yet)
+    console.log('✅ Client created successfully:', { clientId: newClient.id, userId, workspaceId: userWorkspace.workspaceId })
 
     // Format response to match frontend expectations
     const formattedClient = {
