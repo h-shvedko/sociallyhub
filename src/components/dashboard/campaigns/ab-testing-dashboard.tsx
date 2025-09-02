@@ -40,13 +40,18 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
 
   const loadABTests = async () => {
     try {
+      console.log('Loading A/B tests...')
       setLoading(true)
       const response = await fetch('/api/ab-tests')
+      console.log('A/B tests response:', response.status)
+      
       if (response.ok) {
         const data = await response.json()
+        console.log('A/B tests data:', data)
         setActiveTests(data.abTests || [])
+        console.log('Set active tests:', data.abTests?.length || 0)
       } else {
-        console.error('Failed to load A/B tests')
+        console.error('Failed to load A/B tests, status:', response.status)
       }
     } catch (error) {
       console.error('Error loading A/B tests:', error)
@@ -66,25 +71,34 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
   }
 
   const handleViewDetails = (test: any) => {
+    console.log('View Details clicked for test:', test)
     setSelectedTest(test)
     setIsDetailsOpen(true)
+    console.log('Details dialog should open:', { test, isOpen: true })
   }
 
   const handleStopTest = async (testId: string) => {
+    console.log('Stop Test clicked for ID:', testId)
+    
     if (!confirm('Are you sure you want to stop this test? This action cannot be undone.')) {
+      console.log('User cancelled stop test')
       return
     }
 
     try {
+      console.log('Making API call to stop test')
       const response = await fetch(`/api/ab-tests/${testId}/stop`, {
         method: 'POST'
       })
+
+      console.log('Stop test response:', response.status)
 
       if (response.ok) {
         await loadABTests()
         alert('A/B test stopped successfully')
       } else {
         const error = await response.json()
+        console.error('Stop test error:', error)
         alert(`Failed to stop test: ${error.error}`)
       }
     } catch (error) {
@@ -206,7 +220,7 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
           </Card>
         ) : (
           <div className="space-y-4">
-            {activeTests.map((test) => (
+            {console.log('Rendering active tests:', activeTests) || activeTests.map((test) => (
               <Card key={test.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -224,7 +238,10 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => handleStopTest(test.id)}
+                          onClick={(e) => {
+                            console.log('Stop button clicked!', e)
+                            handleStopTest(test.id)
+                          }}
                         >
                           <Pause className="h-4 w-4 mr-2" />
                           Stop Test
@@ -312,7 +329,10 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => handleViewDetails(test)}
+                        onClick={(e) => {
+                          console.log('Button clicked!', e)
+                          handleViewDetails(test)
+                        }}
                       >
                         View Details
                       </Button>
