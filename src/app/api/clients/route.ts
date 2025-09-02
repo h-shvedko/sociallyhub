@@ -78,7 +78,7 @@ async function getClientsHandler(req: NextRequest) {
             select: {
               id: true,
               provider: true,
-              username: true
+              handle: true
             }
           },
           campaigns: {
