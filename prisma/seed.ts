@@ -366,6 +366,47 @@ async function main() {
     console.log(`✅ Created campaign: ${campaign.name}`)
   }
 
+  // Create demo clients
+  const demoClients = [
+    {
+      id: 'acme-corp-client',
+      name: 'Acme Corporation',
+      labels: ['Enterprise', 'Technology', 'Priority']
+    },
+    {
+      id: 'techstart-client', 
+      name: 'TechStart Inc.',
+      labels: ['Startup', 'Technology', 'Growth']
+    },
+    {
+      id: 'global-retail-client',
+      name: 'Global Retail Co.',
+      labels: ['Retail', 'Large Enterprise', 'E-commerce']
+    },
+    {
+      id: 'healthcare-plus-client',
+      name: 'Healthcare Plus',
+      labels: ['Healthcare', 'Compliance', 'B2B']
+    },
+    {
+      id: 'edu-solutions-client',
+      name: 'Educational Solutions',
+      labels: ['Education', 'Non-profit', 'Community']
+    }
+  ]
+
+  for (const clientData of demoClients) {
+    const client = await prisma.client.upsert({
+      where: { id: clientData.id },
+      update: {},
+      create: {
+        ...clientData,
+        workspaceId: demoWorkspace.id,
+      },
+    })
+    console.log(`✅ Created client: ${client.name}`)
+  }
+
   console.log('🎉 Database seeding completed!')
 }
 

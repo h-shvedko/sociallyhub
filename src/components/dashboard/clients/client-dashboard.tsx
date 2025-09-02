@@ -61,172 +61,58 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [showFilters, setShowFilters] = useState(false)
 
-  // Mock client data
-  const mockClients: Client[] = [
-    {
-      id: '1',
-      workspaceId,
-      name: 'Acme Corporation',
-      email: 'contact@acme.com',
-      phone: '+1 (555) 123-4567',
-      company: 'Acme Corporation',
-      industry: 'Technology',
-      website: 'https://acme.com',
-      status: ClientStatus.ACTIVE,
-      onboardingStatus: OnboardingStatus.COMPLETED,
-      createdAt: new Date('2024-01-15'),
-      updatedAt: new Date('2024-01-20'),
-      lastContactDate: new Date('2024-01-18'),
-      assignedUserId: 'user1',
-      tags: ['Enterprise', 'Priority'],
-      notes: 'High-value client with complex requirements',
-      contractDetails: {
-        startDate: new Date('2024-01-01'),
-        endDate: new Date('2024-12-31'),
-        contractType: 'ANNUAL' as any,
-        serviceLevel: ServiceLevel.PREMIUM,
-        included: {
-          socialAccounts: 10,
-          monthlyPosts: 100,
-          teamMembers: 8,
-          analyticsReports: true,
-          prioritySupport: true,
-          customBranding: true,
-          whiteLabel: true,
-          apiAccess: true,
-          advancedFeatures: ['Custom Analytics', 'White Label']
-        }
-      },
-      billingInfo: {
-        contractValue: 12000,
-        currency: 'USD',
-        billingCycle: 'ANNUAL' as any,
-        paymentTerms: 30,
-        nextBillingDate: new Date('2025-01-01')
+  const fetchClients = async () => {
+    try {
+      setIsLoading(true)
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '50'
+      })
+      
+      if (searchTerm) {
+        params.set('search', searchTerm)
       }
-    },
-    {
-      id: '2',
-      workspaceId,
-      name: 'TechStart Inc.',
-      email: 'hello@techstart.io',
-      phone: '+1 (555) 987-6543',
-      company: 'TechStart Inc.',
-      industry: 'Technology',
-      website: 'https://techstart.io',
-      status: ClientStatus.ACTIVE,
-      onboardingStatus: OnboardingStatus.IN_PROGRESS,
-      createdAt: new Date('2024-01-20'),
-      updatedAt: new Date('2024-01-22'),
-      assignedUserId: 'user2',
-      tags: ['Startup'],
-      contractDetails: {
-        startDate: new Date('2024-01-20'),
-        contractType: 'MONTHLY' as any,
-        serviceLevel: ServiceLevel.STANDARD,
-        included: {
-          socialAccounts: 5,
-          monthlyPosts: 50,
-          teamMembers: 3,
-          analyticsReports: true,
-          prioritySupport: false,
-          customBranding: false,
-          whiteLabel: false,
-          apiAccess: false,
-          advancedFeatures: []
-        }
-      },
-      billingInfo: {
-        contractValue: 599,
-        currency: 'USD',
-        billingCycle: 'MONTHLY' as any,
-        paymentTerms: 15,
-        nextBillingDate: new Date('2024-02-20')
-      }
-    },
-    {
-      id: '3',
-      workspaceId,
-      name: 'Global Retail Co.',
-      email: 'marketing@globalretail.com',
-      company: 'Global Retail Co.',
-      industry: 'Retail',
-      status: ClientStatus.PROSPECT,
-      onboardingStatus: OnboardingStatus.NOT_STARTED,
-      createdAt: new Date('2024-01-22'),
-      updatedAt: new Date('2024-01-22'),
-      tags: ['Large Enterprise'],
-      notes: 'Potential high-value client, currently in negotiation'
-    },
-    {
-      id: '4',
-      workspaceId,
-      name: 'Healthcare Plus',
-      email: 'info@healthcareplus.com',
-      company: 'Healthcare Plus',
-      industry: 'Healthcare',
-      status: ClientStatus.ON_HOLD,
-      onboardingStatus: OnboardingStatus.STALLED,
-      createdAt: new Date('2024-01-10'),
-      updatedAt: new Date('2024-01-15'),
-      lastContactDate: new Date('2024-01-12'),
-      tags: ['Healthcare', 'Compliance']
-    }
-  ]
 
-  const mockStats: ClientStats = {
-    totalClients: 15,
-    activeClients: 10,
-    prospectClients: 3,
-    churnedClients: 2,
-    totalRevenue: 185000,
-    monthlyRevenue: 25000,
-    averageContractValue: 8500,
-    clientSatisfactionScore: 4.7,
-    retentionRate: 92,
-    churnRate: 8,
-    onboardingCompletionRate: 85,
-    responseTime: 2.5,
-    clientsByIndustry: {
-      'Technology': 6,
-      'Healthcare': 3,
-      'Finance': 2,
-      'Retail': 2,
-      'Education': 1,
-      'Other': 1
-    },
-    clientsByServiceLevel: {
-      'Basic': 3,
-      'Standard': 6,
-      'Premium': 4,
-      'Enterprise': 2
-    },
-    revenueByMonth: [
-      { month: 'Jan', revenue: 22000 },
-      { month: 'Feb', revenue: 25000 },
-      { month: 'Mar', revenue: 24000 },
-      { month: 'Apr', revenue: 28000 },
-      { month: 'May', revenue: 25000 },
-      { month: 'Jun', revenue: 26000 }
-    ],
-    growthMetrics: {
-      newClientsThisMonth: 3,
-      newClientsLastMonth: 2,
-      growthRate: 50,
-      projectedRevenue: 320000,
-      clientLifetimeValue: 15000,
-      acquisitionCost: 1200
+      const response = await fetch(`/api/clients?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch clients')
+      }
+      const data = await response.json()
+      setClients(data.clients || [])
+    } catch (error) {
+      console.error('Error fetching clients:', error)
+      setClients([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('/api/clients/stats')
+      if (!response.ok) {
+        throw new Error('Failed to fetch stats')
+      }
+      const data = await response.json()
+      setStats(data)
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+      setStats(null)
     }
   }
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setClients(mockClients)
-      setStats(mockStats)
-      setIsLoading(false)
-    }, 1000)
-  }, [])
+    fetchClients()
+    fetchStats()
+  }, [searchTerm])
+
+  // Debounced search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchClients()
+    }, 500)
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm])
 
   const filteredClients = clients.filter(client => {
     const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { withLogging } from '@/lib/middleware/logging'
 import { BusinessLogger } from '@/lib/middleware/logging'
+import { prisma } from '@/lib/prisma'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 async function getClientsHandler(req: NextRequest) {
   try {
@@ -13,129 +15,120 @@ async function getClientsHandler(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '10')
-    const status = searchParams.get('status')
+    const limit = parseInt(searchParams.get('limit') || '50')
     const search = searchParams.get('search')
-    const workspaceId = searchParams.get('workspaceId')
 
-    if (!workspaceId) {
-      return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 })
-    }
-
-    // Mock client data - in real implementation, this would fetch from database
-    const mockClients = [
-      {
-        id: '1',
-        workspaceId,
-        name: 'Acme Corporation',
-        email: 'contact@acme.com',
-        phone: '+1 (555) 123-4567',
-        company: 'Acme Corporation',
-        industry: 'Technology',
-        website: 'https://acme.com',
-        status: 'ACTIVE',
-        onboardingStatus: 'COMPLETED',
-        createdAt: new Date('2024-01-15').toISOString(),
-        updatedAt: new Date('2024-01-20').toISOString(),
-        lastContactDate: new Date('2024-01-18').toISOString(),
-        assignedUserId: 'user1',
-        tags: ['Enterprise', 'Priority'],
-        notes: 'High-value client with complex requirements',
-        contractDetails: {
-          startDate: new Date('2024-01-01').toISOString(),
-          endDate: new Date('2024-12-31').toISOString(),
-          contractType: 'ANNUAL',
-          serviceLevel: 'PREMIUM',
-          included: {
-            socialAccounts: 10,
-            monthlyPosts: 100,
-            teamMembers: 8,
-            analyticsReports: true,
-            prioritySupport: true,
-            customBranding: true,
-            whiteLabel: true,
-            apiAccess: true,
-            advancedFeatures: ['Custom Analytics', 'White Label']
-          }
-        },
-        billingInfo: {
-          contractValue: 12000,
-          currency: 'USD',
-          billingCycle: 'ANNUAL',
-          paymentTerms: 30,
-          nextBillingDate: new Date('2025-01-01').toISOString()
-        }
+    // Get user's workspace
+    const userId = await normalizeUserId(session.user.id)
+    
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: {
+        userId,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
       },
-      {
-        id: '2',
-        workspaceId,
-        name: 'TechStart Inc.',
-        email: 'hello@techstart.io',
-        phone: '+1 (555) 987-6543',
-        company: 'TechStart Inc.',
-        industry: 'Technology',
-        website: 'https://techstart.io',
-        status: 'ACTIVE',
-        onboardingStatus: 'IN_PROGRESS',
-        createdAt: new Date('2024-01-20').toISOString(),
-        updatedAt: new Date('2024-01-22').toISOString(),
-        assignedUserId: 'user2',
-        tags: ['Startup'],
-        contractDetails: {
-          startDate: new Date('2024-01-20').toISOString(),
-          contractType: 'MONTHLY',
-          serviceLevel: 'STANDARD',
-          included: {
-            socialAccounts: 5,
-            monthlyPosts: 50,
-            teamMembers: 3,
-            analyticsReports: true,
-            prioritySupport: false,
-            customBranding: false,
-            whiteLabel: false,
-            apiAccess: false,
-            advancedFeatures: []
+      select: {
+        workspaceId: true,
+        workspace: {
+          select: {
+            id: true,
+            name: true
           }
-        },
-        billingInfo: {
-          contractValue: 599,
-          currency: 'USD',
-          billingCycle: 'MONTHLY',
-          paymentTerms: 15,
-          nextBillingDate: new Date('2024-02-20').toISOString()
         }
       }
-    ]
+    })
 
-    // Apply filters
-    let filteredClients = mockClients
-    if (status && status !== 'all') {
-      filteredClients = filteredClients.filter(client => client.status === status)
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
     }
+
+    const workspaceId = userWorkspace.workspaceId
+
+    // Build where clause for search
+    const whereClause: any = {
+      workspaceId
+    }
+
     if (search) {
-      const searchLower = search.toLowerCase()
-      filteredClients = filteredClients.filter(client =>
-        client.name.toLowerCase().includes(searchLower) ||
-        client.email.toLowerCase().includes(searchLower) ||
-        client.company?.toLowerCase().includes(searchLower)
-      )
+      whereClause.OR = [
+        {
+          name: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        }
+      ]
     }
 
-    // Apply pagination
-    const offset = (page - 1) * limit
-    const paginatedClients = filteredClients.slice(offset, offset + limit)
+    // Get clients from database
+    const [clients, totalCount] = await Promise.all([
+      prisma.client.findMany({
+        where: whereClause,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          workspace: {
+            select: {
+              name: true
+            }
+          },
+          socialAccounts: {
+            select: {
+              id: true,
+              provider: true,
+              username: true
+            }
+          },
+          campaigns: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          posts: {
+            select: {
+              id: true
+            }
+          }
+        }
+      }),
+      prisma.client.count({
+        where: whereClause
+      })
+    ])
 
-    BusinessLogger.logClientListViewed(session.user.id, workspaceId, {
-      totalClients: filteredClients.length,
-      filters: { status, search }
+    // Transform clients to match frontend expectations
+    const formattedClients = clients.map(client => ({
+      id: client.id,
+      workspaceId: client.workspaceId,
+      name: client.name,
+      email: '', // Not in current schema - could be added later
+      company: client.name, // Using name as company for now
+      industry: 'Technology', // Default - could be added to schema later
+      status: 'ACTIVE', // Default - could be added to schema later
+      onboardingStatus: 'COMPLETED', // Default - could be added to schema later
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
+      tags: client.labels || [],
+      socialAccountsCount: client.socialAccounts.length,
+      campaignsCount: client.campaigns.length,
+      postsCount: client.posts.length,
+      workspace: client.workspace
+    }))
+
+    BusinessLogger.logClientListViewed(userId, workspaceId, {
+      totalClients: totalCount,
+      filters: { search }
     })
 
     return NextResponse.json({
-      clients: paginatedClients,
-      totalCount: filteredClients.length,
+      clients: formattedClients,
+      totalCount,
       page,
       pageSize: limit,
-      totalPages: Math.ceil(filteredClients.length / limit)
+      totalPages: Math.ceil(totalCount / limit)
     })
   } catch (error) {
     console.error('Error fetching clients:', error)
@@ -151,51 +144,69 @@ async function createClientHandler(req: NextRequest) {
     }
 
     const body = await req.json()
-    const {
-      workspaceId,
-      name,
-      email,
-      phone,
-      company,
-      industry,
-      website,
-      assignedUserId,
-      tags,
-      notes,
-      contractDetails,
-      billingInfo
-    } = body
+    const { name, tags } = body
 
-    if (!workspaceId || !name || !email) {
+    if (!name) {
       return NextResponse.json({ 
-        error: 'Missing required fields: workspaceId, name, email' 
+        error: 'Missing required field: name' 
       }, { status: 400 })
     }
 
-    // Mock client creation - in real implementation, this would save to database
-    const newClient = {
-      id: `client_${Date.now()}`,
-      workspaceId,
-      name,
-      email,
-      phone,
-      company,
-      industry,
-      website,
-      status: 'PROSPECT',
-      onboardingStatus: 'NOT_STARTED',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      assignedUserId,
-      tags: tags || [],
-      notes,
-      contractDetails,
-      billingInfo
+    // Get user's workspace
+    const userId = await normalizeUserId(session.user.id)
+    
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: {
+        userId,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
+      },
+      select: {
+        workspaceId: true
+      }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
     }
 
-    BusinessLogger.logClientCreated(newClient.id, session.user.id, workspaceId)
+    // Create client in database
+    const newClient = await prisma.client.create({
+      data: {
+        workspaceId: userWorkspace.workspaceId,
+        name,
+        labels: tags || []
+      },
+      include: {
+        workspace: {
+          select: {
+            name: true
+          }
+        }
+      }
+    })
 
-    return NextResponse.json(newClient, { status: 201 })
+    BusinessLogger.logClientCreated(newClient.id, userId, userWorkspace.workspaceId)
+
+    // Format response to match frontend expectations
+    const formattedClient = {
+      id: newClient.id,
+      workspaceId: newClient.workspaceId,
+      name: newClient.name,
+      email: '',
+      company: newClient.name,
+      industry: 'Technology',
+      status: 'ACTIVE',
+      onboardingStatus: 'COMPLETED',
+      createdAt: newClient.createdAt,
+      updatedAt: newClient.updatedAt,
+      tags: newClient.labels || [],
+      socialAccountsCount: 0,
+      campaignsCount: 0,
+      postsCount: 0,
+      workspace: newClient.workspace
+    }
+
+    return NextResponse.json(formattedClient, { status: 201 })
   } catch (error) {
     console.error('Error creating client:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
