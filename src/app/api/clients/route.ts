@@ -22,108 +22,13 @@ async function getClientsHandler(req: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 })
     }
 
-    // Mock client data - in real implementation, this would fetch from database
-    const mockClients = [
-      {
-        id: '1',
-        workspaceId,
-        name: 'Acme Corporation',
-        email: 'contact@acme.com',
-        phone: '+1 (555) 123-4567',
-        company: 'Acme Corporation',
-        industry: 'Technology',
-        website: 'https://acme.com',
-        status: 'ACTIVE',
-        onboardingStatus: 'COMPLETED',
-        createdAt: new Date('2024-01-15').toISOString(),
-        updatedAt: new Date('2024-01-20').toISOString(),
-        lastContactDate: new Date('2024-01-18').toISOString(),
-        assignedUserId: 'user1',
-        tags: ['Enterprise', 'Priority'],
-        notes: 'High-value client with complex requirements',
-        contractDetails: {
-          startDate: new Date('2024-01-01').toISOString(),
-          endDate: new Date('2024-12-31').toISOString(),
-          contractType: 'ANNUAL',
-          serviceLevel: 'PREMIUM',
-          included: {
-            socialAccounts: 10,
-            monthlyPosts: 100,
-            teamMembers: 8,
-            analyticsReports: true,
-            prioritySupport: true,
-            customBranding: true,
-            whiteLabel: true,
-            apiAccess: true,
-            advancedFeatures: ['Custom Analytics', 'White Label']
-          }
-        },
-        billingInfo: {
-          contractValue: 12000,
-          currency: 'USD',
-          billingCycle: 'ANNUAL',
-          paymentTerms: 30,
-          nextBillingDate: new Date('2025-01-01').toISOString()
-        }
-      },
-      {
-        id: '2',
-        workspaceId,
-        name: 'TechStart Inc.',
-        email: 'hello@techstart.io',
-        phone: '+1 (555) 987-6543',
-        company: 'TechStart Inc.',
-        industry: 'Technology',
-        website: 'https://techstart.io',
-        status: 'ACTIVE',
-        onboardingStatus: 'IN_PROGRESS',
-        createdAt: new Date('2024-01-20').toISOString(),
-        updatedAt: new Date('2024-01-22').toISOString(),
-        assignedUserId: 'user2',
-        tags: ['Startup'],
-        contractDetails: {
-          startDate: new Date('2024-01-20').toISOString(),
-          contractType: 'MONTHLY',
-          serviceLevel: 'STANDARD',
-          included: {
-            socialAccounts: 5,
-            monthlyPosts: 50,
-            teamMembers: 3,
-            analyticsReports: true,
-            prioritySupport: false,
-            customBranding: false,
-            whiteLabel: false,
-            apiAccess: false,
-            advancedFeatures: []
-          }
-        },
-        billingInfo: {
-          contractValue: 599,
-          currency: 'USD',
-          billingCycle: 'MONTHLY',
-          paymentTerms: 15,
-          nextBillingDate: new Date('2024-02-20').toISOString()
-        }
-      }
-    ]
-
-    // Apply filters
-    let filteredClients = mockClients
-    if (status && status !== 'all') {
-      filteredClients = filteredClients.filter(client => client.status === status)
-    }
-    if (search) {
-      const searchLower = search.toLowerCase()
-      filteredClients = filteredClients.filter(client =>
-        client.name.toLowerCase().includes(searchLower) ||
-        client.email.toLowerCase().includes(searchLower) ||
-        client.company?.toLowerCase().includes(searchLower)
-      )
-    }
-
-    // Apply pagination
-    const offset = (page - 1) * limit
-    const paginatedClients = filteredClients.slice(offset, offset + limit)
+    // Real database implementation would fetch from Client model
+    // For now, return empty data since no Client model exists in database
+    const clients: any[] = []
+    
+    // Apply pagination to empty results
+    const filteredClients = clients
+    const paginatedClients = []
 
     BusinessLogger.logClientListViewed(session.user.id, workspaceId, {
       totalClients: filteredClients.length,

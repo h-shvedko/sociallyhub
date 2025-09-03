@@ -17,49 +17,31 @@ async function getClientStatsHandler(req: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 })
     }
 
-    // Mock client statistics - in real implementation, this would calculate from database
+    // Real database implementation would calculate from Client model
+    // For now, return zero stats since no Client model exists in database
     const stats = {
-      totalClients: 15,
-      activeClients: 10,
-      prospectClients: 3,
-      churnedClients: 2,
-      totalRevenue: 185000,
-      monthlyRevenue: 25000,
-      averageContractValue: 8500,
-      clientSatisfactionScore: 4.7,
-      retentionRate: 92,
-      churnRate: 8,
-      onboardingCompletionRate: 85,
-      responseTime: 2.5,
-      clientsByIndustry: {
-        'Technology': 6,
-        'Healthcare': 3,
-        'Finance': 2,
-        'Retail': 2,
-        'Education': 1,
-        'Other': 1
-      },
-      clientsByServiceLevel: {
-        'Basic': 3,
-        'Standard': 6,
-        'Premium': 4,
-        'Enterprise': 2
-      },
-      revenueByMonth: [
-        { month: 'Jan', revenue: 22000 },
-        { month: 'Feb', revenue: 25000 },
-        { month: 'Mar', revenue: 24000 },
-        { month: 'Apr', revenue: 28000 },
-        { month: 'May', revenue: 25000 },
-        { month: 'Jun', revenue: 26000 }
-      ],
+      totalClients: 0,
+      activeClients: 0,
+      prospectClients: 0,
+      churnedClients: 0,
+      totalRevenue: 0,
+      monthlyRevenue: 0,
+      averageContractValue: 0,
+      clientSatisfactionScore: 0,
+      retentionRate: 0,
+      churnRate: 0,
+      onboardingCompletionRate: 0,
+      responseTime: 0,
+      clientsByIndustry: {},
+      clientsByServiceLevel: {},
+      revenueByMonth: [],
       growthMetrics: {
-        newClientsThisMonth: 3,
-        newClientsLastMonth: 2,
-        growthRate: 50,
-        projectedRevenue: 320000,
-        clientLifetimeValue: 15000,
-        acquisitionCost: 1200
+        newClientsThisMonth: 0,
+        newClientsLastMonth: 0,
+        growthRate: 0,
+        projectedRevenue: 0,
+        clientLifetimeValue: 0,
+        acquisitionCost: 0
       }
     }
 
