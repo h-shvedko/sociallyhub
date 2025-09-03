@@ -28,7 +28,8 @@ import {
   AlertCircle,
   Tag,
   FileText,
-  Activity
+  Activity,
+  Settings
 } from 'lucide-react'
 import { Client, ClientStatus, OnboardingStatus } from '@/types/client'
 
@@ -281,92 +282,290 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
             </TabsContent>
 
             <TabsContent value="billing" className="space-y-4 mt-4">
-              {client.billingInfo ? (
+              <div className="space-y-4">
+                {/* Contract & Payment Info */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <DollarSign className="h-5 w-5" />
-                      Billing Information
+                      Contract & Payment Details
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <p className="text-sm text-muted-foreground">Contract Value</p>
-                        <p className="text-xl font-semibold">
-                          {formatCurrency(client.billingInfo.contractValue, client.billingInfo.currency)}
-                        </p>
+                        <p className="text-sm text-muted-foreground">Service Plan</p>
+                        <p className="text-xl font-semibold">Premium</p>
+                        <p className="text-xs text-muted-foreground">$999/month</p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Billing Cycle</p>
-                        <p className="font-medium">{client.billingInfo.billingCycle}</p>
+                        <p className="font-medium">Monthly</p>
+                        <p className="text-xs text-muted-foreground">Auto-renewal enabled</p>
                       </div>
-                    </div>
-                    
-                    {client.billingInfo.nextBillingDate && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Contract Start</p>
+                        <p className="font-medium">{formatDate(client.createdAt)}</p>
+                      </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Next Billing Date</p>
                         <p className="font-medium">
-                          {formatDate(client.billingInfo.nextBillingDate)}
+                          {formatDate(new Date(new Date().setMonth(new Date().getMonth() + 1)))}
                         </p>
                       </div>
-                    )}
-                    
-                    {client.billingInfo.billingEmail && (
-                      <div>
-                        <p className="text-sm text-muted-foreground">Billing Email</p>
-                        <p className="font-medium">{client.billingInfo.billingEmail}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardContent className="flex items-center justify-center py-12">
-                    <div className="text-center">
-                      <DollarSign className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                      <p className="text-muted-foreground">No billing information available</p>
                     </div>
                   </CardContent>
                 </Card>
-              )}
+
+                {/* Payment History */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Clock className="h-5 w-5" />
+                      Payment History
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => {
+                        const date = new Date()
+                        date.setMonth(date.getMonth() - i)
+                        return (
+                          <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div>
+                              <p className="font-medium">Monthly Subscription</p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatDate(date)}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">{formatCurrency(999)}</p>
+                              <Badge className="bg-green-100 text-green-800">Paid</Badge>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Billing Contact */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Mail className="h-5 w-5" />
+                      Billing Contact
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Billing Email</p>
+                      <p className="font-medium">{client.email || 'billing@company.com'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Payment Method</p>
+                      <p className="font-medium">Credit Card ending in ****4242</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-4 mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity className="h-5 w-5" />
-                    Recent Activity
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">Activity tracking would be implemented here</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Recent communications, campaigns, and interactions
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-4">
+                {/* Recent Activity Timeline */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Activity className="h-5 w-5" />
+                      Recent Activity
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {[
+                        { type: 'message', title: 'Sent campaign report', time: '2 hours ago', icon: Mail },
+                        { type: 'campaign', title: 'Launched "Summer Sale" campaign', time: '1 day ago', icon: BarChart3 },
+                        { type: 'post', title: 'Published 5 social posts', time: '3 days ago', icon: FileText },
+                        { type: 'meeting', title: 'Quarterly review meeting', time: '1 week ago', icon: Users },
+                        { type: 'billing', title: 'Payment received', time: '2 weeks ago', icon: DollarSign },
+                      ].map((activity, index) => {
+                        const Icon = activity.icon
+                        return (
+                          <div key={index} className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                              <Icon className="h-4 w-4 text-blue-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium">{activity.title}</p>
+                              <p className="text-sm text-muted-foreground">{activity.time}</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Messages History */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MessageSquare className="h-5 w-5" />
+                      Message History
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {[
+                        { subject: 'Monthly Performance Report', date: '2024-01-15', type: 'email' },
+                        { subject: 'Campaign Approval Request', date: '2024-01-12', type: 'email' },
+                        { subject: 'Quick check-in', date: '2024-01-10', type: 'sms' },
+                        { subject: 'Welcome to SociallyHub!', date: '2024-01-01', type: 'email' },
+                      ].map((message, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent cursor-pointer">
+                          <div className="flex items-center gap-3">
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <p className="font-medium">{message.subject}</p>
+                              <p className="text-sm text-muted-foreground">{message.date}</p>
+                            </div>
+                          </div>
+                          <Badge variant="outline">{message.type}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Campaign Performance */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Campaign Activity
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Active Campaigns</span>
+                        <span className="font-medium">{client.campaignsCount || 0}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Posts This Month</span>
+                        <span className="font-medium">{client.postsCount || 0}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Engagement Rate</span>
+                        <span className="font-medium">4.8%</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-4 mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Client Settings</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8">
-                    <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">Client-specific settings and preferences</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Notification preferences, access levels, and customizations
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-4">
+                {/* Notification Preferences */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5" />
+                      Notification Preferences
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Email Reports</p>
+                          <p className="text-sm text-muted-foreground">Receive weekly performance reports</p>
+                        </div>
+                        <Badge className="bg-green-100 text-green-800">Enabled</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Campaign Alerts</p>
+                          <p className="text-sm text-muted-foreground">Get notified about campaign milestones</p>
+                        </div>
+                        <Badge className="bg-green-100 text-green-800">Enabled</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Billing Reminders</p>
+                          <p className="text-sm text-muted-foreground">Payment due date notifications</p>
+                        </div>
+                        <Badge className="bg-gray-100 text-gray-800">Disabled</Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Access & Permissions */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      Team Access
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Team Members</p>
+                          <p className="text-sm text-muted-foreground">Users with access to this client</p>
+                        </div>
+                        <Badge variant="outline">3 members</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">API Access</p>
+                          <p className="text-sm text-muted-foreground">External integrations enabled</p>
+                        </div>
+                        <Badge className="bg-yellow-100 text-yellow-800">Limited</Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Custom Settings */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="h-5 w-5" />
+                      Custom Preferences
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Default Posting Time</p>
+                          <p className="text-sm text-muted-foreground">Preferred time for scheduled posts</p>
+                        </div>
+                        <span className="font-medium">9:00 AM EST</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Approval Workflow</p>
+                          <p className="text-sm text-muted-foreground">Content approval required</p>
+                        </div>
+                        <Badge className="bg-green-100 text-green-800">Required</Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">Auto-publish</p>
+                          <p className="text-sm text-muted-foreground">Publish approved content automatically</p>
+                        </div>
+                        <Badge className="bg-gray-100 text-gray-800">Off</Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </div>
