@@ -60,7 +60,8 @@
       "Bash(timeout 60 docker-compose exec app npx prisma db seed:*)",
       "Bash(export DATABASE_URL=\"postgresql://sociallyhub:sociallyhub_dev_password@localhost:5432/sociallyhub\")",
       "Bash(npx tsx:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(timeout 10s docker-compose logs -f app)"
     ],
     "deny": [],
     "ask": []
