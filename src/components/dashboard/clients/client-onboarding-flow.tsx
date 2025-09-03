@@ -253,8 +253,8 @@ export function ClientOnboardingFlow({
       
     } catch (error) {
       console.error('Error completing onboarding:', error)
-      // You can replace this with a proper toast notification in a production app
-      alert('❌ Failed to complete onboarding. Please try again.')
+      // In production, this would show a proper toast notification
+      console.error('Failed to complete onboarding. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -723,7 +723,7 @@ export function ClientOnboardingFlow({
       console.log(`✅ ${type} uploaded successfully:`, file.name)
     } catch (error) {
       console.error(`❌ Failed to upload ${type}:`, error)
-      alert(`Failed to upload ${type}. Please try again.`)
+      console.error(`Failed to upload ${type}. Please try again.`)
     } finally {
       setUploading(false)
     }
@@ -734,9 +734,11 @@ export function ClientOnboardingFlow({
     
     // Simulate opening training material
     if (action === 'watch' || action === 'read') {
-      alert(`📖 Opening "${item.title}" - ${item.type === 'video' ? 'Video' : 'Document'} (${item.duration})`)
+      // In production, this would open the actual training resource
+      console.log(`📖 Opening "${item.title}" - ${item.type === 'video' ? 'Video' : 'Document'} (${item.duration})`)
     } else if (action === 'download') {
-      alert(`📥 Downloading "${item.title}" resource`)
+      // In production, this would download the actual resource
+      console.log(`📥 Downloading "${item.title}" resource`)
     }
   }
 
@@ -745,13 +747,13 @@ export function ClientOnboardingFlow({
     
     switch (setting) {
       case 'auto-publish':
-        alert('🔄 Auto-publish setting configured. Approved posts will automatically be published.')
+        console.log('🔄 Auto-publish setting configured. Approved posts will automatically be published.')
         break
       case 'cross-platform':
-        alert('🌐 Cross-platform posting configured. Posts will be adapted for each connected platform.')
+        console.log('🌐 Cross-platform posting configured. Posts will be adapted for each connected platform.')
         break
       case 'content-adaptation':
-        alert('✨ Content adaptation enabled. AI will optimize content for each platform automatically.')
+        console.log('✨ Content adaptation enabled. AI will optimize content for each platform automatically.')
         break
     }
   }
@@ -760,9 +762,9 @@ export function ClientOnboardingFlow({
     console.log(`📚 Accessing resource: ${resource}`)
     
     if (resource === 'knowledge-base') {
-      alert('📚 Opening Knowledge Base - Comprehensive guides and tutorials')
+      console.log('📚 Opening Knowledge Base - Comprehensive guides and tutorials')
     } else if (resource === 'video-library') {
-      alert('🎥 Opening Video Library - Step-by-step video tutorials')
+      console.log('🎥 Opening Video Library - Step-by-step video tutorials')
     }
   }
 
@@ -1107,7 +1109,7 @@ export function ClientOnboardingFlow({
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => handleTrainingAction(item.id, item.type === 'video' ? 'watch' : 'read')}
+                    onClick={() => handleTrainingAction(item.type === 'video' ? 'watch' : 'read', item)}
                   >
                     <Play className="h-4 w-4 mr-1" />
                     {item.type === 'video' ? 'Watch' : 'Read'}
@@ -1115,7 +1117,7 @@ export function ClientOnboardingFlow({
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => handleTrainingAction(item.id, 'download')}
+                    onClick={() => handleTrainingAction('download', item)}
                   >
                     <Download className="h-4 w-4" />
                   </Button>

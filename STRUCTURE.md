@@ -392,8 +392,10 @@
 - **Database Models:** `SocialAccount`
 - **Description:** Connected social media accounts management
 
-### Clients
-**Page:** `src/app/dashboard/clients/page.tsx`
+### Clients / Customers
+**Pages:** 
+- `src/app/dashboard/clients/page.tsx` - Primary client management page
+- `src/app/dashboard/customers/page.tsx` - Alternate route (identical functionality)
 **Related Files:**
 - `src/components/dashboard/clients/client-dashboard.tsx` - Client overview with database integration and action buttons
 - `src/components/dashboard/clients/client-card.tsx` - Client display cards with functional action buttons

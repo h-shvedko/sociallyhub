@@ -199,6 +199,15 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
     )
   }
 
+  const handleOnboardingComplete = (newClient: Client) => {
+    // Add the new client to the list
+    setClients(prev => [newClient, ...prev])
+    // Hide the onboarding flow and go back to the client list
+    setShowOnboarding(false)
+    // Refresh the stats
+    fetchStats()
+  }
+
   if (showOnboarding) {
     return (
       <div className="space-y-6">
@@ -210,7 +219,7 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
             ← Back to Clients
           </Button>
         </div>
-        <ClientOnboardingFlow />
+        <ClientOnboardingFlow onComplete={handleOnboardingComplete} />
       </div>
     )
   }
