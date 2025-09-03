@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { withLogging } from '@/lib/middleware/logging'
-import { BusinessLogger } from '@/lib/middleware/logging'
+import { prisma } from '@/lib/prisma'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 async function getClientHandler(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -12,48 +13,80 @@ async function getClientHandler(req: NextRequest, { params }: { params: { id: st
     }
 
     const clientId = params.id
+    const userId = await normalizeUserId(session.user.id)
 
-    // Mock client data - in real implementation, this would fetch from database
-    const mockClient = {
-      id: clientId,
-      workspaceId: 'workspace1',
-      name: 'Acme Corporation',
-      email: 'contact@acme.com',
-      phone: '+1 (555) 123-4567',
-      company: 'Acme Corporation',
-      industry: 'Technology',
-      website: 'https://acme.com',
-      status: 'ACTIVE',
-      onboardingStatus: 'COMPLETED',
-      createdAt: new Date('2024-01-15').toISOString(),
-      updatedAt: new Date('2024-01-20').toISOString(),
-      lastContactDate: new Date('2024-01-18').toISOString(),
-      assignedUserId: 'user1',
-      tags: ['Enterprise', 'Priority'],
-      notes: 'High-value client with complex requirements',
-      contractDetails: {
-        startDate: new Date('2024-01-01').toISOString(),
-        endDate: new Date('2024-12-31').toISOString(),
-        contractType: 'ANNUAL',
-        serviceLevel: 'PREMIUM'
+    // Get user's workspace
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: {
+        userId,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
       },
-      billingInfo: {
-        contractValue: 12000,
-        currency: 'USD',
-        billingCycle: 'ANNUAL',
-        paymentTerms: 30,
-        nextBillingDate: new Date('2025-01-01').toISOString()
-      },
-      branding: {
-        primaryColor: '#1f2937',
-        secondaryColor: '#3b82f6',
-        whiteLabel: false
+      select: {
+        workspaceId: true
       }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
     }
 
-    BusinessLogger.logClientViewed(clientId, session.user.id, mockClient.workspaceId)
+    // Get client
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        workspaceId: userWorkspace.workspaceId
+      },
+      include: {
+        workspace: {
+          select: {
+            name: true
+          }
+        },
+        socialAccounts: {
+          select: {
+            id: true,
+            provider: true,
+            handle: true
+          }
+        },
+        campaigns: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        posts: {
+          select: {
+            id: true
+          }
+        }
+      }
+    })
 
-    return NextResponse.json(mockClient)
+    if (!client) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+    }
+
+    // Format response
+    const formattedClient = {
+      id: client.id,
+      workspaceId: client.workspaceId,
+      name: client.name,
+      email: '', // Not in current schema
+      company: client.name,
+      industry: 'Technology', // Default
+      status: 'ACTIVE',
+      onboardingStatus: 'COMPLETED',
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
+      tags: client.labels || [],
+      socialAccountsCount: client.socialAccounts.length,
+      campaignsCount: client.campaigns.length,
+      postsCount: client.posts.length,
+      workspace: client.workspace
+    }
+
+    return NextResponse.json(formattedClient)
   } catch (error) {
     console.error('Error fetching client:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -69,17 +102,89 @@ async function updateClientHandler(req: NextRequest, { params }: { params: { id:
 
     const clientId = params.id
     const body = await req.json()
+    const { workspaceId, name, tags, notes, ...otherFields } = body
 
-    // Mock client update - in real implementation, this would update in database
-    const updatedClient = {
-      id: clientId,
-      ...body,
-      updatedAt: new Date().toISOString()
+    if (!name) {
+      return NextResponse.json({ 
+        error: 'Missing required field: name' 
+      }, { status: 400 })
     }
 
-    BusinessLogger.logClientUpdated(clientId, session.user.id, body.workspaceId || 'unknown')
+    const userId = await normalizeUserId(session.user.id)
 
-    return NextResponse.json(updatedClient)
+    // Verify user has access to this workspace
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: {
+        userId,
+        workspaceId,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
+      }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
+    }
+
+    // Update client
+    const updatedClient = await prisma.client.update({
+      where: {
+        id: clientId,
+        workspaceId
+      },
+      data: {
+        name,
+        labels: tags || [],
+        // Add other fields as needed when schema is expanded
+      },
+      include: {
+        workspace: {
+          select: {
+            name: true
+          }
+        },
+        socialAccounts: {
+          select: {
+            id: true,
+            provider: true,
+            handle: true
+          }
+        },
+        campaigns: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        posts: {
+          select: {
+            id: true
+          }
+        }
+      }
+    })
+
+    // Format response
+    const formattedClient = {
+      id: updatedClient.id,
+      workspaceId: updatedClient.workspaceId,
+      name: updatedClient.name,
+      email: '', // Not in current schema
+      company: updatedClient.name,
+      industry: 'Technology', // Default
+      status: 'ACTIVE',
+      onboardingStatus: 'COMPLETED',
+      createdAt: updatedClient.createdAt,
+      updatedAt: updatedClient.updatedAt,
+      tags: updatedClient.labels || [],
+      socialAccountsCount: updatedClient.socialAccounts.length,
+      campaignsCount: updatedClient.campaigns.length,
+      postsCount: updatedClient.posts.length,
+      workspace: updatedClient.workspace
+    }
+
+    console.log('✅ Client updated successfully:', { clientId, userId, workspaceId })
+
+    return NextResponse.json(formattedClient)
   } catch (error) {
     console.error('Error updating client:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -94,11 +199,46 @@ async function deleteClientHandler(req: NextRequest, { params }: { params: { id:
     }
 
     const clientId = params.id
+    const body = await req.json()
+    const { workspaceId } = body
 
-    // Mock client deletion - in real implementation, this would delete from database
-    BusinessLogger.logClientDeleted(clientId, session.user.id, 'unknown')
+    const userId = await normalizeUserId(session.user.id)
 
-    return NextResponse.json({ success: true })
+    // Verify user has access to this workspace
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: {
+        userId,
+        workspaceId,
+        role: { in: ['OWNER', 'ADMIN'] } // Only owners and admins can delete
+      }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+    }
+
+    // Check if client exists and belongs to workspace
+    const client = await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        workspaceId
+      }
+    })
+
+    if (!client) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+    }
+
+    // Delete client (this will cascade to related records if configured)
+    await prisma.client.delete({
+      where: {
+        id: clientId
+      }
+    })
+
+    console.log('✅ Client deleted successfully:', { clientId, userId, workspaceId })
+
+    return NextResponse.json({ success: true, message: 'Client deleted successfully' })
   } catch (error) {
     console.error('Error deleting client:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

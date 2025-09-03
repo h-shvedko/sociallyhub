@@ -15,62 +15,114 @@ async function getClientsHandler(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '10')
-    const status = searchParams.get('status')
+    const limit = parseInt(searchParams.get('limit') || '50')
     const search = searchParams.get('search')
-    const workspaceId = searchParams.get('workspaceId')
-
-    if (!workspaceId) {
-      return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 })
-    }
 
     // Get user's workspace
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      include: { workspace: true }
+      where: {
+        userId,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
+      },
+      select: {
+        workspaceId: true,
+        workspace: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
     }
 
-    const actualWorkspaceId = userWorkspace.workspaceId
+    const workspaceId = userWorkspace.workspaceId
 
-    // Fetch clients from database
-    let whereClause: any = { workspaceId: actualWorkspaceId }
-    
-    // Apply filters
-    if (status && status !== 'all') {
-      whereClause.status = status.toUpperCase()
+    // Build where clause for search
+    const whereClause: any = {
+      workspaceId
     }
+
     if (search) {
       whereClause.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { company: { contains: search, mode: 'insensitive' } }
+        {
+          name: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        }
       ]
     }
 
-    const totalCount = await prisma.client.count({ where: whereClause })
-    
-    const clients = await prisma.client.findMany({
-      where: whereClause,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit
-    })
+    // Get clients from database
+    const [clients, totalCount] = await Promise.all([
+      prisma.client.findMany({
+        where: whereClause,
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          workspace: {
+            select: {
+              name: true
+            }
+          },
+          socialAccounts: {
+            select: {
+              id: true,
+              provider: true,
+              handle: true
+            }
+          },
+          campaigns: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          posts: {
+            select: {
+              id: true
+            }
+          }
+        }
+      }),
+      prisma.client.count({
+        where: whereClause
+      })
+    ])
 
-    const filteredClients = clients
-    const paginatedClients = clients
+    // Transform clients to match frontend expectations
+    const formattedClients = clients.map(client => ({
+      id: client.id,
+      workspaceId: client.workspaceId,
+      name: client.name,
+      email: '', // Not in current schema - could be added later
+      company: client.name, // Using name as company for now
+      industry: 'Technology', // Default - could be added to schema later
+      status: 'ACTIVE', // Default - could be added to schema later
+      onboardingStatus: 'COMPLETED', // Default - could be added to schema later
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
+      tags: client.labels || [],
+      socialAccountsCount: client.socialAccounts.length,
+      campaignsCount: client.campaigns.length,
+      postsCount: client.posts.length,
+      workspace: client.workspace
+    }))
 
-    BusinessLogger.logClientListViewed(session.user.id, workspaceId, {
-      totalClients: filteredClients.length,
-      filters: { status, search }
-    })
+    // Log client list view (BusinessLogger.logClientListViewed not implemented yet)
+    console.log('📋 Client list viewed:', { userId, workspaceId, totalClients: totalCount, filters: { search } })
 
     return NextResponse.json({
-      clients: paginatedClients,
+      clients: formattedClients,
       totalCount,
       page,
       pageSize: limit,
@@ -90,59 +142,70 @@ async function createClientHandler(req: NextRequest) {
     }
 
     const body = await req.json()
-    const {
-      workspaceId,
-      name,
-      email,
-      phone,
-      company,
-      industry,
-      website,
-      assignedUserId,
-      tags,
-      notes,
-      contractDetails,
-      billingInfo
-    } = body
+    const { name, tags } = body
 
-    if (!workspaceId || !name || !email) {
+    if (!name) {
       return NextResponse.json({ 
-        error: 'Missing required fields: workspaceId, name, email' 
+        error: 'Missing required field: name' 
       }, { status: 400 })
     }
 
     // Get user's workspace
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
+    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      include: { workspace: true }
+      where: {
+        userId,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
+      },
+      select: {
+        workspaceId: true
+      }
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
     }
-
-    const actualWorkspaceId = userWorkspace.workspaceId
 
     // Create client in database
     const newClient = await prisma.client.create({
       data: {
-        workspaceId: actualWorkspaceId,
+        workspaceId: userWorkspace.workspaceId,
         name,
-        email,
-        phone,
-        company,
-        industry,
-        website,
-        status: 'ACTIVE',
-        notes,
         labels: tags || []
+      },
+      include: {
+        workspace: {
+          select: {
+            name: true
+          }
+        }
       }
     })
 
-    BusinessLogger.logClientCreated(newClient.id, session.user.id, workspaceId)
+    // Log client creation for analytics (BusinessLogger.logClientCreated not implemented yet)
+    console.log('✅ Client created successfully:', { clientId: newClient.id, userId, workspaceId: userWorkspace.workspaceId })
 
-    return NextResponse.json(newClient, { status: 201 })
+    // Format response to match frontend expectations
+    const formattedClient = {
+      id: newClient.id,
+      workspaceId: newClient.workspaceId,
+      name: newClient.name,
+      email: '',
+      company: newClient.name,
+      industry: 'Technology',
+      status: 'ACTIVE',
+      onboardingStatus: 'COMPLETED',
+      createdAt: newClient.createdAt,
+      updatedAt: newClient.updatedAt,
+      tags: newClient.labels || [],
+      socialAccountsCount: 0,
+      campaignsCount: 0,
+      postsCount: 0,
+      workspace: newClient.workspace
+    }
+
+    return NextResponse.json(formattedClient, { status: 201 })
   } catch (error) {
     console.error('Error creating client:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -47,8 +47,8 @@ export function CampaignCard({
   onToggleStatus 
 }: CampaignCardProps) {
   const objectives = (campaign.objectives as any)?.objectives || []
-  const budget = (campaign.objectives as any)?.budget
-  const status = (campaign.objectives as any)?.status || 'DRAFT'
+  const budget = (campaign as any)?.budget || null  // Get budget from campaign.budget in database
+  const status = campaign.status || 'DRAFT'  // Use campaign.status directly
   const abTesting = (campaign.objectives as any)?.abTesting
   
   const getStatusColor = (status: string) => {
@@ -100,6 +100,8 @@ export function CampaignCard({
   const budgetProgress = budget?.totalBudget > 0 
     ? (budget.spentAmount / budget.totalBudget) * 100 
     : 0
+    
+  const remainingAmount = budget ? budget.totalBudget - budget.spentAmount : 0
 
   const StatusIcon = getStatusIcon(status)
 
@@ -254,7 +256,7 @@ export function CampaignCard({
             <Progress value={budgetProgress} className="h-2" />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>{budgetProgress.toFixed(1)}% used</span>
-              <span>{formatCurrency(budget.remainingAmount)} remaining</span>
+              <span>{formatCurrency(remainingAmount)} remaining</span>
             </div>
           </div>
         )}

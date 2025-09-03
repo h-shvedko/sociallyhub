@@ -53,6 +53,7 @@ import { CampaignFilters } from './campaign-filters'
 import { CampaignStats } from './campaign-stats'
 import { CampaignCard } from './campaign-card'
 import { CreateCampaignDialog } from './create-campaign-dialog'
+import { CampaignDetailsDialog } from './campaign-details-dialog'
 import { CampaignAnalytics } from './campaign-analytics'
 import { ABTestingDashboard } from './ab-testing-dashboard'
 import { BudgetManagement } from './budget-management'
@@ -71,6 +72,7 @@ export function CampaignDashboard({ workspaceId }: CampaignDashboardProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   
   // Filters
   const [filters, setFilters] = useState({
@@ -174,9 +176,14 @@ export function CampaignDashboard({ workspaceId }: CampaignDashboardProps) {
     }
   }
 
-  const handleEditCampaign = async (campaign: Campaign, updates: any) => {
+  const handleEditCampaign = (campaign: Campaign) => {
+    setSelectedCampaign(campaign)
+    setIsDetailsOpen(true)
+  }
+
+  const handleSaveCampaign = async (campaignId: string, updates: any) => {
     try {
-      const response = await fetch(`/api/campaigns/${campaign.id}`, {
+      const response = await fetch(`/api/campaigns/${campaignId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -184,10 +191,13 @@ export function CampaignDashboard({ workspaceId }: CampaignDashboardProps) {
 
       if (response.ok) {
         const updatedCampaign = await response.json()
-        setCampaigns(prev => prev.map(c => c.id === campaign.id ? updatedCampaign : c))
+        setCampaigns(prev => prev.map(c => c.id === campaignId ? updatedCampaign.campaign || updatedCampaign : c))
+        // Refresh stats to reflect budget changes
+        fetchStats()
       }
     } catch (error) {
       console.error('Error updating campaign:', error)
+      throw error
     }
   }
 
@@ -373,7 +383,7 @@ export function CampaignDashboard({ workspaceId }: CampaignDashboardProps) {
                       <CampaignCard
                         key={campaign.id}
                         campaign={campaign}
-                        onEdit={(campaign) => handleEditCampaign(campaign, {})}
+                        onEdit={handleEditCampaign}
                         onDelete={handleDeleteCampaign}
                         onDuplicate={handleDuplicateCampaign}
                         onToggleStatus={handleToggleStatus}
@@ -426,6 +436,14 @@ export function CampaignDashboard({ workspaceId }: CampaignDashboardProps) {
           <CampaignTemplates workspaceId={workspaceId} />
         </TabsContent>
       </Tabs>
+
+      {/* Campaign Details Dialog */}
+      <CampaignDetailsDialog
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        campaign={selectedCampaign}
+        onSave={handleSaveCampaign}
+      />
     </div>
   )
 }

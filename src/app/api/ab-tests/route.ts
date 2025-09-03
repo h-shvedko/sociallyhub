@@ -54,32 +54,84 @@ export async function GET(request: NextRequest) {
     // Combine and format for dashboard
     const allTests = [
       ...contentTests.map(test => {
-        const variants = test.variants as any[] || []
+        const variantsData = test.variants as any[] || []
         const executionCount = contentExecutions.find(e => e.abTestId === test.id)?._count.id || 0
+        const trafficSplit = test.trafficSplit as any || {}
+        
+        // Format variants for frontend
+        const formattedVariants = [
+          {
+            id: 'control',
+            name: test.controlTitle || 'Variant A',
+            content: test.controlContent,
+            traffic: trafficSplit.control || 50,
+            conversions: 0, // Would come from metrics
+            conversionRate: 0 // Would come from metrics
+          },
+          ...variantsData.map((variant, index) => ({
+            id: `variant-${index}`,
+            name: variant.name || `Variant ${String.fromCharCode(66 + index)}`,
+            content: variant.content,
+            traffic: variant.trafficPercentage || (trafficSplit.variants?.[index] || 50),
+            conversions: 0, // Would come from metrics
+            conversionRate: 0 // Would come from metrics
+          }))
+        ]
         
         return {
           id: test.id,
           type: 'content',
-          name: test.testName,
+          testName: test.testName,
           description: test.description,
           status: test.status,
-          campaignId: test.campaignId,
-          variants: variants.length + 1, // variants + control
+          campaignId: (test.aiRecommendations as any)?.campaignId || null,
+          campaignName: 'Campaign', // Would need to look up campaign name
+          startDate: test.startDate,
+          endDate: test.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default 7 days
+          confidenceLevel: Math.round((test.confidenceLevel || 0.95) * 100),
+          variants: formattedVariants,
+          winner: test.winningVariant,
           executions: executionCount,
           createdAt: test.createdAt
         }
       }),
       ...imageTests.map(test => {
         const variantAssetIds = test.variantAssetIds as string[] || []
+        const trafficSplit = test.trafficSplit as any || {}
+        
+        // Format variants for frontend (image tests)
+        const formattedVariants = [
+          {
+            id: 'control',
+            name: 'Control Image',
+            content: test.controlAssetId,
+            traffic: trafficSplit.control || 50,
+            conversions: 0,
+            conversionRate: 0
+          },
+          ...variantAssetIds.map((assetId, index) => ({
+            id: `variant-${index}`,
+            name: `Variant ${String.fromCharCode(65 + index + 1)}`,
+            content: assetId,
+            traffic: trafficSplit.variants?.[index] || 50,
+            conversions: 0,
+            conversionRate: 0
+          }))
+        ]
         
         return {
           id: test.id,
           type: 'image',
-          name: test.testName,
+          testName: test.testName,
           description: test.description,
           status: test.status,
-          campaignId: test.campaignId || null,
-          variants: variantAssetIds.length + 1, // variants + control
+          campaignId: null, // Image tests might not have campaign association
+          campaignName: 'Image Test',
+          startDate: test.startDate,
+          endDate: test.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          confidenceLevel: Math.round((test.confidenceLevel || 0.95) * 100),
+          variants: formattedVariants,
+          winner: test.winningVariant,
           executions: 0, // Image tests don't use ABTestExecution
           createdAt: test.createdAt
         }
@@ -131,7 +183,6 @@ export async function POST(request: NextRequest) {
     const abTest = await prisma.contentABTest.create({
       data: {
         workspaceId,
-        campaignId: data.campaignId,
         testName: data.testName,
         description: data.description,
         testType: 'CONTENT',
@@ -161,6 +212,12 @@ export async function POST(request: NextRequest) {
         trafficSplit: {
           control: data.splitPercentage[0],
           variants: [100 - data.splitPercentage[0]]
+        },
+        
+        // Store campaign ID in metadata
+        aiRecommendations: {
+          campaignId: data.campaignId,
+          testMetrics: data.testMetrics
         }
       }
     })

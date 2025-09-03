@@ -45,6 +45,10 @@ import { ClientCard } from './client-card'
 import { ClientStats as ClientStatsComponent } from './client-stats'
 import { ClientFilters } from './client-filters'
 import { ClientOnboardingFlow } from './client-onboarding-flow'
+import { ClientDetailsDialog } from './client-details-dialog'
+import { EditClientDialog } from './edit-client-dialog'
+import { SendMessageDialog } from './send-message-dialog'
+import { DeleteClientDialog } from './delete-client-dialog'
 
 interface ClientDashboardProps {
   workspaceId: string
@@ -60,41 +64,65 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  
+  // Dialog states
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showMessageDialog, setShowMessageDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
-  // Load data from API endpoints
+  const fetchClients = async () => {
+    try {
+      setIsLoading(true)
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '50'
+      })
+      
+      if (searchTerm) {
+        params.set('search', searchTerm)
+      }
+
+      const response = await fetch(`/api/clients?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch clients')
+      }
+      const data = await response.json()
+      setClients(data.clients || [])
+    } catch (error) {
+      console.error('Error fetching clients:', error)
+      setClients([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('/api/clients/stats')
+      if (!response.ok) {
+        throw new Error('Failed to fetch stats')
+      }
+      const data = await response.json()
+      setStats(data)
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+      setStats(null)
+    }
+  }
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setIsLoading(true)
-        
-        // Load clients and stats in parallel
-        const [clientsResponse, statsResponse] = await Promise.all([
-          fetch(`/api/clients?workspaceId=${encodeURIComponent(workspaceId)}`),
-          fetch(`/api/clients/stats?workspaceId=${encodeURIComponent(workspaceId)}`)
-        ])
+    fetchClients()
+    fetchStats()
+  }, [searchTerm])
 
-        if (clientsResponse.ok) {
-          const clientsData = await clientsResponse.json()
-          setClients(clientsData.clients || [])
-        }
-
-        if (statsResponse.ok) {
-          const statsData = await statsResponse.json()
-          setStats(statsData)
-        }
-      } catch (error) {
-        console.error('Error loading client data:', error)
-        // Set empty data on error
-        setClients([])
-        setStats(null)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadData()
-  }, [workspaceId])
+  // Debounced search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchClients()
+    }, 500)
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm])
 
   const filteredClients = clients.filter(client => {
     const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -136,6 +164,41 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
     }
   }
 
+  // Action handlers
+  const handleViewClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowDetailsDialog(true)
+  }
+
+  const handleEditClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowEditDialog(true)
+  }
+
+  const handleMessageClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowMessageDialog(true)
+  }
+
+  const handleDeleteClient = (client: Client) => {
+    setSelectedClient(client)
+    setShowDeleteDialog(true)
+  }
+
+  const handleClientUpdated = (updatedClient: Client) => {
+    setClients(prevClients => 
+      prevClients.map(client => 
+        client.id === updatedClient.id ? updatedClient : client
+      )
+    )
+  }
+
+  const handleClientDeleted = (clientId: string) => {
+    setClients(prevClients => 
+      prevClients.filter(client => client.id !== clientId)
+    )
+  }
+
   if (showOnboarding) {
     return (
       <div className="space-y-6">
@@ -147,13 +210,7 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
             ← Back to Clients
           </Button>
         </div>
-        <ClientOnboardingFlow 
-          onComplete={(client) => {
-            setShowOnboarding(false)
-            // Refresh data to show the new client
-            window.location.reload()
-          }}
-        />
+        <ClientOnboardingFlow />
       </div>
     )
   }
@@ -263,9 +320,10 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
                   <ClientCard 
                     key={client.id} 
                     client={client} 
-                    onView={(client) => setSelectedClient(client)}
-                    onEdit={(client) => console.log('Edit:', client)}
-                    onDelete={(client) => console.log('Delete:', client)}
+                    onView={handleViewClient}
+                    onEdit={handleEditClient}
+                    onMessage={handleMessageClient}
+                    onDelete={handleDeleteClient}
                   />
                 ))}
               </div>
@@ -300,9 +358,10 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
                 <ClientCard 
                   key={client.id} 
                   client={client}
-                  onView={(client) => setSelectedClient(client)}
-                  onEdit={(client) => console.log('Edit:', client)}
-                  onDelete={(client) => console.log('Delete:', client)}
+                  onView={handleViewClient}
+                  onEdit={handleEditClient}
+                  onMessage={handleMessageClient}
+                  onDelete={handleDeleteClient}
                 />
               ))}
           </div>
@@ -316,9 +375,10 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
                 <ClientCard 
                   key={client.id} 
                   client={client}
-                  onView={(client) => setSelectedClient(client)}
-                  onEdit={(client) => console.log('Edit:', client)}
-                  onDelete={(client) => console.log('Delete:', client)}
+                  onView={handleViewClient}
+                  onEdit={handleEditClient}
+                  onMessage={handleMessageClient}
+                  onDelete={handleDeleteClient}
                 />
               ))}
           </div>
@@ -375,6 +435,33 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog Components */}
+      <ClientDetailsDialog
+        client={selectedClient}
+        open={showDetailsDialog}
+        onOpenChange={setShowDetailsDialog}
+      />
+
+      <EditClientDialog
+        client={selectedClient}
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        onClientUpdated={handleClientUpdated}
+      />
+
+      <SendMessageDialog
+        client={selectedClient}
+        open={showMessageDialog}
+        onOpenChange={setShowMessageDialog}
+      />
+
+      <DeleteClientDialog
+        client={selectedClient}
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onClientDeleted={handleClientDeleted}
+      />
     </div>
   )
 }

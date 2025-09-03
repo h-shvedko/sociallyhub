@@ -248,6 +248,165 @@ async function main() {
     console.log(`✅ Created post: ${postData.title}`)
   }
 
+  // Create demo campaigns with budget data
+  const demoCampaigns = [
+    {
+      id: 'spring-campaign-2024',
+      name: 'Spring Product Launch 2024',
+      description: 'Launch campaign for our new spring collection with focus on social media engagement',
+      status: 'ACTIVE',
+      type: 'BRAND_AWARENESS',
+      startDate: new Date('2024-03-01'),
+      endDate: new Date('2024-05-31'),
+      budget: {
+        totalBudget: 15000,
+        spentAmount: 8750,
+        dailyBudget: 500,
+        currency: 'USD'
+      },
+      objectives: {
+        reach: 100000,
+        engagement: 5000,
+        conversions: 250
+      }
+    },
+    {
+      id: 'summer-sale-2024',
+      name: 'Summer Sale Campaign',
+      description: 'Promotional campaign for summer sale with targeted ads and social content',
+      status: 'ACTIVE',
+      type: 'LEAD_GENERATION',
+      startDate: new Date('2024-06-01'),
+      endDate: new Date('2024-08-15'),
+      budget: {
+        totalBudget: 25000,
+        spentAmount: 12300,
+        dailyBudget: 750,
+        currency: 'USD'
+      },
+      objectives: {
+        leads: 500,
+        sales: 150,
+        roas: 4.5
+      }
+    },
+    {
+      id: 'brand-awareness-q2',
+      name: 'Q2 Brand Awareness',
+      description: 'Ongoing brand awareness campaign focusing on thought leadership content',
+      status: 'ACTIVE',
+      type: 'ENGAGEMENT',
+      startDate: new Date('2024-04-01'),
+      endDate: new Date('2024-06-30'),
+      budget: {
+        totalBudget: 8000,
+        spentAmount: 6200,
+        dailyBudget: 200,
+        currency: 'USD'
+      },
+      objectives: {
+        brandAwareness: 80,
+        thoughtLeadership: 60,
+        communityGrowth: 1000
+      }
+    },
+    {
+      id: 'holiday-prep-2024',
+      name: 'Holiday Preparation Campaign',
+      description: 'Early holiday season campaign to build momentum before peak season',
+      status: 'PAUSED',
+      type: 'SALES',
+      startDate: new Date('2024-09-01'),
+      endDate: new Date('2024-11-30'),
+      budget: {
+        totalBudget: 35000,
+        spentAmount: 2100,
+        dailyBudget: 1000,
+        currency: 'USD'
+      },
+      objectives: {
+        sales: 300,
+        revenue: 50000,
+        customerAcquisition: 200
+      }
+    },
+    {
+      id: 'customer-retention-q3',
+      name: 'Customer Retention Q3',
+      description: 'Focus on existing customer engagement and retention through personalized content',
+      status: 'COMPLETED',
+      type: 'CUSTOM',
+      startDate: new Date('2024-07-01'),
+      endDate: new Date('2024-09-30'),
+      budget: {
+        totalBudget: 12000,
+        spentAmount: 11850,
+        dailyBudget: 400,
+        currency: 'USD'
+      },
+      objectives: {
+        retention: 85,
+        engagement: 3000,
+        satisfaction: 90
+      }
+    }
+  ]
+
+  for (const campaignData of demoCampaigns) {
+    const campaign = await prisma.campaign.upsert({
+      where: { id: campaignData.id },
+      update: {
+        budget: campaignData.budget
+      },
+      create: {
+        ...campaignData,
+        workspaceId: demoWorkspace.id,
+      },
+    })
+    console.log(`✅ Created campaign: ${campaign.name}`)
+  }
+
+  // Create demo clients
+  const demoClients = [
+    {
+      id: 'acme-corp-client',
+      name: 'Acme Corporation',
+      labels: ['Enterprise', 'Technology', 'Priority']
+    },
+    {
+      id: 'techstart-client', 
+      name: 'TechStart Inc.',
+      labels: ['Startup', 'Technology', 'Growth']
+    },
+    {
+      id: 'global-retail-client',
+      name: 'Global Retail Co.',
+      labels: ['Retail', 'Large Enterprise', 'E-commerce']
+    },
+    {
+      id: 'healthcare-plus-client',
+      name: 'Healthcare Plus',
+      labels: ['Healthcare', 'Compliance', 'B2B']
+    },
+    {
+      id: 'edu-solutions-client',
+      name: 'Educational Solutions',
+      labels: ['Education', 'Non-profit', 'Community']
+    }
+  ]
+
+  for (const clientData of demoClients) {
+    const client = await prisma.client.upsert({
+      where: { id: clientData.id },
+      update: {},
+      create: {
+        ...clientData,
+        workspaceId: demoWorkspace.id,
+      },
+    })
+    console.log(`✅ Created client: ${client.name}`)
+  }
+
   console.log('🎉 Database seeding completed!')
 }
 

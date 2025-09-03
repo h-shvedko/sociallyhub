@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import { Campaign } from '@/types/campaign'
 import { CreateABTestDialog } from './create-ab-test-dialog'
+import { ABTestDetailsDialog } from './ab-test-details-dialog'
+import { StopTestConfirmationDialog } from './stop-test-confirmation-dialog'
 
 interface ABTestingDashboardProps {
   workspaceId: string
@@ -28,7 +30,12 @@ interface ABTestingDashboardProps {
 export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboardProps) {
   const [activeTests, setActiveTests] = useState<any[]>([])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [isStopConfirmOpen, setIsStopConfirmOpen] = useState(false)
+  const [selectedTest, setSelectedTest] = useState<any>(null)
+  const [testToStop, setTestToStop] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [stoppingTest, setStoppingTest] = useState(false)
 
   // Load A/B tests from database
   useEffect(() => {
@@ -37,13 +44,18 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
 
   const loadABTests = async () => {
     try {
+      console.log('Loading A/B tests...')
       setLoading(true)
       const response = await fetch('/api/ab-tests')
+      console.log('A/B tests response:', response.status)
+      
       if (response.ok) {
         const data = await response.json()
+        console.log('A/B tests data:', data)
         setActiveTests(data.abTests || [])
+        console.log('Set active tests:', data.abTests?.length || 0)
       } else {
-        console.error('Failed to load A/B tests')
+        console.error('Failed to load A/B tests, status:', response.status)
       }
     } catch (error) {
       console.error('Error loading A/B tests:', error)
@@ -59,6 +71,53 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
       setIsCreateOpen(false)
     } catch (error) {
       console.error('Error after creating A/B test:', error)
+    }
+  }
+
+  const handleViewDetails = (test: any) => {
+    console.log('View Details clicked for test:', test)
+    setSelectedTest(test)
+    setIsDetailsOpen(true)
+    console.log('Details dialog should open:', { test, isOpen: true })
+  }
+
+  const handleStopTest = (test: any) => {
+    console.log('Stop Test clicked for test:', test)
+    setTestToStop(test)
+    setIsStopConfirmOpen(true)
+  }
+
+  const confirmStopTest = async () => {
+    if (!testToStop) return
+
+    console.log('Confirming stop test for ID:', testToStop.id)
+    setStoppingTest(true)
+
+    try {
+      console.log('Making API call to stop test')
+      const response = await fetch(`/api/ab-tests/${testToStop.id}/stop`, {
+        method: 'POST'
+      })
+
+      console.log('Stop test response:', response.status)
+
+      if (response.ok) {
+        await loadABTests()
+        setIsStopConfirmOpen(false)
+        setTestToStop(null)
+        // You could add a success toast here instead of alert
+        console.log('Test stopped successfully')
+      } else {
+        const error = await response.json()
+        console.error('Stop test error:', error)
+        // You could add an error toast here instead of alert
+        alert(`Failed to stop test: ${error.error}`)
+      }
+    } catch (error) {
+      console.error('Error stopping test:', error)
+      alert('Failed to stop test')
+    } finally {
+      setStoppingTest(false)
     }
   }
 
@@ -175,7 +234,7 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
           </Card>
         ) : (
           <div className="space-y-4">
-            {activeTests.map((test) => (
+            {console.log('Rendering active tests:', activeTests) || activeTests.map((test) => (
               <Card key={test.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -190,7 +249,14 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                         {test.status.toLowerCase()}
                       </Badge>
                       {test.status === 'RUNNING' && (
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={(e) => {
+                            console.log('Stop button clicked!', e)
+                            handleStopTest(test)
+                          }}
+                        >
                           <Pause className="h-4 w-4 mr-2" />
                           Stop Test
                         </Button>
@@ -274,7 +340,14 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={(e) => {
+                          console.log('Button clicked!', e)
+                          handleViewDetails(test)
+                        }}
+                      >
                         View Details
                       </Button>
                       {test.status === 'COMPLETED' && test.winner && (
@@ -325,6 +398,22 @@ export function ABTestingDashboard({ workspaceId, campaigns }: ABTestingDashboar
           </div>
         </CardContent>
       </Card>
+
+      {/* A/B Test Details Dialog */}
+      <ABTestDetailsDialog
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        test={selectedTest}
+      />
+
+      {/* Stop Test Confirmation Dialog */}
+      <StopTestConfirmationDialog
+        open={isStopConfirmOpen}
+        onOpenChange={setIsStopConfirmOpen}
+        onConfirm={confirmStopTest}
+        testName={testToStop?.testName || ''}
+        loading={stoppingTest}
+      />
     </div>
   )
 }
