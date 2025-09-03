@@ -70,6 +70,7 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showMessageDialog, setShowMessageDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [refreshDetailsDialog, setRefreshDetailsDialog] = useState(0)
 
   const fetchClients = async () => {
     try {
@@ -191,6 +192,8 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
         client.id === updatedClient.id ? updatedClient : client
       )
     )
+    // Trigger refresh of details dialog if it's open
+    setRefreshDetailsDialog(prev => prev + 1)
   }
 
   const handleClientDeleted = (clientId: string) => {
@@ -450,6 +453,7 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
         client={selectedClient}
         open={showDetailsDialog}
         onOpenChange={setShowDetailsDialog}
+        refreshTrigger={refreshDetailsDialog}
       />
 
       <EditClientDialog

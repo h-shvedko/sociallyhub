@@ -8,7 +8,7 @@ import nodemailer from 'nodemailer'
 
 // Email transporter setup (using environment variables)
 const createEmailTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'localhost',
     port: parseInt(process.env.SMTP_PORT || '1025'),
     secure: false, // true for 465, false for other ports
@@ -197,12 +197,12 @@ async function sendMessageHandler(req: NextRequest, { params }: { params: Promis
       data: {
         workspaceId: userWorkspace.workspaceId,
         socialAccountId: systemAccount.id,
-        type: type.toUpperCase() as any,
+        type: 'DIRECT_MESSAGE', // All client messages are direct messages
         providerItemId: `client-msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         content: content,
         authorName: client.name,
         authorHandle: client.email || client.phone || 'no-handle',
-        status: schedule ? 'SCHEDULED' : 'OPEN',
+        status: schedule ? 'SNOOZED' : 'OPEN', // Use SNOOZED for scheduled messages
         tags: [type, 'client-message', `client-${clientId}`],
         internalNotes: JSON.stringify({
           clientId: clientId,
@@ -281,7 +281,7 @@ async function sendMessageHandler(req: NextRequest, { params }: { params: Promis
         await prisma.inboxItem.update({
           where: { id: messageRecord.id },
           data: { 
-            status: 'ESCALATED',
+            status: 'OPEN', // Keep open to allow retry
             internalNotes: JSON.stringify({
               ...JSON.parse(messageRecord.internalNotes || '{}'),
               errorMessage: deliveryError instanceof Error ? deliveryError.message : 'Unknown error',

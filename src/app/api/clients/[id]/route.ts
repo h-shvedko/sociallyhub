@@ -5,14 +5,14 @@ import { withLogging } from '@/lib/middleware/logging'
 import { prisma } from '@/lib/prisma'
 import { normalizeUserId } from '@/lib/auth/demo-user'
 
-async function getClientHandler(req: NextRequest, { params }: { params: { id: string } }) {
+async function getClientHandler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const clientId = params.id
+    const { id: clientId } = await params
     const userId = await normalizeUserId(session.user.id)
 
     // Get user's workspace
@@ -97,16 +97,16 @@ async function getClientHandler(req: NextRequest, { params }: { params: { id: st
   }
 }
 
-async function updateClientHandler(req: NextRequest, { params }: { params: { id: string } }) {
+async function updateClientHandler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const clientId = params.id
+    const { id: clientId } = await params
     const body = await req.json()
-    const { workspaceId, name, tags, notes, ...otherFields } = body
+    const { workspaceId, name, tags, notes, email, phone, company, industry, website, status, ...otherFields } = body
 
     if (!name) {
       return NextResponse.json({ 
@@ -138,7 +138,13 @@ async function updateClientHandler(req: NextRequest, { params }: { params: { id:
       data: {
         name,
         labels: tags || [],
-        // Add other fields as needed when schema is expanded
+        notes: notes || null,
+        email: email || null,
+        phone: phone || null,
+        company: company || null,
+        industry: industry || null,
+        website: website || null,
+        status: status || 'ACTIVE'
       },
       include: {
         workspace: {
@@ -190,7 +196,22 @@ async function updateClientHandler(req: NextRequest, { params }: { params: { id:
       workspace: updatedClient.workspace
     }
 
-    console.log('✅ Client updated successfully:', { clientId, userId, workspaceId })
+    console.log('✅ Client updated successfully:', {
+      clientId,
+      userId,
+      workspaceId,
+      updatedFields: {
+        name: updatedClient.name,
+        email: updatedClient.email,
+        phone: updatedClient.phone,
+        company: updatedClient.company,
+        industry: updatedClient.industry,
+        website: updatedClient.website,
+        status: updatedClient.status,
+        notes: updatedClient.notes,
+        tags: updatedClient.labels
+      }
+    })
 
     return NextResponse.json(formattedClient)
   } catch (error) {
@@ -199,14 +220,14 @@ async function updateClientHandler(req: NextRequest, { params }: { params: { id:
   }
 }
 
-async function deleteClientHandler(req: NextRequest, { params }: { params: { id: string } }) {
+async function deleteClientHandler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const clientId = params.id
+    const { id: clientId } = await params
     const body = await req.json()
     const { workspaceId } = body
 

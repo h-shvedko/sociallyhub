@@ -43,9 +43,10 @@ interface ClientDetailsDialogProps {
   onOpenChange: (open: boolean) => void
   onSendMessage?: (client: Client) => void
   onEditClient?: (client: Client) => void
+  refreshTrigger?: number
 }
 
-export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetailsDialogProps) {
+export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger }: ClientDetailsDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [clientData, setClientData] = useState<any>(null)
   const [billingData, setBillingData] = useState<any>(null)
@@ -61,7 +62,7 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
     if (open && client) {
       fetchClientDetails()
     }
-  }, [open, client])
+  }, [open, client, refreshTrigger])
 
   const fetchClientDetails = async () => {
     if (!client?.id) return
@@ -75,11 +76,52 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
         setClientData(data)
       }
 
-      // Since we don't have billing/messages in the database yet,
-      // we'll set empty states for now
-      setBillingData(null)
-      setActivityData([])
-      setMessagesData([])
+      // Fetch billing data
+      const billingResponse = await fetch(`/api/clients/${client.id}/billing`)
+      if (billingResponse.ok) {
+        const billingInfo = await billingResponse.json()
+        setBillingData(billingInfo.billing)
+      } else {
+        setBillingData(null)
+      }
+      
+      // Fetch messages for this client
+      console.log('🔍 Fetching messages for client:', client.id)
+      const messagesResponse = await fetch(`/api/clients/${client.id}/messages`)
+      console.log('📧 Messages response status:', messagesResponse.status)
+      if (messagesResponse.ok) {
+        const messagesInfo = await messagesResponse.json()
+        const formattedMessages = (messagesInfo.messages || []).map((msg: any) => ({
+          id: msg.id,
+          subject: msg.subject || 'No subject',
+          content: msg.content,
+          type: msg.type === 'DIRECT_MESSAGE' ? 'EMAIL' : msg.type, // Convert back from DB enum
+          priority: msg.priority,
+          status: msg.status,
+          date: new Date(msg.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          }),
+          createdAt: msg.createdAt
+        }))
+        
+        setMessagesData(formattedMessages)
+        
+        // Create activity entries from messages
+        const messageActivity = formattedMessages.map((msg: any) => ({
+          title: `${msg.type === 'EMAIL' ? 'Email' : 'SMS'} sent: ${msg.subject}`,
+          time: msg.date,
+          icon: msg.type === 'EMAIL' ? Mail : MessageSquare
+        }))
+        
+        setActivityData(messageActivity)
+      } else {
+        setActivityData([])
+        setMessagesData([])
+      }
     } catch (error) {
       console.error('Error fetching client details:', error)
     } finally {
@@ -179,13 +221,15 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
   // Modal event handlers
   const handleBillingSetup = (billingData: any) => {
     console.log('✅ Billing setup completed:', billingData)
-    setBillingData(billingData)
-    // TODO: Refresh client data or update billing information
+    setBillingData(billingData.billing || billingData)
+    // Trigger full refresh to get updated billing info
+    fetchClientDetails()
   }
 
   const handleMessageSent = (messageData: any) => {
     console.log('✅ Message sent:', messageData)
-    // TODO: Add message to activity feed or refresh messages
+    // Refresh client details to update message history
+    fetchClientDetails()
   }
 
   const handleSettingsSaved = (settingsData: any) => {
@@ -383,13 +427,51 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <DollarSign className="h-5 w-5" />
-                        Billing Information
+                        Contract & Payment Details
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground">
-                        Billing information would appear here when available.
-                      </p>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Contract Value</p>
+                          <p className="font-medium">
+                            {billingData.currency === 'EUR' ? '€' : billingData.currency === 'GBP' ? '£' : '$'}
+                            {billingData.contractValue?.toLocaleString() || '0'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Billing Cycle</p>
+                          <p className="font-medium capitalize">{billingData.billingCycle || 'Monthly'}</p>
+                        </div>
+                      </div>
+                      {billingData.startDate && billingData.endDate && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Contract Start</p>
+                            <p className="font-medium">{formatDate(billingData.startDate)}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-muted-foreground">Contract End</p>
+                            <p className="font-medium">{formatDate(billingData.endDate)}</p>
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-sm text-muted-foreground">Payment Terms</p>
+                        <p className="font-medium">Net {billingData.paymentTerms || 30} days</p>
+                      </div>
+                      {billingData.services && (
+                        <div>
+                          <p className="text-sm text-muted-foreground">Services</p>
+                          <p className="font-medium">{billingData.services}</p>
+                        </div>
+                      )}
+                      {billingData.notes && (
+                        <div>
+                          <p className="text-sm text-muted-foreground">Notes</p>
+                          <p className="text-sm">{billingData.notes}</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
