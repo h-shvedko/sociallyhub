@@ -34,11 +34,6 @@ interface BillingOverviewProps {
 }
 
 export function BillingOverview({ clients = [] }: BillingOverviewProps) {
-  console.log('🏗️ BillingOverview component loading with clients:', clients.length)
-  
-  // Test if component is even rendering
-  console.log('🔍 BillingOverview render check')
-  
   const [isLoading, setIsLoading] = useState(false)
   const [billingData, setBillingData] = useState<any>(null)
   const [recentInvoices, setRecentInvoices] = useState<any[]>([])
@@ -291,35 +286,24 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
     setShowPaymentSettings(true)
   }
 
-  // Simple test render first
-  return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">🏗️ Billing Overview Component Loaded Successfully!</h2>
-      <p>Clients provided: {clients.length}</p>
-      <p>Component is working and rendering properly.</p>
-      
-      <div className="mt-4">
-        <button 
-          onClick={() => alert('✅ Payment Settings Dialog would open here - component is working!')}
-          className="bg-blue-500 text-white px-4 py-2 rounded mr-4"
-        >
-          Test Payment Settings
-        </button>
-        <button 
-          onClick={() => alert('✅ Invoice Creation would work here - component is working!')}
-          className="bg-green-500 text-white px-4 py-2 rounded mr-4"
-        >
-          Test Invoice Creation
-        </button>
-        <button 
-          onClick={() => alert('✅ PDF Download would work here - component is working!')}
-          className="bg-purple-500 text-white px-4 py-2 rounded"
-        >
-          Test PDF Download
-        </button>
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="space-y-6">
