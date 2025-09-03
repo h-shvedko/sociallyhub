@@ -366,31 +366,66 @@ async function main() {
     console.log(`✅ Created campaign: ${campaign.name}`)
   }
 
-  // Create demo clients
+  // Create demo clients with complete realistic data
   const demoClients = [
     {
       id: 'acme-corp-client',
       name: 'Acme Corporation',
+      email: 'contact@acmecorp.com',
+      company: 'Acme Corporation',
+      industry: 'Technology',
+      website: 'https://acmecorp.com',
+      phone: '+1 (555) 123-4567',
+      status: 'ACTIVE',
+      notes: 'Large enterprise client focused on B2B software solutions. Requires regular reporting and high-touch service.',
       labels: ['Enterprise', 'Technology', 'Priority']
     },
     {
       id: 'techstart-client', 
       name: 'TechStart Inc.',
+      email: 'hello@techstart.io',
+      company: 'TechStart Inc.',
+      industry: 'Technology',
+      website: 'https://techstart.io',
+      phone: '+1 (555) 987-6543',
+      status: 'ACTIVE',
+      notes: 'Fast-growing startup in the AI space. Very responsive to new features and experimental campaigns.',
       labels: ['Startup', 'Technology', 'Growth']
     },
     {
       id: 'global-retail-client',
       name: 'Global Retail Co.',
+      email: 'marketing@globalretail.com',
+      company: 'Global Retail Co.',
+      industry: 'Retail',
+      website: 'https://globalretail.com',
+      phone: '+1 (555) 555-0123',
+      status: 'ACTIVE',
+      notes: 'Multi-channel retailer with strong seasonal campaigns. Focus on holiday marketing and product launches.',
       labels: ['Retail', 'Large Enterprise', 'E-commerce']
     },
     {
       id: 'healthcare-plus-client',
       name: 'Healthcare Plus',
+      email: 'info@healthcareplus.org',
+      company: 'Healthcare Plus',
+      industry: 'Healthcare',
+      website: 'https://healthcareplus.org',
+      phone: '+1 (555) 234-5678',
+      status: 'ACTIVE',
+      notes: 'Healthcare nonprofit focused on community outreach. Requires compliance-focused content and messaging.',
       labels: ['Healthcare', 'Compliance', 'B2B']
     },
     {
       id: 'edu-solutions-client',
       name: 'Educational Solutions',
+      email: 'team@edusolutions.edu',
+      company: 'Educational Solutions',
+      industry: 'Education',
+      website: 'https://edusolutions.edu',
+      phone: '+1 (555) 345-6789',
+      status: 'ACTIVE',
+      notes: 'Educational technology provider serving K-12 schools. Focuses on teacher and parent engagement campaigns.',
       labels: ['Education', 'Non-profit', 'Community']
     }
   ]
