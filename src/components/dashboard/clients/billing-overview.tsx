@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { InvoiceCreationDialog } from './invoice-creation-dialog'
+import { PaymentSettingsDialog } from './payment-settings-dialog'
 import {
   DollarSign,
   CreditCard,
@@ -38,6 +39,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
   const [recentInvoices, setRecentInvoices] = useState<any[]>([])
   const [paymentMethods, setPaymentMethods] = useState<any[]>([])
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false)
+  const [showPaymentSettings, setShowPaymentSettings] = useState(false)
 
   useEffect(() => {
     fetchBillingData()
@@ -219,16 +221,69 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
     fetchBillingData()
   }
 
-  const handleDownloadInvoice = (invoice: any) => {
+  const handleDownloadInvoice = async (invoice: any) => {
     console.log('📄 Downloading invoice:', invoice.id)
-    // TODO: Implement invoice download
-    alert(`Downloading invoice ${invoice.id} for ${invoice.clientName}. This would generate a PDF invoice with company branding.`)
+    setIsLoading(true)
+    try {
+      const invoiceData = {
+        clientName: invoice.clientName,
+        clientEmail: '',
+        clientCompany: invoice.clientName,
+        invoiceNumber: invoice.id,
+        issueDate: invoice.issuedDate,
+        dueDate: invoice.dueDate,
+        currency: invoice.currency,
+        lineItems: [
+          {
+            description: 'Social Media Management Services',
+            quantity: 1,
+            rate: invoice.amount,
+            amount: invoice.amount
+          }
+        ],
+        subtotal: invoice.amount,
+        tax: 0,
+        discount: 0,
+        total: invoice.amount,
+        notes: '',
+        terms: 'Net 30 days'
+      }
+
+      const response = await fetch('/api/invoices/download-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(invoiceData)
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF')
+      }
+
+      // Create a blob from the response and trigger download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Invoice-${invoice.id}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log('✅ Invoice PDF downloaded successfully')
+    } catch (error) {
+      console.error('Error downloading invoice:', error)
+      alert(`Error downloading invoice: ${error.message}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handlePaymentSettings = () => {
     console.log('⚙️ Opening payment settings')
-    // TODO: Implement payment settings modal
-    alert('Payment processor settings would open here. This would allow configuring Stripe, PayPal, bank accounts, and other payment methods.')
+    setShowPaymentSettings(true)
   }
 
   if (isLoading) {
@@ -547,6 +602,12 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
         onOpenChange={setShowInvoiceDialog}
         clients={clients}
         onInvoiceCreated={handleInvoiceCreated}
+      />
+
+      {/* Payment Settings Dialog */}
+      <PaymentSettingsDialog
+        open={showPaymentSettings}
+        onOpenChange={setShowPaymentSettings}
       />
     </div>
   )

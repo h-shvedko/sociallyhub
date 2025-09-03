@@ -206,14 +206,108 @@ export function InvoiceCreationDialog({
     }
   }
 
-  const handleSendInvoice = () => {
-    console.log('📧 Sending invoice to client')
-    alert('Send invoice functionality would integrate with email system to automatically send the invoice to the client.')
+  const handleSendInvoice = async () => {
+    if (!selectedClient) {
+      alert('Please select a client before sending invoice')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const invoiceData = {
+        clientName: selectedClient.name,
+        clientEmail: selectedClient.email,
+        invoiceNumber: invoiceData.invoiceNumber,
+        total: calculateTotal(),
+        dueDate: invoiceData.dueDate,
+        lineItems: lineItems
+      }
+
+      console.log('📧 Sending invoice email to:', selectedClient.email)
+      
+      const response = await fetch('/api/invoices/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(invoiceData)
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to send invoice email')
+      }
+
+      alert(`Invoice email sent successfully to ${selectedClient.email}!`)
+      console.log('✅ Invoice email sent successfully')
+      
+    } catch (error) {
+      console.error('Error sending invoice email:', error)
+      alert(`Error sending invoice email: ${error.message}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleDownloadInvoice = () => {
-    console.log('📄 Downloading invoice PDF')
-    alert('Download functionality would generate a professional PDF invoice with company branding.')
+  const handleDownloadInvoice = async () => {
+    if (!selectedClient) {
+      alert('Please select a client before downloading invoice')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const invoiceData = {
+        clientName: selectedClient.name,
+        clientEmail: selectedClient.email,
+        clientCompany: selectedClient.company || selectedClient.name,
+        invoiceNumber: invoiceData.invoiceNumber,
+        issueDate: invoiceData.issueDate,
+        dueDate: invoiceData.dueDate,
+        currency: invoiceData.currency,
+        lineItems: lineItems,
+        subtotal: calculateSubtotal(),
+        tax: calculateTax(),
+        discount: calculateDiscount(),
+        total: calculateTotal(),
+        notes: invoiceData.notes,
+        terms: invoiceData.terms
+      }
+
+      console.log('📄 Generating PDF invoice for:', selectedClient.name)
+      
+      const response = await fetch('/api/invoices/download-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(invoiceData)
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate PDF invoice')
+      }
+
+      // Create a blob from the response and trigger download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Invoice-${invoiceData.invoiceNumber}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log('✅ PDF invoice downloaded successfully')
+      
+    } catch (error) {
+      console.error('Error downloading invoice PDF:', error)
+      alert(`Error downloading invoice PDF: ${error.message}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
