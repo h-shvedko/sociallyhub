@@ -38,6 +38,8 @@ interface ClientDetailsDialogProps {
   client: Client | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSendMessage?: (client: Client) => void
+  onEditClient?: (client: Client) => void
 }
 
 export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetailsDialogProps) {
@@ -136,6 +138,37 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
       .join('')
       .toUpperCase()
       .slice(0, 2)
+  }
+
+  // Button click handlers
+  const handleSetupBilling = () => {
+    console.log('🏦 Setting up billing for client:', displayClient.name)
+    // TODO: Open billing setup dialog or redirect to billing configuration
+    alert(`Setting up billing for ${displayClient.name}. This would open a billing configuration dialog.`)
+  }
+
+  const handleSendFirstMessage = () => {
+    console.log('📧 Opening send message dialog for client:', displayClient.name)
+    // TODO: Open send message dialog
+    alert(`Opening message composer for ${displayClient.name}. This would open the send message dialog.`)
+  }
+
+  const handleViewCampaignDetails = () => {
+    console.log('📊 Viewing campaign details for client:', displayClient.name)
+    // TODO: Navigate to campaigns page filtered by client
+    alert(`Viewing campaigns for ${displayClient.name}. This would navigate to the campaigns page.`)
+  }
+
+  const handleConfigureSettings = () => {
+    console.log('⚙️ Configuring settings for client:', displayClient.name)
+    // TODO: Open settings configuration dialog
+    alert(`Configuring settings for ${displayClient.name}. This would open a settings dialog.`)
+  }
+
+  const handleViewMessageDetails = (message: any) => {
+    console.log('📄 Viewing message details:', message)
+    // TODO: Open message details modal
+    alert(`Viewing message details: "${message.subject}". This would show the full message content.`)
   }
 
   return (
@@ -346,7 +379,11 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     <p className="text-sm text-muted-foreground text-center max-w-md">
                       Billing information will appear here once a payment plan is configured for this client.
                     </p>
-                    <Button variant="outline" className="mt-4">
+                    <Button 
+                      variant="outline" 
+                      className="mt-4"
+                      onClick={handleSetupBilling}
+                    >
                       Set Up Billing
                     </Button>
                   </CardContent>
@@ -428,7 +465,7 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                               variant="ghost" 
                               size="sm" 
                               className="mt-2"
-                              onClick={() => console.log('View full message:', message)}
+                              onClick={() => handleViewMessageDetails(message)}
                             >
                               View Details
                             </Button>
@@ -441,7 +478,11 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                         <p className="text-sm text-muted-foreground">
                           No messages sent to this client yet.
                         </p>
-                        <Button variant="outline" className="mt-4">
+                        <Button 
+                          variant="outline" 
+                          className="mt-4"
+                          onClick={handleSendFirstMessage}
+                        >
                           Send First Message
                         </Button>
                       </div>
@@ -469,7 +510,12 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                       </div>
                       {displayClient.campaignsCount > 0 && (
                         <div className="mt-4">
-                          <Button variant="outline" size="sm" className="w-full">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full"
+                            onClick={handleViewCampaignDetails}
+                          >
                             View Campaign Details
                           </Button>
                         </div>
@@ -488,7 +534,11 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                   <p className="text-sm text-muted-foreground text-center max-w-md">
                     Client-specific settings and preferences will be available here once configured.
                   </p>
-                  <Button variant="outline" className="mt-4">
+                  <Button 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={handleConfigureSettings}
+                  >
                     Configure Settings
                   </Button>
                 </CardContent>
