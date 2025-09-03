@@ -603,6 +603,7 @@ enum SocialProvider {
   LINKEDIN
   YOUTUBE
   TIKTOK
+  SYSTEM
 }
 
 enum SocialAccountStatus {

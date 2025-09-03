@@ -46,13 +46,12 @@ async function getMessagesHandler(req: NextRequest, { params }: { params: Promis
       return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
     }
 
-    // Get messages for this client (from InboxItem table for now)
+    // Get messages for this client (from InboxItem table)
     const messages = await prisma.inboxItem.findMany({
       where: {
         workspaceId: userWorkspace.workspaceId,
-        metadata: {
-          path: ['clientId'],
-          equals: clientId
+        tags: {
+          has: `client-${clientId}`
         }
       },
       orderBy: {
@@ -62,16 +61,19 @@ async function getMessagesHandler(req: NextRequest, { params }: { params: Promis
     })
 
     return NextResponse.json({
-      messages: messages.map(msg => ({
-        id: msg.id,
-        type: msg.type,
-        subject: msg.metadata?.subject || 'No subject',
-        content: msg.content,
-        status: msg.status,
-        priority: msg.metadata?.priority || 'normal',
-        createdAt: msg.createdAt,
-        scheduledAt: msg.metadata?.scheduledAt || null
-      }))
+      messages: messages.map(msg => {
+        const notes = JSON.parse(msg.internalNotes || '{}')
+        return {
+          id: msg.id,
+          type: msg.type,
+          subject: notes.subject || 'No subject',
+          content: msg.content,
+          status: msg.status,
+          priority: notes.priority || 'normal',
+          createdAt: msg.createdAt,
+          scheduledAt: notes.scheduledAt || null
+        }
+      })
     })
   } catch (error) {
     console.error('Error fetching messages:', error)
@@ -164,15 +166,45 @@ async function sendMessageHandler(req: NextRequest, { params }: { params: Promis
       scheduledAt = new Date(`${scheduledDate}T${scheduledTime}:00`)
     }
 
+    // For client messages, we'll create a system inbox item with a dummy social account
+    // First, let's get or create a system social account for client messages
+    let systemAccount = await prisma.socialAccount.findFirst({
+      where: {
+        workspaceId: userWorkspace.workspaceId,
+        provider: 'SYSTEM',
+        handle: 'client-messages'
+      }
+    })
+
+    if (!systemAccount) {
+      systemAccount = await prisma.socialAccount.create({
+        data: {
+          workspaceId: userWorkspace.workspaceId,
+          provider: 'SYSTEM',
+          accountType: 'system',
+          handle: 'client-messages',
+          displayName: 'Client Messages System',
+          accountId: 'system-client-messages',
+          accessToken: 'system',
+          scopes: [],
+          status: 'ACTIVE'
+        }
+      })
+    }
+
     // Store message in database first
     const messageRecord = await prisma.inboxItem.create({
       data: {
         workspaceId: userWorkspace.workspaceId,
-        type: type.toUpperCase(),
+        socialAccountId: systemAccount.id,
+        type: type.toUpperCase() as any,
+        providerItemId: `client-msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         content: content,
-        status: schedule ? 'SCHEDULED' : 'SENT',
-        priority: priority || 'NORMAL',
-        metadata: {
+        authorName: client.name,
+        authorHandle: client.email || client.phone || 'no-handle',
+        status: schedule ? 'SCHEDULED' : 'OPEN',
+        tags: [type, 'client-message', `client-${clientId}`],
+        internalNotes: JSON.stringify({
           clientId: clientId,
           clientName: client.name,
           subject: subject || null,
@@ -181,7 +213,7 @@ async function sendMessageHandler(req: NextRequest, { params }: { params: Promis
           scheduledAt: scheduledAt?.toISOString() || null,
           sentBy: userWorkspace.user.name,
           sentById: userId
-        }
+        })
       }
     })
 
@@ -233,12 +265,12 @@ async function sendMessageHandler(req: NextRequest, { params }: { params: Promis
         await prisma.inboxItem.update({
           where: { id: messageRecord.id },
           data: { 
-            status: 'DELIVERED',
-            metadata: {
-              ...messageRecord.metadata,
+            status: 'CLOSED',
+            internalNotes: JSON.stringify({
+              ...JSON.parse(messageRecord.internalNotes || '{}'),
               deliveryInfo: deliveryResult.deliveryInfo,
               deliveredAt: new Date().toISOString()
-            }
+            })
           }
         })
 
@@ -249,12 +281,12 @@ async function sendMessageHandler(req: NextRequest, { params }: { params: Promis
         await prisma.inboxItem.update({
           where: { id: messageRecord.id },
           data: { 
-            status: 'FAILED',
-            metadata: {
-              ...messageRecord.metadata,
+            status: 'ESCALATED',
+            internalNotes: JSON.stringify({
+              ...JSON.parse(messageRecord.internalNotes || '{}'),
               errorMessage: deliveryError instanceof Error ? deliveryError.message : 'Unknown error',
               failedAt: new Date().toISOString()
-            }
+            })
           }
         })
 

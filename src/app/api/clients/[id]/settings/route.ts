@@ -184,26 +184,18 @@ async function updateSettingsHandler(req: NextRequest, { params }: { params: Pro
       settingsKeys: Object.keys(settingsData)
     })
 
-    // Log settings change for audit trail
-    await prisma.inboxItem.create({
-      data: {
-        workspaceId: userWorkspace.workspaceId,
-        type: 'SYSTEM_LOG',
-        content: `Client settings updated for ${updatedClient.name}`,
-        status: 'PROCESSED',
-        priority: 'LOW',
-        metadata: {
-          clientId: clientId,
-          clientName: updatedClient.name,
-          action: 'SETTINGS_UPDATE',
-          changedBy: userId,
-          changes: {
-            status: status !== client.status ? { from: client.status, to: status } : null,
-            industry: industry !== client.industry ? { from: client.industry, to: industry } : null,
-            settingsUpdated: true
-          }
-        }
-      }
+    // Log settings change for audit trail (simplified for now)
+    console.log('📝 Client settings updated:', {
+      clientId: clientId,
+      clientName: updatedClient.name,
+      action: 'SETTINGS_UPDATE',
+      changedBy: userId,
+      changes: {
+        status: status !== client.status ? { from: client.status, to: status } : null,
+        industry: industry !== client.industry ? { from: client.industry, to: industry } : null,
+        settingsUpdated: true
+      },
+      timestamp: new Date().toISOString()
     })
 
     return NextResponse.json({
