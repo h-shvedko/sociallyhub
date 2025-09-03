@@ -104,11 +104,15 @@ async function getClientsHandler(req: NextRequest) {
       id: client.id,
       workspaceId: client.workspaceId,
       name: client.name,
-      email: '', // Not in current schema - could be added later
-      company: client.name, // Using name as company for now
-      industry: 'Technology', // Default - could be added to schema later
-      status: 'ACTIVE', // Default - could be added to schema later
-      onboardingStatus: 'COMPLETED', // Default - could be added to schema later
+      email: client.email || '', // Use real email from database
+      company: client.company || client.name, // Use real company if available
+      industry: client.industry || '', // Use real industry from database
+      website: client.website || '',
+      phone: client.phone || '',
+      logo: client.logo || '',
+      status: client.status || 'ACTIVE', // Use real status from database
+      notes: client.notes || '',
+      onboardingStatus: 'COMPLETED', // Default for now
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
       tags: client.labels || [],
@@ -191,10 +195,14 @@ async function createClientHandler(req: NextRequest) {
       id: newClient.id,
       workspaceId: newClient.workspaceId,
       name: newClient.name,
-      email: '',
-      company: newClient.name,
-      industry: 'Technology',
-      status: 'ACTIVE',
+      email: newClient.email || '',
+      company: newClient.company || newClient.name,
+      industry: newClient.industry || '',
+      website: newClient.website || '',
+      phone: newClient.phone || '',
+      logo: newClient.logo || '',
+      status: newClient.status || 'ACTIVE',
+      notes: newClient.notes || '',
       onboardingStatus: 'COMPLETED',
       createdAt: newClient.createdAt,
       updatedAt: newClient.updatedAt,

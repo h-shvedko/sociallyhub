@@ -72,10 +72,14 @@ async function getClientHandler(req: NextRequest, { params }: { params: { id: st
       id: client.id,
       workspaceId: client.workspaceId,
       name: client.name,
-      email: '', // Not in current schema
-      company: client.name,
-      industry: 'Technology', // Default
-      status: 'ACTIVE',
+      email: client.email || '', // Use real email from database
+      company: client.company || client.name,
+      industry: client.industry || '', 
+      website: client.website || '',
+      phone: client.phone || '',
+      logo: client.logo || '',
+      status: client.status || 'ACTIVE',
+      notes: client.notes || '',
       onboardingStatus: 'COMPLETED',
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
@@ -168,10 +172,14 @@ async function updateClientHandler(req: NextRequest, { params }: { params: { id:
       id: updatedClient.id,
       workspaceId: updatedClient.workspaceId,
       name: updatedClient.name,
-      email: '', // Not in current schema
-      company: updatedClient.name,
-      industry: 'Technology', // Default
-      status: 'ACTIVE',
+      email: updatedClient.email || '', // Use real email from database
+      company: updatedClient.company || updatedClient.name,
+      industry: updatedClient.industry || '', 
+      website: updatedClient.website || '',
+      phone: updatedClient.phone || '',
+      logo: updatedClient.logo || '',
+      status: updatedClient.status || 'ACTIVE',
+      notes: updatedClient.notes || '',
       onboardingStatus: 'COMPLETED',
       createdAt: updatedClient.createdAt,
       updatedAt: updatedClient.updatedAt,

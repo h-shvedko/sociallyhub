@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import {
   Building,
   Mail,
@@ -40,7 +41,45 @@ interface ClientDetailsDialogProps {
 }
 
 export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetailsDialogProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const [clientData, setClientData] = useState<any>(null)
+  const [billingData, setBillingData] = useState<any>(null)
+  const [activityData, setActivityData] = useState<any[]>([])
+  const [messagesData, setMessagesData] = useState<any[]>([])
+
+  useEffect(() => {
+    if (open && client) {
+      fetchClientDetails()
+    }
+  }, [open, client])
+
+  const fetchClientDetails = async () => {
+    if (!client?.id) return
+    
+    setIsLoading(true)
+    try {
+      // Fetch full client details from API
+      const response = await fetch(`/api/clients/${client.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setClientData(data)
+      }
+
+      // Since we don't have billing/messages in the database yet,
+      // we'll set empty states for now
+      setBillingData(null)
+      setActivityData([])
+      setMessagesData([])
+    } catch (error) {
+      console.error('Error fetching client details:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   if (!client) return null
+
+  const displayClient = clientData || client
 
   const formatDate = (date: Date | string) => {
     const dateObj = typeof date === 'string' ? new Date(date) : date
@@ -105,28 +144,30 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src={client.logo} alt={client.name} />
+              <AvatarImage src={displayClient.logo} alt={displayClient.name} />
               <AvatarFallback className="text-lg font-semibold">
-                {getInitials(client.name)}
+                {getInitials(displayClient.name)}
               </AvatarFallback>
             </Avatar>
             <div>
-              <DialogTitle className="text-2xl">{client.name}</DialogTitle>
+              <DialogTitle className="text-2xl">{displayClient.name}</DialogTitle>
               <DialogDescription className="text-base">
-                {client.company && client.company !== client.name && (
-                  <span className="mr-3">{client.company}</span>
+                {displayClient.company && displayClient.company !== displayClient.name && (
+                  <span className="mr-3">{displayClient.company}</span>
                 )}
-                {client.industry && (
-                  <span className="text-muted-foreground">{client.industry}</span>
+                {displayClient.industry && (
+                  <span className="text-muted-foreground">{displayClient.industry}</span>
                 )}
               </DialogDescription>
               <div className="flex items-center gap-2 mt-2">
-                <Badge className={getStatusColor(client.status)}>
-                  {client.status}
+                <Badge className={getStatusColor(displayClient.status || 'ACTIVE')}>
+                  {displayClient.status || 'ACTIVE'}
                 </Badge>
-                <Badge className={getOnboardingColor(client.onboardingStatus)}>
-                  {client.onboardingStatus}
-                </Badge>
+                {displayClient.onboardingStatus && (
+                  <Badge className={getOnboardingColor(displayClient.onboardingStatus)}>
+                    {displayClient.onboardingStatus}
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -156,23 +197,21 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Created</span>
                       <span className="text-sm font-medium">
-                        {formatDate(client.createdAt)}
+                        {formatDate(displayClient.createdAt)}
                       </span>
                     </div>
-                    {client.lastContactDate && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Last Contact</span>
-                        <span className="text-sm font-medium">
-                          {formatDate(client.lastContactDate)}
-                        </span>
-                      </div>
-                    )}
-                    {client.assignedUserId && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Assigned To</span>
-                        <span className="text-sm font-medium">Account Manager</span>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Last Updated</span>
+                      <span className="text-sm font-medium">
+                        {formatDate(displayClient.updatedAt)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Workspace</span>
+                      <span className="text-sm font-medium">
+                        {displayClient.workspace?.name || 'Default'}
+                      </span>
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -187,22 +226,22 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                   <CardContent className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Social Accounts</span>
-                      <span className="text-sm font-medium">{client.socialAccountsCount || 0}</span>
+                      <span className="text-sm font-medium">{displayClient.socialAccountsCount || 0}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Active Campaigns</span>
-                      <span className="text-sm font-medium">{client.campaignsCount || 0}</span>
+                      <span className="text-sm font-medium">{displayClient.campaignsCount || 0}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Total Posts</span>
-                      <span className="text-sm font-medium">{client.postsCount || 0}</span>
+                      <span className="text-sm font-medium">{displayClient.postsCount || 0}</span>
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
               {/* Tags and Notes */}
-              {(client.tags && client.tags.length > 0) && (
+              {(displayClient.tags && displayClient.tags.length > 0) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -212,7 +251,7 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
-                      {client.tags.map((tag) => (
+                      {displayClient.tags.map((tag: string) => (
                         <Badge key={tag} variant="outline">
                           {tag}
                         </Badge>
@@ -222,7 +261,7 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                 </Card>
               )}
 
-              {client.notes && (
+              {displayClient.notes && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -231,7 +270,7 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm">{client.notes}</p>
+                    <p className="text-sm">{displayClient.notes}</p>
                   </CardContent>
                 </Card>
               )}
@@ -247,32 +286,32 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     <Mail className="h-5 w-5 text-muted-foreground" />
                     <div>
                       <p className="text-sm text-muted-foreground">Email</p>
-                      <p className="font-medium">{client.email || 'Not provided'}</p>
+                      <p className="font-medium">{displayClient.email || 'Not provided'}</p>
                     </div>
                   </div>
                   
-                  {client.phone && (
+                  {displayClient.phone && (
                     <div className="flex items-center gap-3">
                       <Phone className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Phone</p>
-                        <p className="font-medium">{client.phone}</p>
+                        <p className="font-medium">{displayClient.phone}</p>
                       </div>
                     </div>
                   )}
                   
-                  {client.website && (
+                  {displayClient.website && (
                     <div className="flex items-center gap-3">
                       <Globe className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Website</p>
                         <a 
-                          href={client.website} 
+                          href={displayClient.website} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="font-medium text-blue-600 hover:underline"
                         >
-                          {client.website}
+                          {displayClient.website}
                         </a>
                       </div>
                     </div>
@@ -282,93 +321,37 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
             </TabsContent>
 
             <TabsContent value="billing" className="space-y-4 mt-4">
-              <div className="space-y-4">
-                {/* Contract & Payment Info */}
+              {billingData ? (
+                <div className="space-y-4">
+                  {/* Show real billing data when available */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        Billing Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">
+                        Billing information would appear here when available.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : (
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <DollarSign className="h-5 w-5" />
-                      Contract & Payment Details
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Service Plan</p>
-                        <p className="text-xl font-semibold">Premium</p>
-                        <p className="text-xs text-muted-foreground">$999/month</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Billing Cycle</p>
-                        <p className="font-medium">Monthly</p>
-                        <p className="text-xs text-muted-foreground">Auto-renewal enabled</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Contract Start</p>
-                        <p className="font-medium">{formatDate(client.createdAt)}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Next Billing Date</p>
-                        <p className="font-medium">
-                          {formatDate(new Date(new Date().setMonth(new Date().getMonth() + 1)))}
-                        </p>
-                      </div>
-                    </div>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <DollarSign className="h-12 w-12 mb-4 text-muted-foreground" />
+                    <p className="text-lg font-medium mb-2">No Billing Information</p>
+                    <p className="text-sm text-muted-foreground text-center max-w-md">
+                      Billing information will appear here once a payment plan is configured for this client.
+                    </p>
+                    <Button variant="outline" className="mt-4">
+                      Set Up Billing
+                    </Button>
                   </CardContent>
                 </Card>
-
-                {/* Payment History */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Clock className="h-5 w-5" />
-                      Payment History
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {[1, 2, 3].map((i) => {
-                        const date = new Date()
-                        date.setMonth(date.getMonth() - i)
-                        return (
-                          <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div>
-                              <p className="font-medium">Monthly Subscription</p>
-                              <p className="text-sm text-muted-foreground">
-                                {formatDate(date)}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-semibold">{formatCurrency(999)}</p>
-                              <Badge className="bg-green-100 text-green-800">Paid</Badge>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Billing Contact */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Mail className="h-5 w-5" />
-                      Billing Contact
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Billing Email</p>
-                      <p className="font-medium">{client.email || 'billing@company.com'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Payment Method</p>
-                      <p className="font-medium">Credit Card ending in ****4242</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              )}
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-4 mt-4">
@@ -382,28 +365,34 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {[
-                        { type: 'message', title: 'Sent campaign report', time: '2 hours ago', icon: Mail },
-                        { type: 'campaign', title: 'Launched "Summer Sale" campaign', time: '1 day ago', icon: BarChart3 },
-                        { type: 'post', title: 'Published 5 social posts', time: '3 days ago', icon: FileText },
-                        { type: 'meeting', title: 'Quarterly review meeting', time: '1 week ago', icon: Users },
-                        { type: 'billing', title: 'Payment received', time: '2 weeks ago', icon: DollarSign },
-                      ].map((activity, index) => {
-                        const Icon = activity.icon
-                        return (
-                          <div key={index} className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                              <Icon className="h-4 w-4 text-blue-600" />
+                    {activityData.length > 0 ? (
+                      <div className="space-y-4">
+                        {activityData.map((activity, index) => {
+                          const Icon = activity.icon || Activity
+                          return (
+                            <div key={index} className="flex items-start gap-3">
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                                <Icon className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium">{activity.title}</p>
+                                <p className="text-sm text-muted-foreground">{activity.time}</p>
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <p className="font-medium">{activity.title}</p>
-                              <p className="text-sm text-muted-foreground">{activity.time}</p>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Activity className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          No recent activity to display.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Activity will appear here as you interact with this client.
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -416,25 +405,47 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      {[
-                        { subject: 'Monthly Performance Report', date: '2024-01-15', type: 'email' },
-                        { subject: 'Campaign Approval Request', date: '2024-01-12', type: 'email' },
-                        { subject: 'Quick check-in', date: '2024-01-10', type: 'sms' },
-                        { subject: 'Welcome to SociallyHub!', date: '2024-01-01', type: 'email' },
-                      ].map((message, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent cursor-pointer">
-                          <div className="flex items-center gap-3">
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium">{message.subject}</p>
-                              <p className="text-sm text-muted-foreground">{message.date}</p>
+                    {messagesData.length > 0 ? (
+                      <div className="space-y-3">
+                        {messagesData.map((message, index) => (
+                          <div key={index} className="border rounded-lg p-3">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-3">
+                                <Mail className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                  <p className="font-medium">{message.subject}</p>
+                                  <p className="text-sm text-muted-foreground">{message.date}</p>
+                                </div>
+                              </div>
+                              <Badge variant="outline">{message.type}</Badge>
                             </div>
+                            {message.content && (
+                              <div className="mt-3 p-3 bg-accent rounded-md">
+                                <p className="text-sm">{message.content}</p>
+                              </div>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="mt-2"
+                              onClick={() => console.log('View full message:', message)}
+                            >
+                              View Details
+                            </Button>
                           </div>
-                          <Badge variant="outline">{message.type}</Badge>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <MessageSquare className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          No messages sent to this client yet.
+                        </p>
+                        <Button variant="outline" className="mt-4">
+                          Send First Message
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -450,16 +461,19 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">Active Campaigns</span>
-                        <span className="font-medium">{client.campaignsCount || 0}</span>
+                        <span className="font-medium">{displayClient.campaignsCount || 0}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Posts This Month</span>
-                        <span className="font-medium">{client.postsCount || 0}</span>
+                        <span className="text-sm text-muted-foreground">Total Posts</span>
+                        <span className="font-medium">{displayClient.postsCount || 0}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Engagement Rate</span>
-                        <span className="font-medium">4.8%</span>
-                      </div>
+                      {displayClient.campaignsCount > 0 && (
+                        <div className="mt-4">
+                          <Button variant="outline" size="sm" className="w-full">
+                            View Campaign Details
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -467,105 +481,18 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-4 mt-4">
-              <div className="space-y-4">
-                {/* Notification Preferences */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <AlertCircle className="h-5 w-5" />
-                      Notification Preferences
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Email Reports</p>
-                          <p className="text-sm text-muted-foreground">Receive weekly performance reports</p>
-                        </div>
-                        <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Campaign Alerts</p>
-                          <p className="text-sm text-muted-foreground">Get notified about campaign milestones</p>
-                        </div>
-                        <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Billing Reminders</p>
-                          <p className="text-sm text-muted-foreground">Payment due date notifications</p>
-                        </div>
-                        <Badge className="bg-gray-100 text-gray-800">Disabled</Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Access & Permissions */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="h-5 w-5" />
-                      Team Access
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Team Members</p>
-                          <p className="text-sm text-muted-foreground">Users with access to this client</p>
-                        </div>
-                        <Badge variant="outline">3 members</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">API Access</p>
-                          <p className="text-sm text-muted-foreground">External integrations enabled</p>
-                        </div>
-                        <Badge className="bg-yellow-100 text-yellow-800">Limited</Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Custom Settings */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Settings className="h-5 w-5" />
-                      Custom Preferences
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Default Posting Time</p>
-                          <p className="text-sm text-muted-foreground">Preferred time for scheduled posts</p>
-                        </div>
-                        <span className="font-medium">9:00 AM EST</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Approval Workflow</p>
-                          <p className="text-sm text-muted-foreground">Content approval required</p>
-                        </div>
-                        <Badge className="bg-green-100 text-green-800">Required</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Auto-publish</p>
-                          <p className="text-sm text-muted-foreground">Publish approved content automatically</p>
-                        </div>
-                        <Badge className="bg-gray-100 text-gray-800">Off</Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Settings className="h-12 w-12 mb-4 text-muted-foreground" />
+                  <p className="text-lg font-medium mb-2">Client Settings</p>
+                  <p className="text-sm text-muted-foreground text-center max-w-md">
+                    Client-specific settings and preferences will be available here once configured.
+                  </p>
+                  <Button variant="outline" className="mt-4">
+                    Configure Settings
+                  </Button>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </div>
