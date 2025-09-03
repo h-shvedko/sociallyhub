@@ -33,6 +33,9 @@ import {
   Settings
 } from 'lucide-react'
 import { Client, ClientStatus, OnboardingStatus } from '@/types/client'
+import { BillingSetupDialog } from './billing-setup-dialog'
+import { SendMessageDialog } from './send-message-dialog'
+import { ClientSettingsDialog } from './client-settings-dialog'
 
 interface ClientDetailsDialogProps {
   client: Client | null
@@ -48,6 +51,11 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
   const [billingData, setBillingData] = useState<any>(null)
   const [activityData, setActivityData] = useState<any[]>([])
   const [messagesData, setMessagesData] = useState<any[]>([])
+  
+  // Modal states
+  const [showBillingSetup, setShowBillingSetup] = useState(false)
+  const [showSendMessage, setShowSendMessage] = useState(false)
+  const [showClientSettings, setShowClientSettings] = useState(false)
 
   useEffect(() => {
     if (open && client) {
@@ -142,15 +150,13 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
 
   // Button click handlers
   const handleSetupBilling = () => {
-    console.log('🏦 Setting up billing for client:', displayClient.name)
-    // TODO: Open billing setup dialog or redirect to billing configuration
-    alert(`Setting up billing for ${displayClient.name}. This would open a billing configuration dialog.`)
+    console.log('🏦 Opening billing setup dialog for client:', displayClient.name)
+    setShowBillingSetup(true)
   }
 
   const handleSendFirstMessage = () => {
     console.log('📧 Opening send message dialog for client:', displayClient.name)
-    // TODO: Open send message dialog
-    alert(`Opening message composer for ${displayClient.name}. This would open the send message dialog.`)
+    setShowSendMessage(true)
   }
 
   const handleViewCampaignDetails = () => {
@@ -160,15 +166,31 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
   }
 
   const handleConfigureSettings = () => {
-    console.log('⚙️ Configuring settings for client:', displayClient.name)
-    // TODO: Open settings configuration dialog
-    alert(`Configuring settings for ${displayClient.name}. This would open a settings dialog.`)
+    console.log('⚙️ Opening settings configuration dialog for client:', displayClient.name)
+    setShowClientSettings(true)
   }
 
   const handleViewMessageDetails = (message: any) => {
     console.log('📄 Viewing message details:', message)
     // TODO: Open message details modal
     alert(`Viewing message details: "${message.subject}". This would show the full message content.`)
+  }
+
+  // Modal event handlers
+  const handleBillingSetup = (billingData: any) => {
+    console.log('✅ Billing setup completed:', billingData)
+    setBillingData(billingData)
+    // TODO: Refresh client data or update billing information
+  }
+
+  const handleMessageSent = (messageData: any) => {
+    console.log('✅ Message sent:', messageData)
+    // TODO: Add message to activity feed or refresh messages
+  }
+
+  const handleSettingsSaved = (settingsData: any) => {
+    console.log('✅ Settings saved:', settingsData)
+    // TODO: Update client data or refresh client details
   }
 
   return (
@@ -546,6 +568,28 @@ export function ClientDetailsDialog({ client, open, onOpenChange }: ClientDetail
             </TabsContent>
           </Tabs>
         </div>
+        
+        {/* Modal Dialogs */}
+        <BillingSetupDialog 
+          client={displayClient}
+          open={showBillingSetup}
+          onOpenChange={setShowBillingSetup}
+          onBillingSetup={handleBillingSetup}
+        />
+        
+        <SendMessageDialog 
+          client={displayClient}
+          open={showSendMessage}
+          onOpenChange={setShowSendMessage}
+          onMessageSent={handleMessageSent}
+        />
+        
+        <ClientSettingsDialog 
+          client={displayClient}
+          open={showClientSettings}
+          onOpenChange={setShowClientSettings}
+          onSettingsSaved={handleSettingsSaved}
+        />
       </DialogContent>
     </Dialog>
   )

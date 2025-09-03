@@ -55,7 +55,9 @@
       "Bash(timeout 30 docker-compose exec app npm run db:seed)",
       "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"yes\" npx prisma migrate reset --force)",
       "Bash(grep:*)",
-      "Bash(timeout 5 docker-compose logs --tail=20 app)"
+      "Bash(timeout 5 docker-compose logs --tail=20 app)",
+      "Bash(git pull:*)",
+      "Bash(timeout 60 docker-compose exec app npx prisma db seed:*)"
     ],
     "deny": [],
     "ask": []
