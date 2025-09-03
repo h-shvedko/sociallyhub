@@ -47,6 +47,7 @@ import { ClientFilters } from './client-filters'
 import { ClientOnboardingFlow } from './client-onboarding-flow'
 import { ClientDetailsDialog } from './client-details-dialog'
 import { EditClientDialog } from './edit-client-dialog'
+import { BillingOverview } from './billing-overview'
 import { SendMessageDialog } from './send-message-dialog'
 import { DeleteClientDialog } from './delete-client-dialog'
 
@@ -418,18 +419,7 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
         </TabsContent>
 
         <TabsContent value="billing" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Billing Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <DollarSign className="h-12 w-12 mx-auto mb-2" />
-                <p>Billing management interface would be implemented here</p>
-                <p className="text-xs">Integration with payment processors and invoice generation</p>
-              </div>
-            </CardContent>
-          </Card>
+          <BillingOverview clients={clients} />
         </TabsContent>
 
         <TabsContent value="reports" className="space-y-4">
