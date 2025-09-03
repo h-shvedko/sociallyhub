@@ -36,6 +36,7 @@ import { Client, ClientStatus, OnboardingStatus } from '@/types/client'
 import { BillingSetupDialog } from './billing-setup-dialog'
 import { SendMessageDialog } from './send-message-dialog'
 import { ClientSettingsDialog } from './client-settings-dialog'
+import { MessageDetailsDialog } from './message-details-dialog'
 
 interface ClientDetailsDialogProps {
   client: Client | null
@@ -57,6 +58,8 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
   const [showBillingSetup, setShowBillingSetup] = useState(false)
   const [showSendMessage, setShowSendMessage] = useState(false)
   const [showClientSettings, setShowClientSettings] = useState(false)
+  const [showMessageDetails, setShowMessageDetails] = useState(false)
+  const [selectedMessage, setSelectedMessage] = useState<any>(null)
 
   useEffect(() => {
     if (open && client) {
@@ -214,8 +217,8 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
 
   const handleViewMessageDetails = (message: any) => {
     console.log('📄 Viewing message details:', message)
-    // TODO: Open message details modal
-    alert(`Viewing message details: "${message.subject}". This would show the full message content.`)
+    setSelectedMessage(message)
+    setShowMessageDetails(true)
   }
 
   // Modal event handlers
@@ -671,6 +674,12 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
           open={showClientSettings}
           onOpenChange={setShowClientSettings}
           onSettingsSaved={handleSettingsSaved}
+        />
+        
+        <MessageDetailsDialog
+          message={selectedMessage}
+          open={showMessageDetails}
+          onOpenChange={setShowMessageDetails}
         />
       </DialogContent>
     </Dialog>
