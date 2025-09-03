@@ -143,6 +143,14 @@ model Client {
   id          String   @id @default(cuid())
   workspaceId String
   name        String
+  email       String
+  phone       String?
+  company     String?
+  industry    String?
+  website     String?
+  logo        String?
+  status      String   @default("ACTIVE")
+  notes       String?
   labels      String[] // Tags for client organization
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

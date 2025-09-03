@@ -147,7 +147,13 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
             ← Back to Clients
           </Button>
         </div>
-        <ClientOnboardingFlow />
+        <ClientOnboardingFlow 
+          onComplete={(client) => {
+            setShowOnboarding(false)
+            // Refresh data to show the new client
+            window.location.reload()
+          }}
+        />
       </div>
     )
   }

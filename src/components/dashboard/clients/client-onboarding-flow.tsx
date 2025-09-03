@@ -151,10 +151,60 @@ export function ClientOnboardingFlow({
     return 'upcoming'
   }
 
-  const handleStepComplete = () => {
+  const handleStepComplete = async () => {
     setCompletedSteps(prev => new Set([...prev, currentStep]))
-    if (currentStep < (template?.steps.length || 0) - 1) {
+    
+    // If this is the last step, save the client to database
+    if (currentStep === (template?.steps.length || 0) - 1) {
+      await handleCompleteOnboarding()
+    } else {
       setCurrentStep(currentStep + 1)
+    }
+  }
+
+  const handleCompleteOnboarding = async () => {
+    if (!clientData.name || !clientData.email) {
+      alert('Please fill in required fields: Name and Email')
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      
+      const response = await fetch('/api/clients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          workspaceId: 'placeholder', // Will be resolved by API
+          name: clientData.name,
+          email: clientData.email,
+          phone: clientData.phone,
+          company: clientData.company,
+          industry: clientData.industry,
+          website: clientData.website,
+          notes: clientData.notes,
+          tags: clientData.labels || []
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create client')
+      }
+
+      const savedClient = await response.json()
+      
+      if (onComplete) {
+        onComplete(savedClient)
+      }
+
+      alert('Client onboarding completed successfully!')
+    } catch (error) {
+      console.error('Error completing onboarding:', error)
+      alert('Failed to complete onboarding. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -623,9 +673,14 @@ export function ClientOnboardingFlow({
             >
               Skip
             </Button>
-            <Button onClick={handleStepComplete}>
-              {currentStep === template.steps.length - 1 ? 'Complete Onboarding' : 'Next Step'}
-              <ArrowRight className="h-4 w-4 ml-2" />
+            <Button onClick={handleStepComplete} disabled={isLoading}>
+              {isLoading && currentStep === template.steps.length - 1 
+                ? 'Saving...' 
+                : currentStep === template.steps.length - 1 
+                  ? 'Complete Onboarding' 
+                  : 'Next Step'
+              }
+              {!isLoading && <ArrowRight className="h-4 w-4 ml-2" />}
             </Button>
           </div>
         </div>

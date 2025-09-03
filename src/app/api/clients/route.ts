@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { withLogging } from '@/lib/middleware/logging'
 import { BusinessLogger } from '@/lib/middleware/logging'
+import { prisma } from '@/lib/prisma'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 async function getClientsHandler(req: NextRequest) {
   try {
@@ -22,13 +24,45 @@ async function getClientsHandler(req: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 })
     }
 
-    // Real database implementation would fetch from Client model
-    // For now, return empty data since no Client model exists in database
-    const clients: any[] = []
+    // Get user's workspace
+    const userId = normalizeUserId(session.user.id)
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: { userId },
+      include: { workspace: true }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
+    }
+
+    const actualWorkspaceId = userWorkspace.workspaceId
+
+    // Fetch clients from database
+    let whereClause: any = { workspaceId: actualWorkspaceId }
     
-    // Apply pagination to empty results
+    // Apply filters
+    if (status && status !== 'all') {
+      whereClause.status = status.toUpperCase()
+    }
+    if (search) {
+      whereClause.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { company: { contains: search, mode: 'insensitive' } }
+      ]
+    }
+
+    const totalCount = await prisma.client.count({ where: whereClause })
+    
+    const clients = await prisma.client.findMany({
+      where: whereClause,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit
+    })
+
     const filteredClients = clients
-    const paginatedClients = []
+    const paginatedClients = clients
 
     BusinessLogger.logClientListViewed(session.user.id, workspaceId, {
       totalClients: filteredClients.length,
@@ -37,10 +71,10 @@ async function getClientsHandler(req: NextRequest) {
 
     return NextResponse.json({
       clients: paginatedClients,
-      totalCount: filteredClients.length,
+      totalCount,
       page,
       pageSize: limit,
-      totalPages: Math.ceil(filteredClients.length / limit)
+      totalPages: Math.ceil(totalCount / limit)
     })
   } catch (error) {
     console.error('Error fetching clients:', error)
@@ -77,26 +111,34 @@ async function createClientHandler(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Mock client creation - in real implementation, this would save to database
-    const newClient = {
-      id: `client_${Date.now()}`,
-      workspaceId,
-      name,
-      email,
-      phone,
-      company,
-      industry,
-      website,
-      status: 'PROSPECT',
-      onboardingStatus: 'NOT_STARTED',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      assignedUserId,
-      tags: tags || [],
-      notes,
-      contractDetails,
-      billingInfo
+    // Get user's workspace
+    const userId = normalizeUserId(session.user.id)
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: { userId },
+      include: { workspace: true }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
     }
+
+    const actualWorkspaceId = userWorkspace.workspaceId
+
+    // Create client in database
+    const newClient = await prisma.client.create({
+      data: {
+        workspaceId: actualWorkspaceId,
+        name,
+        email,
+        phone,
+        company,
+        industry,
+        website,
+        status: 'ACTIVE',
+        notes,
+        labels: tags || []
+      }
+    })
 
     BusinessLogger.logClientCreated(newClient.id, session.user.id, workspaceId)
 
