@@ -50,10 +50,22 @@ export function SendMessageDialog({ client, open, onOpenChange, onMessageSent }:
     try {
       console.log('📧 Sending message to client:', client.name, messageData)
       
-      // Simulate API call for now
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      // Make real API call to send message
+      const response = await fetch(`/api/clients/${client.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(messageData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to send message')
+      }
+
+      const result = await response.json()
+      console.log('✅ Message sent successfully:', result)
       
-      onMessageSent?.(messageData)
+      onMessageSent?.(result)
       onOpenChange(false)
       
       // Reset form
@@ -67,7 +79,9 @@ export function SendMessageDialog({ client, open, onOpenChange, onMessageSent }:
         scheduledTime: ''
       })
     } catch (error) {
-      console.error('Error sending message:', error)
+      console.error('❌ Error sending message:', error)
+      // TODO: Show error toast to user
+      alert(`Error: ${error instanceof Error ? error.message : 'Failed to send message'}`)
     } finally {
       setIsLoading(false)
     }

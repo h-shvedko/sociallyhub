@@ -153,6 +153,8 @@ model Client {
   status      String   @default("ACTIVE")
   notes       String?
   labels      String[] // Tags for client organization
+  billingInfo Json?    // Billing and contract information
+  settings    Json?    // Client-specific settings and preferences
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

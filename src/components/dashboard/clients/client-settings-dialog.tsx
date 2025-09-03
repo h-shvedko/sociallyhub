@@ -75,13 +75,27 @@ export function ClientSettingsDialog({ client, open, onOpenChange, onSettingsSav
     try {
       console.log('⚙️ Configuring settings for client:', client.name, settingsData)
       
-      // Simulate API call for now
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      // Make real API call to save settings
+      const response = await fetch(`/api/clients/${client.id}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save settings')
+      }
+
+      const result = await response.json()
+      console.log('✅ Settings saved to database:', result)
       
-      onSettingsSaved?.(settingsData)
+      onSettingsSaved?.(result)
       onOpenChange(false)
     } catch (error) {
-      console.error('Error saving settings:', error)
+      console.error('❌ Error saving settings:', error)
+      // TODO: Show error toast to user
+      alert(`Error: ${error instanceof Error ? error.message : 'Failed to save settings'}`)
     } finally {
       setIsLoading(false)
     }

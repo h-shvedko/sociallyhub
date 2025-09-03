@@ -46,17 +46,22 @@ export function BillingSetupDialog({ client, open, onOpenChange, onBillingSetup 
     try {
       console.log('💰 Setting up billing for client:', client.name, billingData)
       
-      // TODO: Make API call to save billing information
-      // const response = await fetch(`/api/clients/${client.id}/billing`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(billingData)
-      // })
+      // Make real API call to save billing information
+      const response = await fetch(`/api/clients/${client.id}/billing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(billingData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save billing information')
+      }
+
+      const result = await response.json()
+      console.log('✅ Billing saved to database:', result)
       
-      // Simulate API call for now
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      onBillingSetup?.(billingData)
+      onBillingSetup?.(result)
       onOpenChange(false)
       
       // Reset form
@@ -71,7 +76,9 @@ export function BillingSetupDialog({ client, open, onOpenChange, onBillingSetup 
         notes: ''
       })
     } catch (error) {
-      console.error('Error setting up billing:', error)
+      console.error('❌ Error setting up billing:', error)
+      // TODO: Show error toast to user
+      alert(`Error: ${error instanceof Error ? error.message : 'Failed to save billing information'}`)
     } finally {
       setIsLoading(false)
     }
