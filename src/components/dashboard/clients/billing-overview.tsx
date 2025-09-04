@@ -196,7 +196,8 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
     }
     
     setRecentInvoices(prev => [newInvoice, ...prev])
-    setShowInvoiceDialog(false)
+    // Don't close dialog automatically - let user decide when to close
+    // setShowInvoiceDialog(false) - Removed to keep modal open after creation
     
     // Update billing data to reflect new invoice
     fetchBillingData()
