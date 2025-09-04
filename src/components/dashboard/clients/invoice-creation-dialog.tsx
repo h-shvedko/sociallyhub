@@ -138,10 +138,13 @@ export function InvoiceCreationDialog({
   }
 
   const showMessageModal = (type: 'success' | 'error', title: string, message: string) => {
+    console.log('🚨 showMessageModal called:', { type, title, message })
     setMessageModal({ open: true, type, title, message })
+    console.log('🚨 messageModal state set to:', { open: true, type, title, message })
   }
 
   const resetForm = () => {
+    console.log('🔄 resetForm called - clearing all form data')
     setSelectedClient(null)
     setCreatedInvoice(null)
     setMessageModal(null)
@@ -167,8 +170,14 @@ export function InvoiceCreationDialog({
 
   const handleDialogClose = (isOpen: boolean) => {
     if (!isOpen) {
-      // Reset form when dialog is closed
-      resetForm()
+      // Only reset form when dialog is closed AND no invoice was created
+      // This preserves the form data after successful invoice creation
+      if (!createdInvoice) {
+        console.log('🔄 Dialog closed without invoice - resetting form')
+        resetForm()
+      } else {
+        console.log('🔄 Dialog closed with created invoice - preserving form data')
+      }
     }
     onOpenChange(isOpen)
   }
@@ -217,10 +226,12 @@ export function InvoiceCreationDialog({
       console.log('✅ Invoice created successfully:', result.invoice)
 
       // Store created invoice and notify parent
+      console.log('✅ Setting createdInvoice to:', result.invoice)
       setCreatedInvoice(result.invoice)
       onInvoiceCreated?.(result.invoice)
       
       // Show success modal - don't close main modal
+      console.log('✅ About to show success modal')
       showMessageModal(
         'success', 
         'Invoice Created Successfully!', 
@@ -302,126 +313,147 @@ export function InvoiceCreationDialog({
   const generatePDFInvoice = async () => {
     setIsLoading(true)
     try {
-      // Dynamically import jsPDF for client-side use
-      const { default: jsPDF } = await import('jspdf')
+      // Dynamic import for client-side only
+      const { jsPDF } = await import('jspdf')
       
-      // Create new jsPDF instance
-      const pdf = new jsPDF()
+      // Create new PDF document
+      const doc = new jsPDF()
       
-      // PDF content generation
-      const pageWidth = pdf.internal.pageSize.width
-      const pageHeight = pdf.internal.pageSize.height
-      let yPos = 30
+      // Set document properties
+      doc.setProperties({
+        title: `Invoice ${createdInvoice.invoiceNumber}`,
+        author: 'SociallyHub',
+        subject: `Invoice for ${selectedClient.name}`,
+        creator: 'SociallyHub Invoice System'
+      })
 
-      // Header
-      pdf.setFontSize(20)
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('SociallyHub', 20, yPos)
+      // Company Header
+      doc.setFontSize(24)
+      doc.setFont('helvetica', 'bold')
+      doc.text('INVOICE', 20, 30)
       
-      pdf.setFontSize(10)
-      pdf.setFont('helvetica', 'normal')
-      pdf.text('Social Media Management Platform', 20, yPos + 8)
-      
-      // Invoice title and number
-      pdf.setFontSize(24)
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('INVOICE', pageWidth - 60, yPos)
-      
-      pdf.setFontSize(12)
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(`#${createdInvoice.invoiceNumber}`, pageWidth - 60, yPos + 10)
-      
-      yPos += 40
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'normal')
+      doc.text('SociallyHub', 150, 20)
+      doc.text('Social Media Management Platform', 150, 28)
+      doc.text('Email: billing@sociallyhub.com', 150, 36)
+      doc.text('Phone: (555) 123-4567', 150, 44)
 
-      // Client information
-      pdf.setFontSize(12)
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Bill To:', 20, yPos)
+      // Invoice Details
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text(`Invoice #${createdInvoice.invoiceNumber}`, 20, 50)
       
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(selectedClient.name, 20, yPos + 8)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Issue Date: ${new Date(invoiceData.issueDate).toLocaleDateString()}`, 20, 60)
+      doc.text(`Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`, 20, 68)
+      doc.text(`Terms: ${invoiceData.terms}`, 20, 76)
+
+      // Client Information
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Bill To:', 20, 90)
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      let yPos = 98
+      doc.text(selectedClient.name, 20, yPos)
+      yPos += 8
+      
       if (selectedClient.company && selectedClient.company !== selectedClient.name) {
-        pdf.text(selectedClient.company, 20, yPos + 16)
+        doc.text(selectedClient.company, 20, yPos)
         yPos += 8
       }
-      pdf.text(selectedClient.email, 20, yPos + 16)
       
-      // Invoice details
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Invoice Details:', pageWidth - 80, yPos)
+      doc.text(selectedClient.email, 20, yPos)
+      yPos += 8
       
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(`Issue Date: ${new Date(invoiceData.issueDate).toLocaleDateString()}`, pageWidth - 80, yPos + 8)
-      pdf.text(`Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`, pageWidth - 80, yPos + 16)
-      pdf.text(`Currency: ${invoiceData.currency}`, pageWidth - 80, yPos + 24)
-      
-      yPos += 60
+      if (selectedClient.phone) {
+        doc.text(selectedClient.phone, 20, yPos)
+        yPos += 8
+      }
 
-      // Line items table
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Description', 20, yPos)
-      pdf.text('Qty', 120, yPos)
-      pdf.text('Rate', 140, yPos)
-      pdf.text('Amount', 170, yPos)
+      // Line Items Table Header
+      yPos += 10
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Description', 20, yPos)
+      doc.text('Qty', 120, yPos)
+      doc.text('Rate', 140, yPos)
+      doc.text('Amount', 170, yPos)
       
       // Table line
-      pdf.line(20, yPos + 2, pageWidth - 20, yPos + 2)
-      yPos += 12
-      
-      pdf.setFont('helvetica', 'normal')
-      lineItems.forEach((item: any) => {
-        pdf.text(item.description, 20, yPos)
-        pdf.text(item.quantity.toString(), 120, yPos)
-        pdf.text(formatCurrency(item.rate), 140, yPos)
-        pdf.text(formatCurrency(item.amount), 170, yPos)
+      yPos += 5
+      doc.line(20, yPos, 190, yPos)
+      yPos += 8
+
+      // Line Items
+      doc.setFont('helvetica', 'normal')
+      lineItems.forEach((item) => {
+        if (yPos > 250) {
+          doc.addPage()
+          yPos = 30
+        }
+        
+        doc.text(item.description, 20, yPos)
+        doc.text(item.quantity.toString(), 120, yPos)
+        doc.text(formatCurrency(item.rate), 140, yPos)
+        doc.text(formatCurrency(item.amount), 170, yPos)
         yPos += 8
       })
-      
+
+      // Totals section
       yPos += 10
-      
-      // Totals
-      pdf.line(120, yPos, pageWidth - 20, yPos)
+      doc.line(120, yPos, 190, yPos)
       yPos += 8
-      
-      pdf.text('Subtotal:', 140, yPos)
-      pdf.text(formatCurrency(calculateSubtotal()), 170, yPos)
-      
+
+      doc.text('Subtotal:', 120, yPos)
+      doc.text(formatCurrency(calculateSubtotal()), 170, yPos)
+      yPos += 8
+
       if (invoiceData.tax > 0) {
+        doc.text(`Tax (${invoiceData.tax}%):`, 120, yPos)
+        doc.text(formatCurrency(calculateTax()), 170, yPos)
         yPos += 8
-        pdf.text(`Tax (${invoiceData.tax}%):`, 140, yPos)
-        pdf.text(formatCurrency(calculateTax()), 170, yPos)
       }
-      
+
       if (invoiceData.discount > 0) {
+        doc.text(`Discount (${invoiceData.discount}%):`, 120, yPos)
+        doc.text(`-${formatCurrency(calculateDiscount())}`, 170, yPos)
         yPos += 8
-        pdf.text(`Discount (${invoiceData.discount}%):`, 140, yPos)
-        pdf.text(`-${formatCurrency(calculateDiscount())}`, 170, yPos)
       }
-      
+
+      // Total line
+      doc.line(120, yPos, 190, yPos)
       yPos += 8
-      pdf.setFont('helvetica', 'bold')
-      pdf.text('Total:', 140, yPos)
-      pdf.text(formatCurrency(calculateTotal()), 170, yPos)
-      
-      // Notes
+      doc.setFont('helvetica', 'bold')
+      doc.text('TOTAL:', 120, yPos)
+      doc.text(formatCurrency(calculateTotal()), 170, yPos)
+
+      // Notes section
       if (invoiceData.notes) {
         yPos += 20
-        pdf.setFont('helvetica', 'bold')
-        pdf.text('Notes:', 20, yPos)
-        pdf.setFont('helvetica', 'normal')
-        
-        const splitNotes = pdf.splitTextToSize(invoiceData.notes, pageWidth - 40)
-        pdf.text(splitNotes, 20, yPos + 8)
+        if (yPos > 250) {
+          doc.addPage()
+          yPos = 30
+        }
+        doc.setFont('helvetica', 'bold')
+        doc.text('Notes:', 20, yPos)
+        yPos += 8
+        doc.setFont('helvetica', 'normal')
+        const notesLines = doc.splitTextToSize(invoiceData.notes, 170)
+        doc.text(notesLines, 20, yPos)
       }
+
+      // Save the PDF
+      doc.save(`Invoice-${createdInvoice.invoiceNumber}.pdf`)
       
-      // Save PDF
-      pdf.save(`Invoice-${createdInvoice.invoiceNumber}.pdf`)
-      
-      showMessageModal('success', 'PDF Downloaded!', `Invoice ${createdInvoice.invoiceNumber} has been downloaded successfully as a PDF file.`)
-      console.log('✅ PDF invoice downloaded successfully')
+      showMessageModal('success', 'Invoice Downloaded!', `Invoice ${createdInvoice.invoiceNumber} has been downloaded successfully as a PDF file.`)
+      console.log('✅ Invoice PDF generated and downloaded successfully')
       
     } catch (error) {
-      console.error('Error generating PDF invoice:', error)
+      console.error('Error generating PDF:', error)
       showMessageModal('error', 'PDF Generation Failed', `Failed to generate PDF: ${error.message}`)
     } finally {
       setIsLoading(false)
