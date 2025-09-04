@@ -427,6 +427,42 @@ async function main() {
       status: 'ACTIVE',
       notes: 'Educational technology provider serving K-12 schools. Focuses on teacher and parent engagement campaigns.',
       labels: ['Education', 'Non-profit', 'Community']
+    },
+    {
+      id: 'new-startup-client',
+      name: 'New Startup Ventures',
+      email: 'hello@newstartup.com',
+      company: 'New Startup Ventures',
+      industry: 'Technology',
+      website: 'https://newstartup.com',
+      phone: '+1 (555) 111-2222',
+      status: 'PROSPECT',
+      notes: 'Recently signed startup client currently going through onboarding process.',
+      labels: ['Startup', 'New Client', 'Technology']
+    },
+    {
+      id: 'prospect-client',
+      name: 'Prospect Manufacturing Co.',
+      email: 'contact@prospect-mfg.com',
+      company: 'Prospect Manufacturing Co.',
+      industry: 'Manufacturing',
+      website: 'https://prospect-mfg.com',
+      phone: '+1 (555) 333-4444',
+      status: 'PROSPECT',
+      notes: 'Prospective client who has shown interest but not yet started onboarding.',
+      labels: ['Prospect', 'Manufacturing', 'B2B']
+    },
+    {
+      id: 'stalled-client',
+      name: 'Stalled Progress Inc.',
+      email: 'info@stalledprogress.com',
+      company: 'Stalled Progress Inc.',
+      industry: 'Consulting',
+      website: 'https://stalledprogress.com',
+      phone: '+1 (555) 555-6666',
+      status: 'ON_HOLD',
+      notes: 'Onboarding process has stalled due to internal restructuring at client company.',
+      labels: ['Stalled', 'Consulting', 'On Hold']
     }
   ]
 

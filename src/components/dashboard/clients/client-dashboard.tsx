@@ -32,7 +32,9 @@ import {
   Eye,
   Edit,
   Trash2,
-  UserPlus
+  UserPlus,
+  AlertCircle,
+  MessageSquare
 } from 'lucide-react'
 import { 
   Client, 
@@ -398,24 +400,243 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
         </TabsContent>
 
         <TabsContent value="onboarding" className="space-y-4">
-          <div className="grid grid-cols-1 gap-4">
-            {filteredClients
-              .filter(client => 
-                client.onboardingStatus === OnboardingStatus.IN_PROGRESS ||
-                client.onboardingStatus === OnboardingStatus.STALLED ||
-                client.onboardingStatus === OnboardingStatus.NOT_STARTED
-              )
-              .map((client) => (
-                <ClientCard 
-                  key={client.id} 
-                  client={client}
-                  showOnboardingStatus={true}
-                  onView={(client) => setSelectedClient(client)}
-                  onEdit={(client) => console.log('Edit:', client)}
-                  onDelete={(client) => console.log('Delete:', client)}
-                />
-              ))}
+          {/* Header with Add New Client button */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">Client Onboarding</h3>
+              <p className="text-sm text-muted-foreground">
+                Manage and track client onboarding progress
+              </p>
+            </div>
+            <Button 
+              onClick={() => setShowOnboarding(true)}
+              className="flex items-center gap-2"
+            >
+              <UserPlus className="h-4 w-4" />
+              Add New Client
+            </Button>
           </div>
+
+          {(() => {
+            const onboardingClients = filteredClients.filter(client => 
+              client.onboardingStatus === OnboardingStatus.IN_PROGRESS ||
+              client.onboardingStatus === OnboardingStatus.STALLED ||
+              client.onboardingStatus === OnboardingStatus.NOT_STARTED
+            )
+
+            if (onboardingClients.length === 0) {
+              return (
+                <div className="text-center py-12">
+                  <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-4">
+                    <Users className="h-12 w-12 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">All clients have completed onboarding</h3>
+                  <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                    Great job! All your clients have successfully completed the onboarding process. 
+                    Add new clients to start the onboarding journey.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Button 
+                      onClick={() => setShowOnboarding(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Add New Client
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      onClick={() => setActiveTab('overview')}
+                      className="flex items-center gap-2"
+                    >
+                      <Eye className="h-4 w-4" />
+                      View All Clients
+                    </Button>
+                  </div>
+                </div>
+              )
+            }
+
+            // When there are clients needing onboarding, show them with actions
+            return (
+              <>
+                {/* Summary and actions header */}
+                <Card className="p-4 mb-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-orange-500" />
+                      <span className="font-medium">
+                        {onboardingClients.filter(c => c.onboardingStatus === 'NOT_STARTED').length} Not Started
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="h-5 w-5 text-blue-500" />
+                      <span className="font-medium">
+                        {onboardingClients.filter(c => c.onboardingStatus === 'IN_PROGRESS').length} In Progress
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5 text-red-500" />
+                      <span className="font-medium">
+                        {onboardingClients.filter(c => c.onboardingStatus === 'STALLED').length} Stalled
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+
+                <div className="grid grid-cols-1 gap-4">
+                {onboardingClients.map((client) => {
+                  // Determine actions based on onboarding status
+                  const getOnboardingActions = (status: string) => {
+                    switch (status) {
+                      case 'NOT_STARTED':
+                        return (
+                          <div className="flex gap-2 mt-3">
+                            <Button 
+                              size="sm" 
+                              onClick={() => setShowOnboarding(true)}
+                              className="flex items-center gap-1"
+                            >
+                              <UserPlus className="h-3 w-3" />
+                              Start Onboarding
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleMessageClient(client)}
+                              className="flex items-center gap-1"
+                            >
+                              <Mail className="h-3 w-3" />
+                              Send Welcome
+                            </Button>
+                          </div>
+                        )
+                      case 'IN_PROGRESS':
+                        return (
+                          <div className="flex gap-2 mt-3">
+                            <Button 
+                              size="sm" 
+                              onClick={() => setShowOnboarding(true)}
+                              className="flex items-center gap-1"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              Continue Onboarding
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleViewClient(client)}
+                              className="flex items-center gap-1"
+                            >
+                              <Eye className="h-3 w-3" />
+                              Check Progress
+                            </Button>
+                          </div>
+                        )
+                      case 'STALLED':
+                        return (
+                          <div className="flex gap-2 mt-3">
+                            <Button 
+                              size="sm" 
+                              variant="secondary"
+                              onClick={() => handleMessageClient(client)}
+                              className="flex items-center gap-1"
+                            >
+                              <MessageSquare className="h-3 w-3" />
+                              Follow Up
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleEditClient(client)}
+                              className="flex items-center gap-1"
+                            >
+                              <Edit className="h-3 w-3" />
+                              Update Details
+                            </Button>
+                          </div>
+                        )
+                      default:
+                        return null
+                    }
+                  }
+
+                  return (
+                    <Card key={client.id} className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                              <Building className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-lg">{client.name}</h3>
+                              <p className="text-sm text-muted-foreground">{client.company}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 mb-3">
+                            <Badge className={getStatusColor(client.status)}>
+                              {client.status.toLowerCase().replace('_', ' ')}
+                            </Badge>
+                            <Badge variant="outline" className={getOnboardingColor(client.onboardingStatus)}>
+                              {client.onboardingStatus.toLowerCase().replace('_', ' ')}
+                            </Badge>
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-2">
+                            {client.email && (
+                              <div className="flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                <span>{client.email}</span>
+                              </div>
+                            )}
+                            {client.phone && (
+                              <div className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                <span>{client.phone}</span>
+                              </div>
+                            )}
+                            {client.industry && (
+                              <div className="flex items-center gap-1">
+                                <Building className="h-3 w-3" />
+                                <span>{client.industry}</span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {client.notes && (
+                            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                              {client.notes}
+                            </p>
+                          )}
+                          
+                          {getOnboardingActions(client.onboardingStatus)}
+                        </div>
+                        
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewClient(client)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditClient(client)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  )
+                })}
+                </div>
+              </>
+            )
+          })()}
         </TabsContent>
 
         <TabsContent value="billing" className="space-y-4">

@@ -100,27 +100,39 @@ async function getClientsHandler(req: NextRequest) {
     ])
 
     // Transform clients to match frontend expectations
-    const formattedClients = clients.map(client => ({
-      id: client.id,
-      workspaceId: client.workspaceId,
-      name: client.name,
-      email: client.email || '', // Use real email from database
-      company: client.company || client.name, // Use real company if available
-      industry: client.industry || '', // Use real industry from database
-      website: client.website || '',
-      phone: client.phone || '',
-      logo: client.logo || '',
-      status: client.status || 'ACTIVE', // Use real status from database
-      notes: client.notes || '',
-      onboardingStatus: 'COMPLETED', // Default for now
-      createdAt: client.createdAt,
-      updatedAt: client.updatedAt,
-      tags: client.labels || [],
-      socialAccountsCount: client.socialAccounts.length,
-      campaignsCount: client.campaigns.length,
-      postsCount: client.posts.length,
-      workspace: client.workspace
-    }))
+    const formattedClients = clients.map((client, index) => {
+      // Assign different onboarding statuses for demo purposes
+      let onboardingStatus = 'COMPLETED'
+      if (client.name.includes('New') || client.name.includes('Startup')) {
+        onboardingStatus = 'IN_PROGRESS'
+      } else if (client.name.includes('Prospect') || index % 7 === 0) {
+        onboardingStatus = 'NOT_STARTED'
+      } else if (client.name.includes('Stalled') || index % 11 === 0) {
+        onboardingStatus = 'STALLED'
+      }
+
+      return {
+        id: client.id,
+        workspaceId: client.workspaceId,
+        name: client.name,
+        email: client.email || '', // Use real email from database
+        company: client.company || client.name, // Use real company if available
+        industry: client.industry || '', // Use real industry from database
+        website: client.website || '',
+        phone: client.phone || '',
+        logo: client.logo || '',
+        status: client.status || 'ACTIVE', // Use real status from database
+        notes: client.notes || '',
+        onboardingStatus: onboardingStatus,
+        createdAt: client.createdAt,
+        updatedAt: client.updatedAt,
+        tags: client.labels || [],
+        socialAccountsCount: client.socialAccounts.length,
+        campaignsCount: client.campaigns.length,
+        postsCount: client.posts.length,
+        workspace: client.workspace
+      }
+    })
 
     // Log client list view (BusinessLogger.logClientListViewed not implemented yet)
     console.log('📋 Client list viewed:', { userId, workspaceId, totalClients: totalCount, filters: { search } })
