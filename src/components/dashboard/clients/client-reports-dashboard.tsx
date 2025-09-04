@@ -54,6 +54,7 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react'
+import { CreateReportDialog } from './create-report-dialog'
 
 interface ClientReportsProps {
   clients?: any[]
@@ -203,6 +204,13 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     } catch (error) {
       console.error('Error downloading report:', error)
     }
+  }
+
+  const handleReportCreated = () => {
+    // Refresh the reports list when a new report is created
+    fetchReports()
+    // Close the dialog
+    setShowCreateDialog(false)
   }
 
   const filteredReports = reports.filter(report => {
@@ -571,6 +579,15 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Create Report Dialog */}
+      <CreateReportDialog 
+        isOpen={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+        onReportCreated={handleReportCreated}
+        clients={clients}
+        templates={templates}
+      />
     </div>
   )
 }
