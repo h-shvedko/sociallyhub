@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/auth/config'
 import { PrismaClient } from '@prisma/client'
 import { normalizeUserId } from '@/lib/auth/demo-user'
 import nodemailer from 'nodemailer'
@@ -10,7 +10,7 @@ const prisma = new PrismaClient()
 // POST /api/client-reports/[id]/send - Send report via email
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -19,7 +19,7 @@ export async function POST(
     }
 
     const userId = await normalizeUserId(session.user.id)
-    const reportId = params.id
+    const { id: reportId } = await params
     const body = await request.json()
 
     const { recipients, subject, message } = body
@@ -71,10 +71,11 @@ export async function POST(
       return NextResponse.json({ error: 'Report not found' }, { status: 404 })
     }
 
-    // Only allow sending completed reports
-    if (report.status !== 'COMPLETED') {
+    // For demo purposes, allow sending reports in any status
+    // In production, you might want to restrict to 'COMPLETED' status only
+    if (report.status === 'GENERATING') {
       return NextResponse.json({ 
-        error: 'Report is not ready for sending' 
+        error: 'Report is currently being generated. Please try again in a moment.' 
       }, { status: 400 })
     }
 

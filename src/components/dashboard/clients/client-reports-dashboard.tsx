@@ -57,6 +57,8 @@ import {
   Loader2
 } from 'lucide-react'
 import { CreateReportDialog } from './create-report-dialog'
+import { useToast } from '@/hooks/use-toast'
+import { ToastContainer } from '@/components/ui/toast'
 
 interface ClientReportsProps {
   clients?: any[]
@@ -98,6 +100,7 @@ interface ReportTemplate {
 }
 
 export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
+  const { toasts, toast, removeToast } = useToast()
   const [activeTab, setActiveTab] = useState('overview')
   const [reports, setReports] = useState<ClientReport[]>([])
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
@@ -273,7 +276,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     const messageInput = (document.getElementById('email-message') as HTMLTextAreaElement)?.value
 
     if (!recipientsInput.trim()) {
-      alert('Please enter at least one recipient email address')
+      toast.error('Please enter at least one recipient email address')
       return
     }
 
@@ -293,16 +296,16 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       })
 
       if (response.ok) {
-        alert('Report sent successfully!')
+        toast.success('Report sent successfully!')
         setShowSendEmailDialog(false)
         setSelectedReport(null)
       } else {
         const error = await response.json()
-        alert(`Failed to send report: ${error.error || 'Unknown error'}`)
+        toast.error(`Failed to send report: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error sending report:', error)
-      alert('Failed to send report. Please try again.')
+      toast.error('Failed to send report. Please try again.')
     }
   }
 
@@ -680,6 +683,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         onReportCreated={handleReportCreated}
         clients={clients}
         templates={templates}
+        toast={toast}
       />
 
       {/* View Details Dialog */}
@@ -786,6 +790,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           clients={clients}
           templates={templates}
           editReport={selectedReport}
+          toast={toast}
         />
       )}
 
@@ -841,6 +846,9 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }

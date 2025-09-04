@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/auth/config'
 import { PrismaClient } from '@prisma/client'
 import { normalizeUserId } from '@/lib/auth/demo-user'
 
@@ -9,7 +9,7 @@ const prisma = new PrismaClient()
 // DELETE /api/client-reports/[id] - Delete client report
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -18,7 +18,7 @@ export async function DELETE(
     }
 
     const userId = await normalizeUserId(session.user.id)
-    const reportId = params.id
+    const { id: reportId } = await params
 
     // Get user's workspace
     const userWorkspace = await prisma.userWorkspace.findFirst({
@@ -75,7 +75,7 @@ export async function DELETE(
 // GET /api/client-reports/[id] - Get specific client report
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -84,7 +84,7 @@ export async function GET(
     }
 
     const userId = await normalizeUserId(session.user.id)
-    const reportId = params.id
+    const { id: reportId } = await params
 
     // Get user's workspace
     const userWorkspace = await prisma.userWorkspace.findFirst({
@@ -142,7 +142,7 @@ export async function GET(
 // PUT /api/client-reports/[id] - Update client report
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -151,7 +151,7 @@ export async function PUT(
     }
 
     const userId = await normalizeUserId(session.user.id)
-    const reportId = params.id
+    const { id: reportId } = await params
     const body = await request.json()
 
     // Get user's workspace

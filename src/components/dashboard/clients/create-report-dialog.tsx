@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useToast } from '@/hooks/use-toast'
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,7 @@ interface CreateReportDialogProps {
   templates?: any[]
   onReportCreated?: (report: any) => void
   editReport?: any
+  toast?: any
 }
 
 interface ReportMetric {
@@ -77,7 +79,8 @@ export function CreateReportDialog({
   clients = [],
   templates = [],
   onReportCreated,
-  editReport
+  editReport,
+  toast
 }: CreateReportDialogProps) {
   const [activeTab, setActiveTab] = useState('basic')
   const [isLoading, setIsLoading] = useState(false)
@@ -186,7 +189,7 @@ export function CreateReportDialog({
 
   const handleGenerateReport = async () => {
     if (!formData.clientId || !formData.name) {
-      alert('Please select a client and enter a report name')
+      toast?.error('Please select a client and enter a report name')
       return
     }
 
@@ -226,11 +229,11 @@ export function CreateReportDialog({
         resetForm()
       } else {
         const error = await response.json()
-        alert(`Failed to ${editReport ? 'update' : 'create'} report: ${error.error || 'Unknown error'}`)
+        toast?.error(`Failed to ${editReport ? 'update' : 'create'} report: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error(`Error ${editReport ? 'updating' : 'creating'} report:`, error)
-      alert(`Failed to ${editReport ? 'update' : 'create'} report. Please try again.`)
+      toast?.error(`Failed to ${editReport ? 'update' : 'create'} report. Please try again.`)
     } finally {
       setIsLoading(false)
     }
