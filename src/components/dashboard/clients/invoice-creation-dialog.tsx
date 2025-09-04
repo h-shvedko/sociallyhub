@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import jsPDF from 'jspdf'
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { InvoiceMessageModal } from './invoice-message-modal'
+import { SendInvoiceEmailModal } from './send-invoice-email-modal'
 import {
   Receipt,
   Plus,
@@ -57,7 +60,8 @@ export function InvoiceCreationDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [selectedClient, setSelectedClient] = useState<any>(null)
   const [createdInvoice, setCreatedInvoice] = useState<any>(null) // Track created invoice
-  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
+  const [messageModal, setMessageModal] = useState<{open: boolean, type: 'success' | 'error', title: string, message: string} | null>(null)
+  const [showEmailModal, setShowEmailModal] = useState(false)
   const [invoiceData, setInvoiceData] = useState({
     invoiceNumber: `INV-${Date.now()}`,
     issueDate: new Date().toISOString().split('T')[0],
@@ -134,15 +138,15 @@ export function InvoiceCreationDialog({
     setSelectedClient(client)
   }
 
-  const showNotification = (type: 'success' | 'error', message: string) => {
-    setNotification({ type, message })
-    setTimeout(() => setNotification(null), 5000) // Auto-hide after 5 seconds
+  const showMessageModal = (type: 'success' | 'error', title: string, message: string) => {
+    setMessageModal({ open: true, type, title, message })
   }
 
   const resetForm = () => {
     setSelectedClient(null)
     setCreatedInvoice(null)
-    setNotification(null)
+    setMessageModal(null)
+    setShowEmailModal(false)
     setInvoiceData({
       invoiceNumber: `INV-${Date.now()}`,
       issueDate: new Date().toISOString().split('T')[0],
@@ -172,12 +176,12 @@ export function InvoiceCreationDialog({
 
   const handleCreateInvoice = async () => {
     if (!selectedClient) {
-      showNotification('error', 'Please select a client')
+      showMessageModal('error', 'Validation Error', 'Please select a client before creating the invoice.')
       return
     }
 
     if (lineItems.length === 0 || lineItems.some(item => !item.description || item.rate <= 0)) {
-      showNotification('error', 'Please add valid line items')
+      showMessageModal('error', 'Validation Error', 'Please add valid line items with descriptions and positive rates.')
       return
     }
 
@@ -217,13 +221,16 @@ export function InvoiceCreationDialog({
       setCreatedInvoice(result.invoice)
       onInvoiceCreated?.(result.invoice)
       
-      // Don't close modal - allow user to download/send
-      // Show success notification instead of closing modal
-      showNotification('success', 'Invoice created successfully! You can now download or send it.')
+      // Show success modal - don't close main modal
+      showMessageModal(
+        'success', 
+        'Invoice Created Successfully!', 
+        `Invoice ${result.invoice.invoiceNumber} has been created successfully. You can now download the PDF or send it via email to your client.`
+      )
       
     } catch (error) {
       console.error('Error creating invoice:', error)
-      showNotification('error', `Error creating invoice: ${error.message}`)
+      showMessageModal('error', 'Invoice Creation Failed', `Failed to create invoice: ${error.message}. Please check your data and try again.`)
     } finally {
       setIsLoading(false)
     }
@@ -231,34 +238,37 @@ export function InvoiceCreationDialog({
 
   const handleSendInvoice = async () => {
     if (!selectedClient) {
-      showNotification('error', 'Please select a client before sending invoice')
+      showMessageModal('error', 'Validation Error', 'Please select a client before sending the invoice.')
       return
     }
 
     if (!createdInvoice) {
-      showNotification('error', 'Please create the invoice first before sending')
+      showMessageModal('error', 'Validation Error', 'Please create the invoice first before sending it.')
       return
     }
 
-    setIsLoading(true)
-    try {
-      const invoicePayload = {
-        clientName: selectedClient.name,
-        clientEmail: selectedClient.email,
-        invoiceNumber: createdInvoice.invoiceNumber || invoiceData.invoiceNumber,
-        total: createdInvoice.amount || calculateTotal(),
-        dueDate: createdInvoice.dueDate || invoiceData.dueDate,
-        lineItems: lineItems
-      }
+    // Open email modal
+    setShowEmailModal(true)
+  }
 
-      console.log('📧 Sending invoice email to:', selectedClient.email)
-      
+  const handleEmailSend = async (emailData: any) => {
+    try {
       const response = await fetch('/api/invoices/send-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(invoicePayload)
+        body: JSON.stringify({
+          to: emailData.to,
+          subject: emailData.subject,
+          body: emailData.body,
+          clientName: selectedClient.name,
+          clientEmail: selectedClient.email,
+          invoiceNumber: createdInvoice.invoiceNumber,
+          total: createdInvoice.amount,
+          dueDate: createdInvoice.dueDate,
+          lineItems: lineItems
+        })
       })
 
       if (!response.ok) {
@@ -266,79 +276,151 @@ export function InvoiceCreationDialog({
         throw new Error(error.error || 'Failed to send invoice email')
       }
 
-      showNotification('success', `Invoice email sent successfully to ${selectedClient.email}!`)
+      showMessageModal('success', 'Email Sent Successfully!', `Invoice email has been sent successfully to ${emailData.to}.`)
       console.log('✅ Invoice email sent successfully')
       
     } catch (error) {
       console.error('Error sending invoice email:', error)
-      showNotification('error', `Error sending invoice email: ${error.message}`)
-    } finally {
-      setIsLoading(false)
+      showMessageModal('error', 'Email Send Failed', `Failed to send invoice email: ${error.message}`)
     }
   }
 
   const handleDownloadInvoice = async () => {
     if (!selectedClient) {
-      showNotification('error', 'Please select a client before downloading invoice')
+      showMessageModal('error', 'Validation Error', 'Please select a client before downloading the invoice.')
       return
     }
 
     if (!createdInvoice) {
-      showNotification('error', 'Please create the invoice first before downloading')
+      showMessageModal('error', 'Validation Error', 'Please create the invoice first before downloading it.')
       return
     }
 
+    // Generate PDF using jsPDF
+    await generatePDFInvoice()
+  }
+
+  const generatePDFInvoice = async () => {
     setIsLoading(true)
     try {
-      const invoicePayload = {
-        clientName: selectedClient.name,
-        clientEmail: selectedClient.email,
-        clientCompany: selectedClient.company || selectedClient.name,
-        invoiceNumber: createdInvoice.invoiceNumber || invoiceData.invoiceNumber,
-        issueDate: createdInvoice.issueDate || invoiceData.issueDate,
-        dueDate: createdInvoice.dueDate || invoiceData.dueDate,
-        currency: createdInvoice.currency || invoiceData.currency,
-        lineItems: lineItems,
-        subtotal: calculateSubtotal(),
-        tax: calculateTax(),
-        discount: calculateDiscount(),
-        total: createdInvoice.amount || calculateTotal(),
-        notes: invoiceData.notes,
-        terms: invoiceData.terms
-      }
-
-      console.log('📄 Generating PDF invoice for:', selectedClient.name)
+      // Create new jsPDF instance
+      const pdf = new jsPDF()
       
-      const response = await fetch('/api/invoices/download-pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(invoicePayload)
-      })
+      // PDF content generation
+      const pageWidth = pdf.internal.pageSize.width
+      const pageHeight = pdf.internal.pageSize.height
+      let yPos = 30
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to generate PDF invoice')
+      // Header
+      pdf.setFontSize(20)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('SociallyHub', 20, yPos)
+      
+      pdf.setFontSize(10)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text('Social Media Management Platform', 20, yPos + 8)
+      
+      // Invoice title and number
+      pdf.setFontSize(24)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('INVOICE', pageWidth - 60, yPos)
+      
+      pdf.setFontSize(12)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(`#${createdInvoice.invoiceNumber}`, pageWidth - 60, yPos + 10)
+      
+      yPos += 40
+
+      // Client information
+      pdf.setFontSize(12)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Bill To:', 20, yPos)
+      
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(selectedClient.name, 20, yPos + 8)
+      if (selectedClient.company && selectedClient.company !== selectedClient.name) {
+        pdf.text(selectedClient.company, 20, yPos + 16)
+        yPos += 8
       }
+      pdf.text(selectedClient.email, 20, yPos + 16)
+      
+      // Invoice details
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Invoice Details:', pageWidth - 80, yPos)
+      
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(`Issue Date: ${new Date(invoiceData.issueDate).toLocaleDateString()}`, pageWidth - 80, yPos + 8)
+      pdf.text(`Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`, pageWidth - 80, yPos + 16)
+      pdf.text(`Currency: ${invoiceData.currency}`, pageWidth - 80, yPos + 24)
+      
+      yPos += 60
 
-      // Create a blob from the response and trigger download
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `Invoice-${createdInvoice.invoiceNumber || invoiceData.invoiceNumber}.html`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      showNotification('success', 'Invoice downloaded successfully! (HTML format - you can print to PDF from your browser)')
+      // Line items table
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Description', 20, yPos)
+      pdf.text('Qty', 120, yPos)
+      pdf.text('Rate', 140, yPos)
+      pdf.text('Amount', 170, yPos)
+      
+      // Table line
+      pdf.line(20, yPos + 2, pageWidth - 20, yPos + 2)
+      yPos += 12
+      
+      pdf.setFont('helvetica', 'normal')
+      lineItems.forEach((item: any) => {
+        pdf.text(item.description, 20, yPos)
+        pdf.text(item.quantity.toString(), 120, yPos)
+        pdf.text(formatCurrency(item.rate), 140, yPos)
+        pdf.text(formatCurrency(item.amount), 170, yPos)
+        yPos += 8
+      })
+      
+      yPos += 10
+      
+      // Totals
+      pdf.line(120, yPos, pageWidth - 20, yPos)
+      yPos += 8
+      
+      pdf.text('Subtotal:', 140, yPos)
+      pdf.text(formatCurrency(calculateSubtotal()), 170, yPos)
+      
+      if (invoiceData.tax > 0) {
+        yPos += 8
+        pdf.text(`Tax (${invoiceData.tax}%):`, 140, yPos)
+        pdf.text(formatCurrency(calculateTax()), 170, yPos)
+      }
+      
+      if (invoiceData.discount > 0) {
+        yPos += 8
+        pdf.text(`Discount (${invoiceData.discount}%):`, 140, yPos)
+        pdf.text(`-${formatCurrency(calculateDiscount())}`, 170, yPos)
+      }
+      
+      yPos += 8
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('Total:', 140, yPos)
+      pdf.text(formatCurrency(calculateTotal()), 170, yPos)
+      
+      // Notes
+      if (invoiceData.notes) {
+        yPos += 20
+        pdf.setFont('helvetica', 'bold')
+        pdf.text('Notes:', 20, yPos)
+        pdf.setFont('helvetica', 'normal')
+        
+        const splitNotes = pdf.splitTextToSize(invoiceData.notes, pageWidth - 40)
+        pdf.text(splitNotes, 20, yPos + 8)
+      }
+      
+      // Save PDF
+      pdf.save(`Invoice-${createdInvoice.invoiceNumber}.pdf`)
+      
+      showMessageModal('success', 'PDF Downloaded!', `Invoice ${createdInvoice.invoiceNumber} has been downloaded successfully as a PDF file.`)
       console.log('✅ PDF invoice downloaded successfully')
       
     } catch (error) {
-      console.error('Error downloading invoice PDF:', error)
-      showNotification('error', `Error downloading invoice PDF: ${error.message}`)
+      console.error('Error generating PDF invoice:', error)
+      showMessageModal('error', 'PDF Generation Failed', `Failed to generate PDF: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
@@ -357,27 +439,6 @@ export function InvoiceCreationDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Notification Component */}
-        {notification && (
-          <div className={`mx-6 mb-4 p-4 rounded-lg flex items-center gap-3 ${
-            notification.type === 'success' 
-              ? 'bg-green-50 text-green-800 border border-green-200'
-              : 'bg-red-50 text-red-800 border border-red-200'
-          }`}>
-            {notification.type === 'success' ? (
-              <CheckCircle className="h-5 w-5 text-green-600" />
-            ) : (
-              <X className="h-5 w-5 text-red-600" />
-            )}
-            <span className="flex-1">{notification.message}</span>
-            <button 
-              onClick={() => setNotification(null)}
-              className="text-current opacity-70 hover:opacity-100"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <Tabs defaultValue="details" className="h-full">
@@ -790,6 +851,26 @@ export function InvoiceCreationDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* Message Modal */}
+      {messageModal && (
+        <InvoiceMessageModal
+          open={messageModal.open}
+          onOpenChange={(open) => setMessageModal(prev => prev ? { ...prev, open } : null)}
+          type={messageModal.type}
+          title={messageModal.title}
+          message={messageModal.message}
+        />
+      )}
+
+      {/* Email Sending Modal */}
+      <SendInvoiceEmailModal
+        open={showEmailModal}
+        onOpenChange={setShowEmailModal}
+        invoice={createdInvoice}
+        client={selectedClient}
+        onSend={handleEmailSend}
+      />
     </Dialog>
   )
 }

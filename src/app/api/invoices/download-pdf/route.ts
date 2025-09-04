@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { normalizeUserId } from '@/lib/auth/demo-user'
+import puppeteer from 'puppeteer'
 
 export async function POST(request: NextRequest) {
   try {
