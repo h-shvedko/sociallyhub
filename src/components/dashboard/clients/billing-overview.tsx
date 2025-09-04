@@ -9,6 +9,9 @@ import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { InvoiceCreationDialog } from './invoice-creation-dialog'
 import { PaymentSettingsDialog } from './payment-settings-dialog'
+import { InvoiceDetailsModal } from './invoice-details-modal'
+import { DeleteInvoiceModal } from './delete-invoice-modal'
+import { SendReminderModal } from './send-reminder-modal'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +55,12 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
   const [paymentMethods, setPaymentMethods] = useState<any[]>([])
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false)
   const [showPaymentSettings, setShowPaymentSettings] = useState(false)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showReminderModal, setShowReminderModal] = useState(false)
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [reminderLoading, setReminderLoading] = useState(false)
 
   useEffect(() => {
     fetchBillingData()
@@ -367,7 +376,6 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
 
   const handleUpdateInvoiceStatus = async (invoiceId: string, newStatus: string) => {
     console.log(`📄 Updating invoice ${invoiceId} status to ${newStatus}`)
-    console.log('📄 Full invoice data:', recentInvoices.find(inv => inv.id === invoiceId))
     try {
       const response = await fetch(`/api/invoices/${invoiceId}`, {
         method: 'PATCH',
@@ -398,6 +406,110 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
     } catch (error) {
       console.error('Error updating invoice status:', error)
       alert(`Error updating invoice status: ${error.message}`)
+    }
+  }
+
+  const handleViewInvoice = (invoice: any) => {
+    console.log('📄 Viewing invoice details:', invoice.id)
+    setSelectedInvoice(invoice)
+    setShowDetailsModal(true)
+  }
+
+  const handleEditInvoice = (invoice: any) => {
+    console.log('✏️ Editing invoice:', invoice.id)
+    // For now, we'll reuse the create invoice dialog with pre-filled data
+    // In a full implementation, you might want a separate edit dialog
+    alert(`Edit functionality for invoice ${invoice.invoiceNumber} would open here. This could reuse the invoice creation dialog with pre-filled data.`)
+  }
+
+  const handleSendReminder = (invoice: any) => {
+    console.log('📧 Sending reminder for invoice:', invoice.id)
+    setSelectedInvoice(invoice)
+    setShowReminderModal(true)
+  }
+
+  const handleDeleteInvoice = (invoice: any) => {
+    console.log('🗑️ Preparing to delete invoice:', invoice.id)
+    setSelectedInvoice(invoice)
+    setShowDeleteModal(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!selectedInvoice) return
+    
+    setDeleteLoading(true)
+    try {
+      const response = await fetch(`/api/invoices/${selectedInvoice.id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete invoice')
+      }
+
+      // Remove invoice from list
+      setRecentInvoices(prev => prev.filter(inv => inv.id !== selectedInvoice.id))
+      
+      // Update billing data
+      setBillingData(prev => prev ? {
+        ...prev,
+        pendingInvoices: Math.max(0, (prev.pendingInvoices || 0) - 1)
+      } : null)
+      
+      setShowDeleteModal(false)
+      setSelectedInvoice(null)
+      
+      console.log(`✅ Invoice ${selectedInvoice.invoiceNumber} deleted successfully`)
+    } catch (error) {
+      console.error('Error deleting invoice:', error)
+      alert(`Error deleting invoice: ${error.message}`)
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const handleSendReminderEmail = async (reminderData: { message: string }) => {
+    if (!selectedInvoice) return
+    
+    setReminderLoading(true)
+    try {
+      const response = await fetch('/api/invoices/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: selectedInvoice.clientEmail || 'client@example.com',
+          subject: `Payment Reminder - Invoice ${selectedInvoice.invoiceNumber}`,
+          body: reminderData.message,
+          clientName: selectedInvoice.clientName,
+          clientEmail: selectedInvoice.clientEmail || 'client@example.com',
+          invoiceNumber: selectedInvoice.invoiceNumber,
+          total: selectedInvoice.amount,
+          dueDate: selectedInvoice.dueDate,
+          lineItems: [{
+            description: 'Social Media Management Services',
+            quantity: 1,
+            rate: selectedInvoice.amount,
+            amount: selectedInvoice.amount
+          }]
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to send reminder email')
+      }
+
+      setShowReminderModal(false)
+      setSelectedInvoice(null)
+      
+      alert(`Reminder email sent successfully to ${selectedInvoice.clientEmail || selectedInvoice.clientName}!`)
+      console.log(`✅ Reminder email sent for invoice ${selectedInvoice.invoiceNumber}`)
+    } catch (error) {
+      console.error('Error sending reminder email:', error)
+      alert(`Error sending reminder email: ${error.message}`)
+    } finally {
+      setReminderLoading(false)
     }
   }
 
@@ -555,9 +667,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentInvoices.map((invoice) => {
-                  console.log('📄 Rendering invoice:', invoice.id, invoice.invoiceNumber)
-                  return (
+                {recentInvoices.map((invoice) => (
                   <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-full">
@@ -603,7 +713,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => console.log('Edit invoice:', invoice.id)}
+                              onClick={() => handleEditInvoice(invoice)}
                               title="Edit Invoice"
                             >
                               <Edit className="h-4 w-4" />
@@ -628,7 +738,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
                               variant="outline"
                               size="sm"
                               className="text-orange-600 hover:text-orange-700"
-                              onClick={() => console.log('Send reminder:', invoice.id)}
+                              onClick={() => handleSendReminder(invoice)}
                               title="Send Reminder"
                             >
                               <AlertCircle className="h-4 w-4" />
@@ -685,18 +795,18 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
                               <Download className="h-4 w-4 mr-2" />
                               Download PDF
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => console.log('View invoice:', invoice.id)}>
+                            <DropdownMenuItem onClick={() => handleViewInvoice(invoice)}>
                               <FileText className="h-4 w-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
                             {invoice.status !== 'paid' && (
                               <>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => console.log('Send reminder:', invoice.id)}>
+                                <DropdownMenuItem onClick={() => handleSendReminder(invoice)}>
                                   <AlertCircle className="h-4 w-4 mr-2" />
                                   Send Reminder
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => console.log('Edit invoice:', invoice.id)}>
+                                <DropdownMenuItem onClick={() => handleEditInvoice(invoice)}>
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit Invoice
                                 </DropdownMenuItem>
@@ -705,7 +815,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
                               className="text-red-600"
-                              onClick={() => console.log('Delete invoice:', invoice.id)}
+                              onClick={() => handleDeleteInvoice(invoice)}
                             >
                               <AlertCircle className="h-4 w-4 mr-2" />
                               Delete Invoice
@@ -715,7 +825,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
                       </div>
                     </div>
                   </div>
-                )})}
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -852,6 +962,34 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
       <PaymentSettingsDialog
         open={showPaymentSettings}
         onOpenChange={setShowPaymentSettings}
+      />
+
+      {/* Invoice Details Modal */}
+      <InvoiceDetailsModal
+        open={showDetailsModal}
+        onOpenChange={setShowDetailsModal}
+        invoice={selectedInvoice}
+        onDownload={() => selectedInvoice && handleDownloadInvoice(selectedInvoice)}
+        onSendReminder={() => selectedInvoice && handleSendReminder(selectedInvoice)}
+        onStatusUpdate={(newStatus) => selectedInvoice && handleUpdateInvoiceStatus(selectedInvoice.id, newStatus)}
+      />
+
+      {/* Delete Invoice Confirmation Modal */}
+      <DeleteInvoiceModal
+        open={showDeleteModal}
+        onOpenChange={setShowDeleteModal}
+        invoice={selectedInvoice}
+        onConfirm={handleConfirmDelete}
+        isLoading={deleteLoading}
+      />
+
+      {/* Send Reminder Modal */}
+      <SendReminderModal
+        open={showReminderModal}
+        onOpenChange={setShowReminderModal}
+        invoice={selectedInvoice}
+        onSend={handleSendReminderEmail}
+        isLoading={reminderLoading}
       />
     </div>
   )
