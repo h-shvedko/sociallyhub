@@ -168,7 +168,7 @@ export async function DELETE(
       where: { id }
     })
 
-    console.log(`📄 Invoice ${id} deleted`)
+    console.log(`📄 Invoice ${id} deleted successfully`)
 
     return NextResponse.json({ 
       success: true,

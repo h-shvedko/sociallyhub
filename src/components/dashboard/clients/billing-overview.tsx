@@ -8,10 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { InvoiceCreationDialog } from './invoice-creation-dialog'
+import { EditInvoiceDialog } from './edit-invoice-dialog'
 import { PaymentSettingsDialog } from './payment-settings-dialog'
 import { InvoiceDetailsModal } from './invoice-details-modal'
 import { DeleteInvoiceModal } from './delete-invoice-modal'
 import { SendReminderModal } from './send-reminder-modal'
+import { NotificationModal } from './notification-modal'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,13 +56,20 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
   const [recentInvoices, setRecentInvoices] = useState<any[]>([])
   const [paymentMethods, setPaymentMethods] = useState<any[]>([])
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
   const [showPaymentSettings, setShowPaymentSettings] = useState(false)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showReminderModal, setShowReminderModal] = useState(false)
+  const [showNotificationModal, setShowNotificationModal] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [reminderLoading, setReminderLoading] = useState(false)
+  const [notification, setNotification] = useState<{
+    type: 'success' | 'error'
+    title: string
+    message: string
+  } | null>(null)
 
   useEffect(() => {
     fetchBillingData()
@@ -368,7 +377,12 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
       console.log('✅ Invoice PDF downloaded successfully')
     } catch (error) {
       console.error('Error generating PDF:', error)
-      alert(`Error downloading invoice: ${error.message}`)
+      setNotification({
+        type: 'error',
+        title: 'Download Failed',
+        message: `Could not download PDF for invoice ${invoice.invoiceNumber}: ${error.message}. Please try again or contact support if the problem persists.`
+      })
+      setShowNotificationModal(true)
     } finally {
       setIsLoading(false)
     }
@@ -405,7 +419,12 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
       console.log(`✅ Invoice ${invoiceId} status updated to ${newStatus}`)
     } catch (error) {
       console.error('Error updating invoice status:', error)
-      alert(`Error updating invoice status: ${error.message}`)
+      setNotification({
+        type: 'error',
+        title: 'Status Update Failed',
+        message: `Could not update invoice status: ${error.message}. Please try again or contact support if the problem persists.`
+      })
+      setShowNotificationModal(true)
     }
   }
 
@@ -417,9 +436,8 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
 
   const handleEditInvoice = (invoice: any) => {
     console.log('✏️ Editing invoice:', invoice.id)
-    // For now, we'll reuse the create invoice dialog with pre-filled data
-    // In a full implementation, you might want a separate edit dialog
-    alert(`Edit functionality for invoice ${invoice.invoiceNumber} would open here. This could reuse the invoice creation dialog with pre-filled data.`)
+    setSelectedInvoice(invoice)
+    setShowEditDialog(true)
   }
 
   const handleSendReminder = (invoice: any) => {
@@ -462,7 +480,12 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
       console.log(`✅ Invoice ${selectedInvoice.invoiceNumber} deleted successfully`)
     } catch (error) {
       console.error('Error deleting invoice:', error)
-      alert(`Error deleting invoice: ${error.message}`)
+      setNotification({
+        type: 'error',
+        title: 'Failed to Delete Invoice',
+        message: `Could not delete invoice ${selectedInvoice.invoiceNumber}: ${error.message}. Please try again or contact support if the problem persists.`
+      })
+      setShowNotificationModal(true)
     } finally {
       setDeleteLoading(false)
     }
@@ -501,16 +524,43 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
       }
 
       setShowReminderModal(false)
+      
+      setNotification({
+        type: 'success',
+        title: 'Reminder Email Sent!',
+        message: `Payment reminder has been successfully sent to ${selectedInvoice.clientEmail || selectedInvoice.clientName} for invoice ${selectedInvoice.invoiceNumber}.`
+      })
+      setShowNotificationModal(true)
       setSelectedInvoice(null)
       
-      alert(`Reminder email sent successfully to ${selectedInvoice.clientEmail || selectedInvoice.clientName}!`)
       console.log(`✅ Reminder email sent for invoice ${selectedInvoice.invoiceNumber}`)
     } catch (error) {
       console.error('Error sending reminder email:', error)
-      alert(`Error sending reminder email: ${error.message}`)
+      setNotification({
+        type: 'error',
+        title: 'Failed to Send Reminder',
+        message: `Could not send payment reminder email: ${error.message}. Please check the client's email address and try again.`
+      })
+      setShowNotificationModal(true)
     } finally {
       setReminderLoading(false)
     }
+  }
+
+  const handleInvoiceUpdated = (updatedInvoice: any) => {
+    // Update the invoice in the recent invoices list
+    setRecentInvoices(prev => prev.map(inv => 
+      inv.id === updatedInvoice.id ? updatedInvoice : inv
+    ))
+    
+    // Update billing data if needed
+    setBillingData(prev => {
+      if (!prev) return null
+      // Recalculate totals based on new invoice amount if status changed
+      return prev
+    })
+    
+    console.log(`✅ Invoice ${updatedInvoice.invoiceNumber} updated in list`)
   }
 
   const handlePaymentSettings = () => {
@@ -991,6 +1041,25 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
         onSend={handleSendReminderEmail}
         isLoading={reminderLoading}
       />
+
+      {/* Edit Invoice Dialog */}
+      <EditInvoiceDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        invoice={selectedInvoice}
+        onInvoiceUpdated={handleInvoiceUpdated}
+      />
+
+      {/* Notification Modal */}
+      {notification && (
+        <NotificationModal
+          open={showNotificationModal}
+          onOpenChange={setShowNotificationModal}
+          type={notification.type}
+          title={notification.title}
+          message={notification.message}
+        />
+      )}
     </div>
   )
 }
