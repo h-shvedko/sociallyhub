@@ -41,14 +41,12 @@ export function InvoiceMessageModal({
               {title}
             </span>
           </DialogTitle>
-          <DialogDescription>
-            <div className={`p-4 rounded-lg ${
-              type === 'success' 
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-red-50 text-red-700 border border-red-200'
-            }`}>
-              {message}
-            </div>
+          <DialogDescription className={`p-4 rounded-lg ${
+            type === 'success' 
+              ? 'bg-green-50 text-green-700 border border-green-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {message}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

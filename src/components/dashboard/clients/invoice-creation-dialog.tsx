@@ -169,11 +169,13 @@ export function InvoiceCreationDialog({
   }
 
   const handleDialogClose = (isOpen: boolean) => {
+    console.log('🔄 handleDialogClose called with isOpen:', isOpen)
     if (!isOpen) {
       // Always reset form when dialog is closed to start fresh next time
       console.log('🔄 Dialog closed - resetting form for next use')
       resetForm()
     }
+    console.log('🔄 Calling onOpenChange with:', isOpen)
     onOpenChange(isOpen)
   }
 
@@ -911,7 +913,12 @@ export function InvoiceCreationDialog({
       {messageModal && (
         <InvoiceMessageModal
           open={messageModal.open}
-          onOpenChange={(open) => setMessageModal(prev => prev ? { ...prev, open } : null)}
+          onOpenChange={(open) => {
+            if (!open) {
+              console.log('🔄 Message modal closing - clearing modal state')
+              setMessageModal(null)
+            }
+          }}
           type={messageModal.type}
           title={messageModal.title}
           message={messageModal.message}

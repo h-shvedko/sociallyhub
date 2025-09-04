@@ -195,14 +195,21 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
       paymentMethod: 'Pending'
     }
     
-    // Add new invoice to the beginning of the list
-    setRecentInvoices(prev => [newInvoice, ...prev])
-    console.log('📄 Added new invoice to list, total invoices:', recentInvoices.length + 1)
+    // Add new invoice to the beginning of the list immediately
+    setRecentInvoices(prev => {
+      const updated = [newInvoice, ...prev]
+      console.log('📄 Updated invoice list with new invoice, total:', updated.length)
+      return updated
+    })
     
-    // Refresh billing data in the background
-    setTimeout(() => {
-      fetchBillingData()
-    }, 1000)
+    // Update billing data without fetching from API to avoid state changes
+    setBillingData(prev => prev ? {
+      ...prev,
+      pendingInvoices: (prev.pendingInvoices || 0) + 1
+    } : null)
+    
+    // Don't close the dialog automatically - let user choose when to close
+    console.log('📄 Invoice creation handled, modal should remain open')
   }
 
   const handleDownloadInvoice = async (invoice: any) => {
