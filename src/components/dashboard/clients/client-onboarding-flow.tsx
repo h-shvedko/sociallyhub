@@ -216,6 +216,11 @@ export function ClientOnboardingFlow({
       // Create the client with all collected data
       const clientPayload = {
         name: clientData.name || 'New Client',
+        email: clientData.email || '',
+        phone: clientData.phone || '',
+        company: clientData.company || '',
+        industry: clientData.industry || '',
+        website: clientData.website || '',
         tags: clientData.tags || [],
         // Add any other collected data from the onboarding steps
         teamMembers,

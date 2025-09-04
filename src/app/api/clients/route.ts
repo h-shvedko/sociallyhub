@@ -146,7 +146,7 @@ async function createClientHandler(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { name, tags } = body
+    const { name, email, phone, company, industry, website, tags } = body
 
     if (!name) {
       return NextResponse.json({ 
@@ -176,6 +176,11 @@ async function createClientHandler(req: NextRequest) {
       data: {
         workspaceId: userWorkspace.workspaceId,
         name,
+        email: email || null,
+        phone: phone || null,
+        company: company || null,
+        industry: industry || null,
+        website: website || null,
         labels: tags || []
       },
       include: {
