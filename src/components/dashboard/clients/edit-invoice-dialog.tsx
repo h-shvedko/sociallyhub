@@ -141,10 +141,7 @@ export function EditInvoiceDialog({
     
     setIsLoading(true)
     try {
-      const { total } = calculateTotals()
-      
       const updateData = {
-        amount: total,
         dueDate: formData.dueDate,
         notes: formData.notes,
         status: formData.status,

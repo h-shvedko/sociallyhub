@@ -90,18 +90,31 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Calculate subtotal and total from line items
+    const lineItems = body.lineItems || invoice.lineItems
+    const tax = body.tax !== undefined ? body.tax : invoice.tax
+    const discount = body.discount !== undefined ? body.discount : invoice.discount
+    
+    // Calculate totals
+    const subtotal = Array.isArray(lineItems) 
+      ? lineItems.reduce((sum, item) => sum + (item.amount || 0), 0)
+      : (body.amount || invoice.total || 0)
+    const taxAmount = subtotal * (tax / 100)
+    const total = subtotal + taxAmount - discount
+
     // Update invoice
     const updatedInvoice = await prisma.invoice.update({
       where: { id },
       data: {
         status: body.status || invoice.status,
-        amount: body.amount !== undefined ? body.amount : invoice.amount,
+        subtotal: subtotal,
+        total: total,
         currency: body.currency || invoice.currency,
         dueDate: body.dueDate ? new Date(body.dueDate) : invoice.dueDate,
         notes: body.notes !== undefined ? body.notes : invoice.notes,
-        lineItems: body.lineItems || invoice.lineItems,
-        tax: body.tax !== undefined ? body.tax : invoice.tax,
-        discount: body.discount !== undefined ? body.discount : invoice.discount,
+        lineItems: lineItems,
+        tax: tax,
+        discount: discount,
         updatedAt: new Date()
       },
       include: {
@@ -148,14 +161,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
 
-    // Check if user has admin/owner access to this invoice's workspace
+    // Check if user has access to this invoice's workspace
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: {
         userId: userId,
-        workspaceId: invoice.workspaceId,
-        role: {
-          in: ['OWNER', 'ADMIN']
-        }
+        workspaceId: invoice.workspaceId
       }
     })
 
@@ -168,7 +178,7 @@ export async function DELETE(
       where: { id }
     })
 
-    console.log(`📄 Invoice ${id} deleted successfully`)
+    console.log(`📄 Invoice ${id} deleted successfully from database`)
 
     return NextResponse.json({ 
       success: true,
