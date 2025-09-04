@@ -582,8 +582,8 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
 
       {/* Create Report Dialog */}
       <CreateReportDialog 
-        isOpen={showCreateDialog}
-        onClose={() => setShowCreateDialog(false)}
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
         onReportCreated={handleReportCreated}
         clients={clients}
         templates={templates}
