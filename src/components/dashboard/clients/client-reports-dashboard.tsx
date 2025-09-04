@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Select, 
@@ -105,6 +106,11 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const [selectedType, setSelectedType] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showViewDialog, setShowViewDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showSendEmailDialog, setShowSendEmailDialog] = useState(false)
+  const [selectedReport, setSelectedReport] = useState<ClientReport | null>(null)
 
   useEffect(() => {
     fetchReports()
@@ -206,11 +212,97 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     }
   }
 
-  const handleReportCreated = () => {
-    // Refresh the reports list when a new report is created
+  const handleReportCreated = (newReport?: any) => {
+    // Add the new report to the list immediately for better UX
+    if (newReport) {
+      setReports(prevReports => [newReport, ...prevReports])
+    }
+    // Also refresh the full list to ensure consistency
     fetchReports()
     // Close the dialog
     setShowCreateDialog(false)
+  }
+
+  const handleViewDetails = (report: ClientReport) => {
+    setSelectedReport(report)
+    setShowViewDialog(true)
+  }
+
+  const handleEditReport = (report: ClientReport) => {
+    setSelectedReport(report)
+    setShowEditDialog(true)
+  }
+
+  const handleDeleteReport = async (report: ClientReport) => {
+    setSelectedReport(report)
+    setShowDeleteDialog(true)
+  }
+
+  const handleSendEmail = (report: ClientReport) => {
+    setSelectedReport(report)
+    setShowSendEmailDialog(true)
+  }
+
+  const confirmDeleteReport = async () => {
+    if (!selectedReport) return
+    
+    try {
+      const response = await fetch(`/api/client-reports/${selectedReport.id}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        // Remove from local state immediately
+        setReports(prevReports => prevReports.filter(r => r.id !== selectedReport.id))
+        setShowDeleteDialog(false)
+        setSelectedReport(null)
+      } else {
+        console.error('Failed to delete report')
+      }
+    } catch (error) {
+      console.error('Error deleting report:', error)
+    }
+  }
+
+  const handleSendEmailConfirm = async () => {
+    if (!selectedReport) return
+
+    const recipientsInput = (document.getElementById('email-recipients') as HTMLInputElement)?.value
+    const subjectInput = (document.getElementById('email-subject') as HTMLInputElement)?.value
+    const messageInput = (document.getElementById('email-message') as HTMLTextAreaElement)?.value
+
+    if (!recipientsInput.trim()) {
+      alert('Please enter at least one recipient email address')
+      return
+    }
+
+    const recipients = recipientsInput.split(',').map(email => email.trim()).filter(email => email)
+    
+    try {
+      const response = await fetch(`/api/client-reports/${selectedReport.id}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipients,
+          subject: subjectInput,
+          message: messageInput
+        })
+      })
+
+      if (response.ok) {
+        alert('Report sent successfully!')
+        setShowSendEmailDialog(false)
+        setSelectedReport(null)
+      } else {
+        const error = await response.json()
+        alert(`Failed to send report: ${error.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error sending report:', error)
+      alert('Failed to send report. Please try again.')
+    }
   }
 
   const filteredReports = reports.filter(report => {
@@ -455,20 +547,20 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewDetails(report)}>
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditReport(report)}>
                               <Edit className="h-4 w-4 mr-2" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleSendEmail(report)}>
                               <Send className="h-4 w-4 mr-2" />
                               Send Email
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteReport(report)}>
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete
                             </DropdownMenuItem>
@@ -588,6 +680,166 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         clients={clients}
         templates={templates}
       />
+
+      {/* View Details Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Report Details
+            </DialogTitle>
+          </DialogHeader>
+          {selectedReport && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium text-muted-foreground">Report Name</Label>
+                  <p className="text-sm font-semibold">{selectedReport.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-muted-foreground">Status</Label>
+                  <Badge className={getStatusColor(selectedReport.status)}>
+                    {selectedReport.status.toLowerCase()}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-muted-foreground">Client</Label>
+                  <p className="text-sm">{selectedReport.client.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-muted-foreground">Format</Label>
+                  <p className="text-sm">{selectedReport.format}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-muted-foreground">Frequency</Label>
+                  <p className="text-sm">{selectedReport.frequency}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-muted-foreground">Created</Label>
+                  <p className="text-sm">{formatDate(selectedReport.createdAt)}</p>
+                </div>
+              </div>
+              {selectedReport.description && (
+                <div>
+                  <Label className="text-sm font-medium text-muted-foreground">Description</Label>
+                  <p className="text-sm mt-1">{selectedReport.description}</p>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                {selectedReport.status === 'COMPLETED' && (
+                  <Button onClick={() => handleDownloadReport(selectedReport.id)}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setShowViewDialog(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Delete Report
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this report? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedReport && (
+            <div className="py-4">
+              <p className="text-sm">
+                <strong>Report:</strong> {selectedReport.name}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                <strong>Client:</strong> {selectedReport.client.name}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteReport}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Report Dialog */}
+      {selectedReport && (
+        <CreateReportDialog
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          onReportCreated={handleReportCreated}
+          clients={clients}
+          templates={templates}
+          editReport={selectedReport}
+        />
+      )}
+
+      {/* Send Email Dialog */}
+      <Dialog open={showSendEmailDialog} onOpenChange={setShowSendEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Send Report via Email
+            </DialogTitle>
+          </DialogHeader>
+          {selectedReport && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Report</Label>
+                <p className="text-sm font-semibold">{selectedReport.name}</p>
+                <p className="text-xs text-muted-foreground">Client: {selectedReport.client.name}</p>
+              </div>
+              <div>
+                <Label htmlFor="email-recipients">Recipients</Label>
+                <Input
+                  id="email-recipients"
+                  placeholder="Enter email addresses separated by commas"
+                  defaultValue={selectedReport.client.email || ''}
+                />
+              </div>
+              <div>
+                <Label htmlFor="email-subject">Subject</Label>
+                <Input
+                  id="email-subject"
+                  defaultValue={`${selectedReport.name} - ${selectedReport.client.name}`}
+                />
+              </div>
+              <div>
+                <Label htmlFor="email-message">Message</Label>
+                <Textarea
+                  id="email-message"
+                  placeholder="Add a personal message..."
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSendEmailDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendEmailConfirm}>
+              <Send className="h-4 w-4 mr-2" />
+              Send Email
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

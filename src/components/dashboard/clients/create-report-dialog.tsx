@@ -46,6 +46,7 @@ interface CreateReportDialogProps {
   clients?: any[]
   templates?: any[]
   onReportCreated?: (report: any) => void
+  editReport?: any
 }
 
 interface ReportMetric {
@@ -75,7 +76,8 @@ export function CreateReportDialog({
   onOpenChange,
   clients = [],
   templates = [],
-  onReportCreated
+  onReportCreated,
+  editReport
 }: CreateReportDialogProps) {
   const [activeTab, setActiveTab] = useState('basic')
   const [isLoading, setIsLoading] = useState(false)
@@ -99,6 +101,36 @@ export function CreateReportDialog({
     end: new Date().toISOString().split('T')[0]
   })
   const [recipientInput, setRecipientInput] = useState('')
+
+  // Initialize form data when editing
+  useEffect(() => {
+    if (editReport) {
+      setFormData({
+        clientId: editReport.client?.id || '',
+        templateId: editReport.template?.id || '',
+        name: editReport.name || '',
+        description: editReport.description || '',
+        type: editReport.type || 'CUSTOM',
+        format: editReport.format || 'PDF',
+        frequency: editReport.frequency || 'ON_DEMAND',
+        recipients: editReport.recipients || []
+      })
+      setSelectedTemplate(editReport.template?.id || '')
+    } else {
+      // Reset form when creating new report
+      setFormData({
+        clientId: '',
+        templateId: '',
+        name: '',
+        description: '',
+        type: 'CUSTOM',
+        format: 'PDF',
+        frequency: 'ON_DEMAND',
+        recipients: []
+      })
+      setSelectedTemplate('')
+    }
+  }, [editReport, open])
 
   useEffect(() => {
     if (selectedTemplate && templates.length > 0) {
@@ -174,8 +206,11 @@ export function CreateReportDialog({
         }
       }
 
-      const response = await fetch('/api/client-reports', {
-        method: 'POST',
+      const url = editReport ? `/api/client-reports/${editReport.id}` : '/api/client-reports'
+      const method = editReport ? 'PUT' : 'POST'
+      
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -191,11 +226,11 @@ export function CreateReportDialog({
         resetForm()
       } else {
         const error = await response.json()
-        alert(`Failed to create report: ${error.error || 'Unknown error'}`)
+        alert(`Failed to ${editReport ? 'update' : 'create'} report: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error creating report:', error)
-      alert('Failed to create report. Please try again.')
+      console.error(`Error ${editReport ? 'updating' : 'creating'} report:`, error)
+      alert(`Failed to ${editReport ? 'update' : 'create'} report. Please try again.`)
     } finally {
       setIsLoading(false)
     }
@@ -226,10 +261,13 @@ export function CreateReportDialog({
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Create New Report
+            {editReport ? 'Edit Report' : 'Create New Report'}
           </DialogTitle>
           <DialogDescription>
-            Generate a comprehensive report for your client with customizable metrics and formatting
+            {editReport 
+              ? 'Update your client report with new settings and metrics'
+              : 'Generate a comprehensive report for your client with customizable metrics and formatting'
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -592,7 +630,7 @@ export function CreateReportDialog({
             ) : (
               <>
                 <BarChart3 className="h-4 w-4 mr-2" />
-                Generate Report
+                {editReport ? 'Update Report' : 'Generate Report'}
               </>
             )}
           </Button>
