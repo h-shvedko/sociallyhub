@@ -99,9 +99,9 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const [reports, setReports] = useState<ClientReport[]>([])
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedClient, setSelectedClient] = useState<string>('')
-  const [selectedStatus, setSelectedStatus] = useState<string>('')
-  const [selectedType, setSelectedType] = useState<string>('')
+  const [selectedClient, setSelectedClient] = useState<string>('all')
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
+  const [selectedType, setSelectedType] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
 
@@ -115,9 +115,9 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       setIsLoading(true)
       const params = new URLSearchParams()
       
-      if (selectedClient) params.append('clientId', selectedClient)
-      if (selectedStatus) params.append('status', selectedStatus)
-      if (selectedType) params.append('type', selectedType)
+      if (selectedClient && selectedClient !== 'all') params.append('clientId', selectedClient)
+      if (selectedStatus && selectedStatus !== 'all') params.append('status', selectedStatus)
+      if (selectedType && selectedType !== 'all') params.append('type', selectedType)
 
       const response = await fetch(`/api/client-reports?${params.toString()}`)
       if (response.ok) {
@@ -320,7 +320,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                 <SelectValue placeholder="All clients" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All clients</SelectItem>
+                <SelectItem value="all">All clients</SelectItem>
                 {clients.map((client) => (
                   <SelectItem key={client.id} value={client.id}>
                     {client.name}
@@ -333,7 +333,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                 <SelectValue placeholder="All status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All status</SelectItem>
+                <SelectItem value="all">All status</SelectItem>
                 <SelectItem value="COMPLETED">Completed</SelectItem>
                 <SelectItem value="GENERATING">Generating</SelectItem>
                 <SelectItem value="SCHEDULED">Scheduled</SelectItem>
@@ -346,7 +346,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                 <SelectValue placeholder="All types" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All types</SelectItem>
+                <SelectItem value="all">All types</SelectItem>
                 <SelectItem value="EXECUTIVE">Executive</SelectItem>
                 <SelectItem value="PERFORMANCE">Performance</SelectItem>
                 <SelectItem value="ANALYTICS">Analytics</SelectItem>
@@ -369,7 +369,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                 <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No reports found</h3>
                 <p className="text-muted-foreground text-center mb-4">
-                  {searchQuery || selectedClient || selectedStatus || selectedType
+                  {searchQuery || (selectedClient && selectedClient !== 'all') || (selectedStatus && selectedStatus !== 'all') || (selectedType && selectedType !== 'all')
                     ? "Try adjusting your filters or search terms"
                     : "Get started by creating your first client report"
                   }
