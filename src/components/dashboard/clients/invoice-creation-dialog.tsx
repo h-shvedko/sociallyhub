@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState } from 'react'
-import jsPDF from 'jspdf'
 import {
   Dialog,
   DialogContent,
@@ -303,6 +302,9 @@ export function InvoiceCreationDialog({
   const generatePDFInvoice = async () => {
     setIsLoading(true)
     try {
+      // Dynamically import jsPDF for client-side use
+      const { default: jsPDF } = await import('jspdf')
+      
       // Create new jsPDF instance
       const pdf = new jsPDF()
       
