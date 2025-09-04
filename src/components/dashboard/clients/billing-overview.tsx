@@ -48,9 +48,6 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
   const fetchBillingData = async () => {
     setIsLoading(true)
     try {
-      // Simulate fetching billing data
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
       // Calculate billing statistics from clients with billing info
       const clientsWithBilling = clients.filter(client => client.billingInfo)
       const totalRevenue = clientsWithBilling.reduce((sum, client) => {
@@ -81,49 +78,31 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
         collectionRate: 94.2
       })
 
-      // Mock recent invoices
-      setRecentInvoices([
-        {
-          id: 'INV-001',
-          clientName: 'Acme Corporation',
-          amount: 5000,
-          currency: 'USD',
-          status: 'paid',
-          dueDate: '2025-09-15',
-          issuedDate: '2025-08-15',
-          paymentMethod: 'Credit Card'
-        },
-        {
-          id: 'INV-002',
-          clientName: 'TechStart Inc.',
-          amount: 3500,
-          currency: 'USD',
-          status: 'pending',
-          dueDate: '2025-09-20',
-          issuedDate: '2025-08-20',
-          paymentMethod: 'Bank Transfer'
-        },
-        {
-          id: 'INV-003',
-          clientName: 'Global Retail Co.',
-          amount: 2000,
-          currency: 'USD',
-          status: 'overdue',
-          dueDate: '2025-08-30',
-          issuedDate: '2025-07-30',
-          paymentMethod: 'ACH'
-        },
-        {
-          id: 'INV-004',
-          clientName: 'Healthcare Plus',
-          amount: 4200,
-          currency: 'USD',
-          status: 'paid',
-          dueDate: '2025-09-10',
-          issuedDate: '2025-08-10',
-          paymentMethod: 'Credit Card'
+      // Fetch real invoices from API
+      try {
+        const response = await fetch('/api/invoices?limit=10')
+        if (response.ok) {
+          const data = await response.json()
+          const invoices = data.invoices.map((invoice: any) => ({
+            id: invoice.invoiceNumber,
+            invoiceNumber: invoice.invoiceNumber,
+            clientName: invoice.clientName,
+            amount: invoice.amount,
+            currency: invoice.currency,
+            status: invoice.status,
+            dueDate: invoice.dueDate,
+            issuedDate: invoice.issueDate,
+            paymentMethod: 'Pending' // Default since we don't track payment methods yet
+          }))
+          setRecentInvoices(invoices)
+        } else {
+          console.error('Failed to fetch invoices')
+          setRecentInvoices([]) // Set empty array if fetch fails
         }
-      ])
+      } catch (error) {
+        console.error('Error fetching invoices:', error)
+        setRecentInvoices([])
+      }
 
       // Mock payment methods
       setPaymentMethods([
@@ -202,22 +181,24 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
 
   const handleInvoiceCreated = (invoiceData: any) => {
     console.log('📄 Invoice created:', invoiceData)
-    // Add the new invoice to the recent invoices list
+    
+    // Use the invoice data returned from the API (already properly formatted)
     const newInvoice = {
-      id: invoiceData.invoiceNumber || `INV-${Date.now()}`,
+      id: invoiceData.id,
+      invoiceNumber: invoiceData.invoiceNumber,
       clientName: invoiceData.clientName,
-      amount: invoiceData.subtotal + (invoiceData.tax || 0) - (invoiceData.discount || 0),
+      amount: invoiceData.amount,
       currency: invoiceData.currency,
-      status: 'draft',
+      status: invoiceData.status,
       dueDate: invoiceData.dueDate,
-      issuedDate: new Date().toISOString().split('T')[0],
+      issuedDate: invoiceData.issueDate,
       paymentMethod: 'Pending'
     }
     
     setRecentInvoices(prev => [newInvoice, ...prev])
     setShowInvoiceDialog(false)
     
-    // Update billing data
+    // Update billing data to reflect new invoice
     fetchBillingData()
   }
 

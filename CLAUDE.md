@@ -27,10 +27,19 @@
 **APIs**: `/api/campaigns`, `/api/ab-tests`, `/api/campaign-reports`, `/api/templates`  
 **Features**: Full CRUD, workspace isolation, real-time updates, budget management
 
-### 4. Client Management
+### 4. Client Management & Billing
 **Features**: Onboarding flow (7 steps), team management, billing, messaging  
-**APIs**: `/api/clients`, `/api/invoices`, message/billing endpoints  
+**APIs**: `/api/clients`, `/api/invoices`, `/api/invoices/download-pdf`, `/api/invoices/send-email`  
 **Fixed**: Next.js 15 params compatibility, complete field updates, real-time activity, client email display issue
+
+**Invoice Creation Dialog - Complete Fix (Latest)**:
+- ✅ **Replaced Browser Alerts**: Professional in-app notifications with success/error states
+- ✅ **Fixed Modal Persistence**: Modal stays open after invoice creation for download/send actions
+- ✅ **Button State Management**: Download/Send buttons disabled until invoice created, proper loading states
+- ✅ **PDF Generation**: HTML invoice download with professional styling (print-to-PDF capable)
+- ✅ **Email Integration**: SMTP-based invoice email sending with professional templates
+- ✅ **Discount Calculation**: Proper subtotal + tax - discount = total calculations
+- ✅ **Notification System**: Green/red notifications with auto-hide and manual dismiss
 
 ### 5. Automation Platform
 **OpenAI Integration**: GPT-3.5-turbo content analysis  

@@ -28,7 +28,9 @@ import {
   Download,
   Send,
   Clock,
-  CreditCard
+  CreditCard,
+  CheckCircle,
+  X
 } from 'lucide-react'
 
 interface InvoiceCreationDialogProps {
@@ -54,6 +56,8 @@ export function InvoiceCreationDialog({
 }: InvoiceCreationDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedClient, setSelectedClient] = useState<any>(null)
+  const [createdInvoice, setCreatedInvoice] = useState<any>(null) // Track created invoice
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [invoiceData, setInvoiceData] = useState({
     invoiceNumber: `INV-${Date.now()}`,
     issueDate: new Date().toISOString().split('T')[0],
@@ -130,14 +134,50 @@ export function InvoiceCreationDialog({
     setSelectedClient(client)
   }
 
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 5000) // Auto-hide after 5 seconds
+  }
+
+  const resetForm = () => {
+    setSelectedClient(null)
+    setCreatedInvoice(null)
+    setNotification(null)
+    setInvoiceData({
+      invoiceNumber: `INV-${Date.now()}`,
+      issueDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      currency: 'USD',
+      notes: '',
+      terms: 'Net 30 days',
+      tax: 0,
+      discount: 0
+    })
+    setLineItems([{
+      id: '1',
+      description: 'Social Media Management Services',
+      quantity: 1,
+      rate: 2500,
+      amount: 2500
+    }])
+  }
+
+  const handleDialogClose = (isOpen: boolean) => {
+    if (!isOpen) {
+      // Reset form when dialog is closed
+      resetForm()
+    }
+    onOpenChange(isOpen)
+  }
+
   const handleCreateInvoice = async () => {
     if (!selectedClient) {
-      alert('Please select a client')
+      showNotification('error', 'Please select a client')
       return
     }
 
     if (lineItems.length === 0 || lineItems.some(item => !item.description || item.rate <= 0)) {
-      alert('Please add valid line items')
+      showNotification('error', 'Please add valid line items')
       return
     }
 
@@ -173,34 +213,17 @@ export function InvoiceCreationDialog({
       const result = await response.json()
       console.log('✅ Invoice created successfully:', result.invoice)
 
+      // Store created invoice and notify parent
+      setCreatedInvoice(result.invoice)
       onInvoiceCreated?.(result.invoice)
-      onOpenChange(false)
       
-      // Reset form
-      setSelectedClient(null)
-      setInvoiceData({
-        invoiceNumber: `INV-${Date.now()}`,
-        issueDate: new Date().toISOString().split('T')[0],
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        currency: 'USD',
-        notes: '',
-        terms: 'Net 30 days',
-        tax: 0,
-        discount: 0
-      })
-      setLineItems([{
-        id: '1',
-        description: 'Social Media Management Services',
-        quantity: 1,
-        rate: 2500,
-        amount: 2500
-      }])
-      
-      alert('Invoice created successfully!')
+      // Don't close modal - allow user to download/send
+      // Show success notification instead of closing modal
+      showNotification('success', 'Invoice created successfully! You can now download or send it.')
       
     } catch (error) {
       console.error('Error creating invoice:', error)
-      alert(`Error creating invoice: ${error.message}`)
+      showNotification('error', `Error creating invoice: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
@@ -208,18 +231,23 @@ export function InvoiceCreationDialog({
 
   const handleSendInvoice = async () => {
     if (!selectedClient) {
-      alert('Please select a client before sending invoice')
+      showNotification('error', 'Please select a client before sending invoice')
+      return
+    }
+
+    if (!createdInvoice) {
+      showNotification('error', 'Please create the invoice first before sending')
       return
     }
 
     setIsLoading(true)
     try {
-      const invoiceData = {
+      const invoicePayload = {
         clientName: selectedClient.name,
         clientEmail: selectedClient.email,
-        invoiceNumber: invoiceData.invoiceNumber,
-        total: calculateTotal(),
-        dueDate: invoiceData.dueDate,
+        invoiceNumber: createdInvoice.invoiceNumber || invoiceData.invoiceNumber,
+        total: createdInvoice.amount || calculateTotal(),
+        dueDate: createdInvoice.dueDate || invoiceData.dueDate,
         lineItems: lineItems
       }
 
@@ -230,7 +258,7 @@ export function InvoiceCreationDialog({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(invoiceData)
+        body: JSON.stringify(invoicePayload)
       })
 
       if (!response.ok) {
@@ -238,12 +266,12 @@ export function InvoiceCreationDialog({
         throw new Error(error.error || 'Failed to send invoice email')
       }
 
-      alert(`Invoice email sent successfully to ${selectedClient.email}!`)
+      showNotification('success', `Invoice email sent successfully to ${selectedClient.email}!`)
       console.log('✅ Invoice email sent successfully')
       
     } catch (error) {
       console.error('Error sending invoice email:', error)
-      alert(`Error sending invoice email: ${error.message}`)
+      showNotification('error', `Error sending invoice email: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
@@ -251,25 +279,30 @@ export function InvoiceCreationDialog({
 
   const handleDownloadInvoice = async () => {
     if (!selectedClient) {
-      alert('Please select a client before downloading invoice')
+      showNotification('error', 'Please select a client before downloading invoice')
+      return
+    }
+
+    if (!createdInvoice) {
+      showNotification('error', 'Please create the invoice first before downloading')
       return
     }
 
     setIsLoading(true)
     try {
-      const invoiceData = {
+      const invoicePayload = {
         clientName: selectedClient.name,
         clientEmail: selectedClient.email,
         clientCompany: selectedClient.company || selectedClient.name,
-        invoiceNumber: invoiceData.invoiceNumber,
-        issueDate: invoiceData.issueDate,
-        dueDate: invoiceData.dueDate,
-        currency: invoiceData.currency,
+        invoiceNumber: createdInvoice.invoiceNumber || invoiceData.invoiceNumber,
+        issueDate: createdInvoice.issueDate || invoiceData.issueDate,
+        dueDate: createdInvoice.dueDate || invoiceData.dueDate,
+        currency: createdInvoice.currency || invoiceData.currency,
         lineItems: lineItems,
         subtotal: calculateSubtotal(),
         tax: calculateTax(),
         discount: calculateDiscount(),
-        total: calculateTotal(),
+        total: createdInvoice.amount || calculateTotal(),
         notes: invoiceData.notes,
         terms: invoiceData.terms
       }
@@ -281,7 +314,7 @@ export function InvoiceCreationDialog({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(invoiceData)
+        body: JSON.stringify(invoicePayload)
       })
 
       if (!response.ok) {
@@ -294,24 +327,25 @@ export function InvoiceCreationDialog({
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `Invoice-${invoiceData.invoiceNumber}.pdf`
+      link.download = `Invoice-${createdInvoice.invoiceNumber || invoiceData.invoiceNumber}.html`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
 
+      showNotification('success', 'Invoice downloaded successfully! (HTML format - you can print to PDF from your browser)')
       console.log('✅ PDF invoice downloaded successfully')
       
     } catch (error) {
       console.error('Error downloading invoice PDF:', error)
-      alert(`Error downloading invoice PDF: ${error.message}`)
+      showNotification('error', `Error downloading invoice PDF: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogClose}>
       <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
@@ -322,6 +356,28 @@ export function InvoiceCreationDialog({
             Create and send professional invoices to your clients
           </DialogDescription>
         </DialogHeader>
+
+        {/* Notification Component */}
+        {notification && (
+          <div className={`mx-6 mb-4 p-4 rounded-lg flex items-center gap-3 ${
+            notification.type === 'success' 
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-red-50 text-red-800 border border-red-200'
+          }`}>
+            {notification.type === 'success' ? (
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            ) : (
+              <X className="h-5 w-5 text-red-600" />
+            )}
+            <span className="flex-1">{notification.message}</span>
+            <button 
+              onClick={() => setNotification(null)}
+              className="text-current opacity-70 hover:opacity-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto min-h-0">
           <Tabs defaultValue="details" className="h-full">
@@ -697,24 +753,39 @@ export function InvoiceCreationDialog({
 
         <DialogFooter className="flex-shrink-0 pt-4 border-t">
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-              Cancel
+            <Button variant="outline" onClick={() => handleDialogClose(false)} disabled={isLoading}>
+              {createdInvoice ? 'Close' : 'Cancel'}
             </Button>
-            <Button variant="outline" onClick={handleDownloadInvoice} disabled={!selectedClient}>
+            <Button 
+              variant="outline" 
+              onClick={handleDownloadInvoice} 
+              disabled={!selectedClient || !createdInvoice || isLoading}
+            >
               <Download className="h-4 w-4 mr-2" />
               Download
             </Button>
-            <Button variant="outline" onClick={handleSendInvoice} disabled={!selectedClient}>
+            <Button 
+              variant="outline" 
+              onClick={handleSendInvoice} 
+              disabled={!selectedClient || !createdInvoice || isLoading}
+            >
               <Send className="h-4 w-4 mr-2" />
               Send
             </Button>
-            <Button onClick={handleCreateInvoice} disabled={isLoading || !selectedClient}>
+            <Button onClick={handleCreateInvoice} disabled={isLoading || !selectedClient || createdInvoice}>
               {isLoading ? (
                 <Clock className="h-4 w-4 mr-2 animate-spin" />
+              ) : createdInvoice ? (
+                <>
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Invoice Created ✓
+                </>
               ) : (
-                <Receipt className="h-4 w-4 mr-2" />
+                <>
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Create Invoice
+                </>
               )}
-              Create Invoice
             </Button>
           </div>
         </DialogFooter>

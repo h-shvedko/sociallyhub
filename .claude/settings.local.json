@@ -61,7 +61,8 @@
       "Bash(export DATABASE_URL=\"postgresql://sociallyhub:sociallyhub_dev_password@localhost:5432/sociallyhub\")",
       "Bash(npx tsx:*)",
       "Bash(pkill:*)",
-      "Bash(timeout 10s docker-compose logs -f app)"
+      "Bash(timeout 10s docker-compose logs -f app)",
+      "Bash(source .env)"
     ],
     "deny": [],
     "ask": []

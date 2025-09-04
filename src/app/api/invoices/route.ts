@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '@/lib/auth/config'
+import { prisma } from '@/lib/prisma'
 import { normalizeUserId } from '@/lib/auth/demo-user'
 
 export async function POST(request: NextRequest) {
@@ -11,6 +12,22 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = await normalizeUserId(session.user.id)
+    
+    // Get user's workspace
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: {
+        userId,
+        role: { in: ['OWNER', 'ADMIN'] }
+      },
+      select: {
+        workspaceId: true
+      }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
+    }
+
     const body = await request.json()
 
     const {
@@ -38,37 +55,56 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // For now, we'll simulate invoice creation since we don't have an Invoice model
-    // In a real implementation, you would save to your database
-    const invoiceData = {
-      id: `invoice_${Date.now()}`,
-      invoiceNumber: invoiceNumber || `INV-${Date.now()}`,
-      clientId,
-      clientName,
-      clientEmail,
-      dueDate,
-      issueDate: issueDate || new Date().toISOString().split('T')[0],
-      currency: currency || 'USD',
-      lineItems,
-      subtotal: subtotal || 0,
-      tax: tax || 0,
-      discount: discount || 0,
-      total: total || subtotal || 0,
-      notes,
-      terms,
-      status: 'draft',
-      createdAt: new Date().toISOString(),
-      createdBy: userId
-    }
+    // Generate unique invoice number if not provided
+    const finalInvoiceNumber = invoiceNumber || `INV-${Date.now()}`
 
-    // Here you would typically save the invoice to your database
-    // await prisma.invoice.create({ data: invoiceData })
+    // Create invoice in database
+    const createdInvoice = await prisma.invoice.create({
+      data: {
+        invoiceNumber: finalInvoiceNumber,
+        workspaceId: userWorkspace.workspaceId,
+        clientId,
+        clientName,
+        clientEmail: clientEmail || null,
+        dueDate: new Date(dueDate),
+        issueDate: issueDate ? new Date(issueDate) : new Date(),
+        currency: currency || 'USD',
+        lineItems: lineItems,
+        subtotal: parseFloat(subtotal) || 0,
+        tax: parseFloat(tax) || 0,
+        discount: parseFloat(discount) || 0,
+        total: parseFloat(total) || parseFloat(subtotal) || 0,
+        notes: notes || null,
+        terms: terms || null,
+        status: 'draft'
+      },
+      include: {
+        client: {
+          select: {
+            name: true,
+            email: true,
+            company: true
+          }
+        }
+      }
+    })
     
-    console.log('📄 Invoice created:', invoiceData)
+    console.log('📄 Invoice created successfully:', createdInvoice.id)
 
     return NextResponse.json({
       success: true,
-      invoice: invoiceData,
+      invoice: {
+        id: createdInvoice.id,
+        invoiceNumber: createdInvoice.invoiceNumber,
+        clientName: createdInvoice.clientName,
+        clientEmail: createdInvoice.clientEmail,
+        amount: createdInvoice.total,
+        currency: createdInvoice.currency,
+        status: createdInvoice.status,
+        dueDate: createdInvoice.dueDate.toISOString().split('T')[0],
+        issueDate: createdInvoice.issueDate.toISOString().split('T')[0],
+        createdAt: createdInvoice.createdAt.toISOString()
+      },
       message: 'Invoice created successfully'
     })
   } catch (error) {
@@ -88,46 +124,75 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = await normalizeUserId(session.user.id)
+    
+    // Get user's workspace
+    const userWorkspace = await prisma.userWorkspace.findFirst({
+      where: {
+        userId,
+        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
+      },
+      select: {
+        workspaceId: true
+      }
+    })
+
+    if (!userWorkspace) {
+      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
+    }
+
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // For now, we'll return mock invoices since we don't have an Invoice model
-    // In a real implementation, you would query your database
-    const mockInvoices = [
-      {
-        id: 'inv_1',
-        invoiceNumber: 'INV-001',
-        clientName: 'Acme Corporation',
-        clientEmail: 'billing@acme.com',
-        amount: 5000,
-        currency: 'USD',
-        status: 'paid',
-        dueDate: '2025-09-15',
-        issueDate: '2025-08-15',
-        createdAt: '2025-08-15T10:00:00.000Z'
-      },
-      {
-        id: 'inv_2',
-        invoiceNumber: 'INV-002',
-        clientName: 'TechStart Inc.',
-        clientEmail: 'finance@techstart.com',
-        amount: 3500,
-        currency: 'USD',
-        status: 'pending',
-        dueDate: '2025-09-20',
-        issueDate: '2025-08-20',
-        createdAt: '2025-08-20T14:30:00.000Z'
-      }
-    ]
+    // Fetch invoices from database
+    const [invoices, totalCount] = await Promise.all([
+      prisma.invoice.findMany({
+        where: {
+          workspaceId: userWorkspace.workspaceId
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        skip: offset,
+        take: limit,
+        include: {
+          client: {
+            select: {
+              name: true,
+              email: true,
+              company: true
+            }
+          }
+        }
+      }),
+      prisma.invoice.count({
+        where: {
+          workspaceId: userWorkspace.workspaceId
+        }
+      })
+    ])
+
+    // Format invoices for frontend
+    const formattedInvoices = invoices.map(invoice => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      clientName: invoice.clientName,
+      clientEmail: invoice.clientEmail,
+      amount: invoice.total,
+      currency: invoice.currency,
+      status: invoice.status,
+      dueDate: invoice.dueDate.toISOString().split('T')[0],
+      issueDate: invoice.issueDate.toISOString().split('T')[0],
+      createdAt: invoice.createdAt.toISOString()
+    }))
 
     return NextResponse.json({
-      invoices: mockInvoices.slice(offset, offset + limit),
+      invoices: formattedInvoices,
       pagination: {
         limit,
         offset,
-        total: mockInvoices.length,
-        hasMore: (offset + limit) < mockInvoices.length
+        total: totalCount,
+        hasMore: (offset + limit) < totalCount
       }
     })
   } catch (error) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '@/lib/auth/config'
 import { normalizeUserId } from '@/lib/auth/demo-user'
 
 export async function POST(request: NextRequest) {
@@ -58,16 +58,15 @@ export async function POST(request: NextRequest) {
       terms
     })
 
-    // For now, we'll create a simple PDF-like response
-    // In a production environment, you would use a library like puppeteer or jsPDF
-    const pdfBuffer = generateSimplePDF(htmlContent, invoiceNumber)
-
-    return new NextResponse(pdfBuffer, {
+    // Return properly formatted HTML that can be printed as PDF
+    // In production, use puppeteer or similar for true PDF generation
+    console.log('✅ Generated professional invoice HTML for:', invoiceNumber)
+    
+    return new NextResponse(htmlContent, {
       status: 200,
       headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="Invoice-${invoiceNumber}.pdf"`,
-        'Content-Length': pdfBuffer.length.toString(),
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Disposition': `inline; filename="Invoice-${invoiceNumber}.html"`,
       },
     })
   } catch (error) {
@@ -289,23 +288,8 @@ function generateInvoiceHTML({
   `
 }
 
-// Simple PDF-like text generation (in a real app, use puppeteer or similar)
-function generateSimplePDF(htmlContent: string, invoiceNumber: string): Buffer {
-  // This is a simplified implementation that creates a text-based "PDF"
-  // In a real application, you would use libraries like:
-  // - puppeteer to generate real PDFs from HTML
-  // - jsPDF for client-side PDF generation
-  // - PDFKit for server-side PDF generation with more control
-  
-  const textContent = `
-SOCIALLYHUB - INVOICE ${invoiceNumber}
-======================================
-
-${htmlContent.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()}
-
-Generated on: ${new Date().toISOString()}
-  `
-
-  // Convert text to buffer (in reality, this would be a real PDF buffer)
-  return Buffer.from(textContent, 'utf8')
-}
+// Note: In production, consider using:
+// - puppeteer for server-side PDF generation from HTML
+// - jsPDF for client-side PDF generation  
+// - PDFKit for server-side PDF generation with more control
+// Currently returning professional HTML that can be printed or saved as PDF
