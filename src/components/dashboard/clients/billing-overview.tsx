@@ -10,6 +10,14 @@ import { Separator } from '@/components/ui/separator'
 import { InvoiceCreationDialog } from './invoice-creation-dialog'
 import { PaymentSettingsDialog } from './payment-settings-dialog'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   DollarSign,
   CreditCard,
   Receipt,
@@ -26,7 +34,11 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
-  Zap
+  Zap,
+  Send,
+  MoreVertical,
+  Edit,
+  CheckCircle
 } from 'lucide-react'
 
 interface BillingOverviewProps {
@@ -213,62 +225,176 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
   }
 
   const handleDownloadInvoice = async (invoice: any) => {
-    console.log('📄 Downloading invoice:', invoice.id)
+    console.log('📄 Downloading invoice:', invoice.invoiceNumber)
     setIsLoading(true)
     try {
-      const invoiceData = {
-        clientName: invoice.clientName,
-        clientEmail: '',
-        clientCompany: invoice.clientName,
-        invoiceNumber: invoice.id,
-        issueDate: invoice.issuedDate,
-        dueDate: invoice.dueDate,
-        currency: invoice.currency,
-        lineItems: [
-          {
-            description: 'Social Media Management Services',
-            quantity: 1,
-            rate: invoice.amount,
-            amount: invoice.amount
-          }
-        ],
-        subtotal: invoice.amount,
-        tax: 0,
-        discount: 0,
-        total: invoice.amount,
-        notes: '',
-        terms: 'Net 30 days'
-      }
-
-      const response = await fetch('/api/invoices/download-pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(invoiceData)
+      // Dynamic import for client-side only
+      const { jsPDF } = await import('jspdf')
+      
+      // Create new PDF document with proper configuration
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
+      
+      // Set document properties
+      doc.setProperties({
+        title: `Invoice ${invoice.invoiceNumber}`,
+        author: 'SociallyHub',
+        subject: `Invoice for ${invoice.clientName}`,
+        creator: 'SociallyHub Invoice System'
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to generate PDF')
+      // Helper function to safely add text
+      const safeText = (text: string, x: number, y: number, maxWidth?: number) => {
+        if (!text) return 5
+        const cleanText = String(text).replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII characters
+        if (maxWidth) {
+          const lines = doc.splitTextToSize(cleanText, maxWidth)
+          doc.text(lines, x, y)
+          return Array.isArray(lines) ? lines.length * 5 : 5
+        } else {
+          doc.text(cleanText, x, y)
+          return 5
+        }
       }
 
-      // Create a blob from the response and trigger download
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
+      // Company Header
+      doc.setFontSize(24)
+      doc.setFont('helvetica', 'bold')
+      safeText('INVOICE', 20, 30)
+      
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'normal')
+      safeText('SociallyHub', 150, 20)
+      safeText('Social Media Management Platform', 150, 28)
+      safeText('Email: billing@sociallyhub.com', 150, 36)
+      safeText('Phone: (555) 123-4567', 150, 44)
+
+      // Invoice Details
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      safeText(`Invoice #${invoice.invoiceNumber}`, 20, 50)
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      safeText(`Issue Date: ${new Date(invoice.issuedDate).toLocaleDateString()}`, 20, 60)
+      safeText(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 20, 68)
+      safeText(`Status: ${invoice.status.toUpperCase()}`, 20, 76)
+
+      // Client Information
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'bold')
+      safeText('Bill To:', 20, 90)
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      let yPos = 98
+      yPos += safeText(invoice.clientName || '', 20, yPos)
+      if (invoice.clientEmail) {
+        yPos += safeText(invoice.clientEmail || '', 20, yPos)
+      }
+
+      // Line Items Table Header
+      yPos += 10
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      safeText('Description', 20, yPos)
+      safeText('Qty', 120, yPos)
+      safeText('Rate', 140, yPos)
+      safeText('Amount', 170, yPos)
+      
+      // Table line
+      yPos += 5
+      doc.line(20, yPos, 190, yPos)
+      yPos += 8
+
+      // Line Items - for now use default service
+      doc.setFont('helvetica', 'normal')
+      safeText('Social Media Management Services', 20, yPos, 90)
+      safeText('1', 120, yPos)
+      safeText(formatCurrency(invoice.amount, invoice.currency), 140, yPos)
+      safeText(formatCurrency(invoice.amount, invoice.currency), 170, yPos)
+      yPos += 8
+
+      // Totals section
+      yPos += 10
+      doc.line(120, yPos, 190, yPos)
+      yPos += 8
+
+      doc.setFont('helvetica', 'bold')
+      safeText('TOTAL:', 120, yPos)
+      safeText(formatCurrency(invoice.amount, invoice.currency), 170, yPos)
+
+      // Payment Terms
+      yPos += 20
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      safeText('Payment Terms: Net 30 days', 20, yPos)
+      
+      // Status footer
+      if (invoice.status === 'paid') {
+        yPos += 10
+        doc.setFontSize(12)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(0, 128, 0)
+        safeText('PAID', 85, yPos)
+        doc.setTextColor(0, 0, 0)
+      }
+
+      // Generate PDF blob and create download
+      const pdfBlob = doc.output('blob')
+      const url = URL.createObjectURL(pdfBlob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `Invoice-${invoice.id}.pdf`
+      link.download = `Invoice-${invoice.invoiceNumber}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
+      URL.revokeObjectURL(url)
+      
       console.log('✅ Invoice PDF downloaded successfully')
     } catch (error) {
-      console.error('Error downloading invoice:', error)
+      console.error('Error generating PDF:', error)
       alert(`Error downloading invoice: ${error.message}`)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleUpdateInvoiceStatus = async (invoiceId: string, newStatus: string) => {
+    console.log(`📄 Updating invoice ${invoiceId} status to ${newStatus}`)
+    try {
+      const response = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update invoice status')
+      }
+
+      // Update local state
+      setRecentInvoices(prev => prev.map(inv => 
+        inv.id === invoiceId ? { ...inv, status: newStatus } : inv
+      ))
+      
+      // Update billing data based on status change
+      if (newStatus === 'paid') {
+        setBillingData(prev => prev ? {
+          ...prev,
+          pendingInvoices: Math.max(0, (prev.pendingInvoices || 0) - 1)
+        } : null)
+      }
+      
+      console.log(`✅ Invoice ${invoiceId} status updated to ${newStatus}`)
+    } catch (error) {
+      console.error('Error updating invoice status:', error)
+      alert(`Error updating invoice status: ${error.message}`)
     }
   }
 
@@ -427,14 +553,14 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
             <CardContent>
               <div className="space-y-4">
                 {recentInvoices.map((invoice) => (
-                  <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-full">
                         <Receipt className="h-5 w-5 text-gray-600" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium">{invoice.id}</p>
+                          <p className="font-medium">{invoice.invoiceNumber}</p>
                           <Badge className={getStatusColor(invoice.status)}>
                             <div className="flex items-center gap-1">
                               {getStatusIcon(invoice.status)}
@@ -444,21 +570,143 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
                         </div>
                         <p className="text-sm text-muted-foreground">{invoice.clientName}</p>
                         <p className="text-xs text-muted-foreground">
-                          Due: {new Date(invoice.dueDate).toLocaleDateString()} • 
-                          {invoice.paymentMethod}
+                          Issued: {new Date(invoice.issuedDate).toLocaleDateString()} • 
+                          Due: {new Date(invoice.dueDate).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">{formatCurrency(invoice.amount, invoice.currency)}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-3">
+                      <div className="text-right mr-3">
+                        <p className="font-medium">{formatCurrency(invoice.amount, invoice.currency)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {invoice.status === 'paid' ? 'Paid' : invoice.status === 'overdue' ? 'Overdue' : 'Pending'}
+                        </p>
+                      </div>
+                      
+                      {/* Action buttons based on status */}
+                      <div className="flex items-center gap-1">
+                        {invoice.status === 'draft' && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUpdateInvoiceStatus(invoice.id, 'pending')}
+                              title="Send Invoice"
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => console.log('Edit invoice:', invoice.id)}
+                              title="Edit Invoice"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                        
+                        {invoice.status === 'pending' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUpdateInvoiceStatus(invoice.id, 'paid')}
+                            title="Mark as Paid"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+                        
+                        {invoice.status === 'overdue' && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-orange-600 hover:text-orange-700"
+                              onClick={() => console.log('Send reminder:', invoice.id)}
+                              title="Send Reminder"
+                            >
+                              <AlertCircle className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUpdateInvoiceStatus(invoice.id, 'paid')}
+                              title="Mark as Paid"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                        
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDownloadInvoice(invoice)}
+                          title="Download PDF"
                         >
                           <Download className="h-4 w-4" />
                         </Button>
+                        
+                        {/* More options dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Invoice Actions</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {invoice.status === 'draft' && (
+                              <DropdownMenuItem onClick={() => handleUpdateInvoiceStatus(invoice.id, 'pending')}>
+                                <Send className="h-4 w-4 mr-2" />
+                                Send Invoice
+                              </DropdownMenuItem>
+                            )}
+                            {invoice.status === 'pending' && (
+                              <DropdownMenuItem onClick={() => handleUpdateInvoiceStatus(invoice.id, 'paid')}>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Mark as Paid
+                              </DropdownMenuItem>
+                            )}
+                            {invoice.status === 'paid' && (
+                              <DropdownMenuItem onClick={() => handleUpdateInvoiceStatus(invoice.id, 'pending')}>
+                                <Clock className="h-4 w-4 mr-2" />
+                                Mark as Unpaid
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => handleDownloadInvoice(invoice)}>
+                              <Download className="h-4 w-4 mr-2" />
+                              Download PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => console.log('View invoice:', invoice.id)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            {invoice.status !== 'paid' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => console.log('Send reminder:', invoice.id)}>
+                                  <AlertCircle className="h-4 w-4 mr-2" />
+                                  Send Reminder
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => console.log('Edit invoice:', invoice.id)}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Invoice
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={() => console.log('Delete invoice:', invoice.id)}
+                            >
+                              <AlertCircle className="h-4 w-4 mr-2" />
+                              Delete Invoice
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   </div>
