@@ -81,6 +81,11 @@ model Workspace {
   // Custom Dashboard Relations
   customDashboards      CustomDashboard[] @relation("WorkspaceCustomDashboards")
   budgetSettings        BudgetSettings? @relation("WorkspaceBudgetSettings")
+  
+  // Client Reporting Relations
+  clientReports         ClientReport[]
+  clientReportTemplates ClientReportTemplate[]
+  clientReportSchedules ClientReportSchedule[]
 
   @@map("workspaces")
 }
@@ -164,6 +169,8 @@ model Client {
   posts          Post[]
   campaigns      Campaign[]
   invoices       Invoice[]
+  reports        ClientReport[]
+  reportSchedules ClientReportSchedule[]
 
   @@map("clients")
 }
@@ -527,6 +534,89 @@ model Alert {
   @@index([resolved, timestamp])
   @@index([severity, timestamp])
   @@map("alerts")
+}
+
+// ========================================
+// CLIENT REPORTING
+// ========================================
+
+model ClientReport {
+  id          String   @id @default(cuid())
+  workspaceId String
+  clientId    String
+  templateId  String?  // Reference to report template if used
+  name        String
+  description String?
+  type        String   // EXECUTIVE, PERFORMANCE, ANALYTICS, CUSTOM
+  format      String   // PDF, EXCEL, CSV, DASHBOARD_LINK
+  frequency   String   // ON_DEMAND, DAILY, WEEKLY, MONTHLY, QUARTERLY
+  status      String   @default("DRAFT") // DRAFT, SCHEDULED, GENERATING, COMPLETED, FAILED, SENT
+  config      Json?    // Report configuration: metrics, date ranges, filters
+  data        Json?    // Generated report data
+  filePath    String?  // Path to generated file
+  fileSize    String?  // File size for downloads
+  recipients  String[] @default([]) // Email recipients
+  lastGenerated DateTime?
+  downloadCount Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  template  ClientReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, status])
+  @@index([frequency, status])
+  @@map("client_reports")
+}
+
+model ClientReportTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  type        String   // EXECUTIVE, PERFORMANCE, ANALYTICS, CUSTOM
+  format      String[] // PDF, EXCEL, CSV, DASHBOARD_LINK
+  metrics     String[] // Metrics to include: followers, engagement, reach, etc.
+  sections    Json     // Report sections and layout
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  customDashboard Boolean @default(false)
+  autoEmail   Boolean  @default(false)
+  emailTemplate String? // Email template for automated reports
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reports   ClientReport[]
+  schedules ClientReportSchedule[]
+
+  @@map("client_report_templates")
+}
+
+model ClientReportSchedule {
+  id          String   @id @default(cuid())
+  workspaceId String
+  clientId    String
+  templateId  String
+  name        String
+  frequency   String   // DAILY, WEEKLY, MONTHLY, QUARTERLY
+  dayOfWeek   Int?     // For weekly reports (0=Sunday, 1=Monday, etc.)
+  dayOfMonth  Int?     // For monthly reports
+  time        String   // Time to send (HH:MM format)
+  recipients  String[] @default([])
+  isActive    Boolean  @default(true)
+  lastRun     DateTime?
+  nextRun     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  template  ClientReportTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, nextRun])
+  @@map("client_report_schedules")
 }
 
 // ========================================

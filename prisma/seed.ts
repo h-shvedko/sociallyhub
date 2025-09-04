@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { seedClientReports } from '../src/lib/seeders/client-reports-seeder'
 
 const prisma = new PrismaClient()
 
@@ -477,6 +478,9 @@ async function main() {
     })
     console.log(`✅ Created client: ${client.name}`)
   }
+
+  // Seed client reports
+  await seedClientReports()
 
   console.log('🎉 Database seeding completed!')
 }
