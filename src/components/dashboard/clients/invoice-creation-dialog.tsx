@@ -170,14 +170,9 @@ export function InvoiceCreationDialog({
 
   const handleDialogClose = (isOpen: boolean) => {
     if (!isOpen) {
-      // Only reset form when dialog is closed AND no invoice was created
-      // This preserves the form data after successful invoice creation
-      if (!createdInvoice) {
-        console.log('🔄 Dialog closed without invoice - resetting form')
-        resetForm()
-      } else {
-        console.log('🔄 Dialog closed with created invoice - preserving form data')
-      }
+      // Always reset form when dialog is closed to start fresh next time
+      console.log('🔄 Dialog closed - resetting form for next use')
+      resetForm()
     }
     onOpenChange(isOpen)
   }
@@ -228,7 +223,12 @@ export function InvoiceCreationDialog({
       // Store created invoice and notify parent
       console.log('✅ Setting createdInvoice to:', result.invoice)
       setCreatedInvoice(result.invoice)
-      onInvoiceCreated?.(result.invoice)
+      
+      // Notify parent component to refresh invoice list
+      if (onInvoiceCreated) {
+        console.log('📄 Notifying parent of invoice creation')
+        onInvoiceCreated(result.invoice)
+      }
       
       // Show success modal - don't close main modal
       console.log('✅ About to show success modal')
@@ -316,8 +316,12 @@ export function InvoiceCreationDialog({
       // Dynamic import for client-side only
       const { jsPDF } = await import('jspdf')
       
-      // Create new PDF document
-      const doc = new jsPDF()
+      // Create new PDF document with proper configuration
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
       
       // Set document properties
       doc.setProperties({
@@ -327,61 +331,71 @@ export function InvoiceCreationDialog({
         creator: 'SociallyHub Invoice System'
       })
 
+      // Helper function to safely add text
+      const safeText = (text: string, x: number, y: number, maxWidth?: number) => {
+        if (!text) return
+        const cleanText = String(text).replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII characters
+        if (maxWidth) {
+          const lines = doc.splitTextToSize(cleanText, maxWidth)
+          doc.text(lines, x, y)
+          return Array.isArray(lines) ? lines.length * 5 : 5 // Return height used
+        } else {
+          doc.text(cleanText, x, y)
+          return 5
+        }
+      }
+
       // Company Header
       doc.setFontSize(24)
       doc.setFont('helvetica', 'bold')
-      doc.text('INVOICE', 20, 30)
+      safeText('INVOICE', 20, 30)
       
       doc.setFontSize(12)
       doc.setFont('helvetica', 'normal')
-      doc.text('SociallyHub', 150, 20)
-      doc.text('Social Media Management Platform', 150, 28)
-      doc.text('Email: billing@sociallyhub.com', 150, 36)
-      doc.text('Phone: (555) 123-4567', 150, 44)
+      safeText('SociallyHub', 150, 20)
+      safeText('Social Media Management Platform', 150, 28)
+      safeText('Email: billing@sociallyhub.com', 150, 36)
+      safeText('Phone: (555) 123-4567', 150, 44)
 
       // Invoice Details
       doc.setFontSize(14)
       doc.setFont('helvetica', 'bold')
-      doc.text(`Invoice #${createdInvoice.invoiceNumber}`, 20, 50)
+      safeText(`Invoice #${createdInvoice.invoiceNumber}`, 20, 50)
       
       doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
-      doc.text(`Issue Date: ${new Date(invoiceData.issueDate).toLocaleDateString()}`, 20, 60)
-      doc.text(`Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`, 20, 68)
-      doc.text(`Terms: ${invoiceData.terms}`, 20, 76)
+      safeText(`Issue Date: ${new Date(invoiceData.issueDate).toLocaleDateString()}`, 20, 60)
+      safeText(`Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`, 20, 68)
+      safeText(`Terms: ${invoiceData.terms}`, 20, 76)
 
       // Client Information
       doc.setFontSize(12)
       doc.setFont('helvetica', 'bold')
-      doc.text('Bill To:', 20, 90)
+      safeText('Bill To:', 20, 90)
       
       doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
       let yPos = 98
-      doc.text(selectedClient.name, 20, yPos)
-      yPos += 8
+      yPos += safeText(selectedClient.name || '', 20, yPos)
       
       if (selectedClient.company && selectedClient.company !== selectedClient.name) {
-        doc.text(selectedClient.company, 20, yPos)
-        yPos += 8
+        yPos += safeText(selectedClient.company || '', 20, yPos)
       }
       
-      doc.text(selectedClient.email, 20, yPos)
-      yPos += 8
+      yPos += safeText(selectedClient.email || '', 20, yPos)
       
       if (selectedClient.phone) {
-        doc.text(selectedClient.phone, 20, yPos)
-        yPos += 8
+        yPos += safeText(selectedClient.phone || '', 20, yPos)
       }
 
       // Line Items Table Header
       yPos += 10
       doc.setFontSize(10)
       doc.setFont('helvetica', 'bold')
-      doc.text('Description', 20, yPos)
-      doc.text('Qty', 120, yPos)
-      doc.text('Rate', 140, yPos)
-      doc.text('Amount', 170, yPos)
+      safeText('Description', 20, yPos)
+      safeText('Qty', 120, yPos)
+      safeText('Rate', 140, yPos)
+      safeText('Amount', 170, yPos)
       
       // Table line
       yPos += 5
@@ -396,10 +410,10 @@ export function InvoiceCreationDialog({
           yPos = 30
         }
         
-        doc.text(item.description, 20, yPos)
-        doc.text(item.quantity.toString(), 120, yPos)
-        doc.text(formatCurrency(item.rate), 140, yPos)
-        doc.text(formatCurrency(item.amount), 170, yPos)
+        safeText(item.description || '', 20, yPos, 90) // Limit description width
+        safeText(item.quantity.toString(), 120, yPos)
+        safeText(formatCurrency(item.rate), 140, yPos)
+        safeText(formatCurrency(item.amount), 170, yPos)
         yPos += 8
       })
 
@@ -408,19 +422,19 @@ export function InvoiceCreationDialog({
       doc.line(120, yPos, 190, yPos)
       yPos += 8
 
-      doc.text('Subtotal:', 120, yPos)
-      doc.text(formatCurrency(calculateSubtotal()), 170, yPos)
+      safeText('Subtotal:', 120, yPos)
+      safeText(formatCurrency(calculateSubtotal()), 170, yPos)
       yPos += 8
 
       if (invoiceData.tax > 0) {
-        doc.text(`Tax (${invoiceData.tax}%):`, 120, yPos)
-        doc.text(formatCurrency(calculateTax()), 170, yPos)
+        safeText(`Tax (${invoiceData.tax}%):`, 120, yPos)
+        safeText(formatCurrency(calculateTax()), 170, yPos)
         yPos += 8
       }
 
       if (invoiceData.discount > 0) {
-        doc.text(`Discount (${invoiceData.discount}%):`, 120, yPos)
-        doc.text(`-${formatCurrency(calculateDiscount())}`, 170, yPos)
+        safeText(`Discount (${invoiceData.discount}%):`, 120, yPos)
+        safeText(`-${formatCurrency(calculateDiscount())}`, 170, yPos)
         yPos += 8
       }
 
@@ -428,26 +442,33 @@ export function InvoiceCreationDialog({
       doc.line(120, yPos, 190, yPos)
       yPos += 8
       doc.setFont('helvetica', 'bold')
-      doc.text('TOTAL:', 120, yPos)
-      doc.text(formatCurrency(calculateTotal()), 170, yPos)
+      safeText('TOTAL:', 120, yPos)
+      safeText(formatCurrency(calculateTotal()), 170, yPos)
 
       // Notes section
-      if (invoiceData.notes) {
+      if (invoiceData.notes && invoiceData.notes.trim()) {
         yPos += 20
         if (yPos > 250) {
           doc.addPage()
           yPos = 30
         }
         doc.setFont('helvetica', 'bold')
-        doc.text('Notes:', 20, yPos)
+        safeText('Notes:', 20, yPos)
         yPos += 8
         doc.setFont('helvetica', 'normal')
-        const notesLines = doc.splitTextToSize(invoiceData.notes, 170)
-        doc.text(notesLines, 20, yPos)
+        safeText(invoiceData.notes, 20, yPos, 170)
       }
 
-      // Save the PDF
-      doc.save(`Invoice-${createdInvoice.invoiceNumber}.pdf`)
+      // Generate PDF blob and create download
+      const pdfBlob = doc.output('blob')
+      const url = URL.createObjectURL(pdfBlob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Invoice-${createdInvoice.invoiceNumber}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
       
       showMessageModal('success', 'Invoice Downloaded!', `Invoice ${createdInvoice.invoiceNumber} has been downloaded successfully as a PDF file.`)
       console.log('✅ Invoice PDF generated and downloaded successfully')

@@ -184,7 +184,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
     
     // Use the invoice data returned from the API (already properly formatted)
     const newInvoice = {
-      id: invoiceData.id,
+      id: invoiceData.invoiceNumber, // Use invoiceNumber as display ID
       invoiceNumber: invoiceData.invoiceNumber,
       clientName: invoiceData.clientName,
       amount: invoiceData.amount,
@@ -195,12 +195,14 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
       paymentMethod: 'Pending'
     }
     
+    // Add new invoice to the beginning of the list
     setRecentInvoices(prev => [newInvoice, ...prev])
-    // Don't close dialog automatically - let user decide when to close
-    // setShowInvoiceDialog(false) - Removed to keep modal open after creation
+    console.log('📄 Added new invoice to list, total invoices:', recentInvoices.length + 1)
     
-    // Update billing data to reflect new invoice
-    fetchBillingData()
+    // Refresh billing data in the background
+    setTimeout(() => {
+      fetchBillingData()
+    }, 1000)
   }
 
   const handleDownloadInvoice = async (invoice: any) => {
