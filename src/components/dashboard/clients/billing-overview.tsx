@@ -96,14 +96,15 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
         if (response.ok) {
           const data = await response.json()
           const invoices = data.invoices.map((invoice: any) => ({
-            id: invoice.invoiceNumber,
-            invoiceNumber: invoice.invoiceNumber,
+            id: invoice.id, // Keep the actual database ID
+            invoiceNumber: invoice.invoiceNumber, // Keep this for display
             clientName: invoice.clientName,
+            clientEmail: invoice.clientEmail || '',
             amount: invoice.amount,
             currency: invoice.currency,
             status: invoice.status,
             dueDate: invoice.dueDate,
-            issuedDate: invoice.issueDate,
+            issuedDate: invoice.issueDate || invoice.createdAt,
             paymentMethod: 'Pending' // Default since we don't track payment methods yet
           }))
           setRecentInvoices(invoices)
@@ -196,15 +197,16 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
     
     // Use the invoice data returned from the API (already properly formatted)
     const newInvoice = {
-      id: invoiceData.invoiceNumber, // Use invoiceNumber as display ID
-      invoiceNumber: invoiceData.invoiceNumber,
+      id: invoiceData.id, // Use actual database ID for API calls
+      invoiceNumber: invoiceData.invoiceNumber, // Use this for display
       clientName: invoiceData.clientName,
       amount: invoiceData.amount,
       currency: invoiceData.currency,
       status: invoiceData.status,
       dueDate: invoiceData.dueDate,
       issuedDate: invoiceData.issueDate,
-      paymentMethod: 'Pending'
+      paymentMethod: 'Pending',
+      clientEmail: invoiceData.clientEmail || ''
     }
     
     // Add new invoice to the beginning of the list immediately
@@ -365,6 +367,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
 
   const handleUpdateInvoiceStatus = async (invoiceId: string, newStatus: string) => {
     console.log(`📄 Updating invoice ${invoiceId} status to ${newStatus}`)
+    console.log('📄 Full invoice data:', recentInvoices.find(inv => inv.id === invoiceId))
     try {
       const response = await fetch(`/api/invoices/${invoiceId}`, {
         method: 'PATCH',
@@ -552,7 +555,9 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentInvoices.map((invoice) => (
+                {recentInvoices.map((invoice) => {
+                  console.log('📄 Rendering invoice:', invoice.id, invoice.invoiceNumber)
+                  return (
                   <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-full">
@@ -710,7 +715,7 @@ export function BillingOverview({ clients = [] }: BillingOverviewProps) {
                       </div>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             </CardContent>
           </Card>
