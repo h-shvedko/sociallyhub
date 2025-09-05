@@ -2,8 +2,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Verify user has access to workspace
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: {
-        userId: session.user.id,
+        userId,
         workspaceId: workspaceId
       }
     })
@@ -40,7 +42,8 @@ export async function GET(request: NextRequest) {
       select: {
         userId: true,
         role: true,
-        joinedAt: true,
+        permissions: true,
+        createdAt: true,
         user: {
           select: {
             id: true,
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
       },
       orderBy: [
         { role: 'asc' },
-        { joinedAt: 'asc' }
+        { createdAt: 'asc' }
       ]
     })
 
@@ -120,7 +123,8 @@ export async function GET(request: NextRequest) {
         return {
           userId: member.userId,
           role: member.role,
-          joinedAt: member.joinedAt,
+          permissions: member.permissions,
+          joinedAt: member.createdAt, // Use createdAt as joinedAt for compatibility
           user: member.user,
           stats: {
             assignedInboxItems,

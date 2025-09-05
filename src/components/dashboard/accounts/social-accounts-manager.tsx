@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -83,6 +83,15 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     available: boolean
     reason?: string
   }>>([])
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean
+    accountId: string | null
+    accountName: string
+  }>({
+    isOpen: false,
+    accountId: null,
+    accountName: ''
+  })
 
   const handleOpenSettings = (account: SocialAccount) => {
     setSelectedAccount(account)
@@ -122,98 +131,8 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     }
   }
 
-  const fetchClients = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/clients?workspaceId=${workspaceId}`)
-      if (response.ok) {
-        const data = await response.json()
-        setClients(data.clients?.map((client: any) => ({
-          id: client.id,
-          name: client.name
-        })) || [])
-      }
-    } catch (error) {
-      console.error('Failed to fetch clients:', error)
-    }
-  }, [workspaceId])
-
-  const fetchAvailablePlatforms = useCallback(async () => {
-    try {
-      const response = await fetch('/api/accounts/platforms')
-      if (response.ok) {
-        const data = await response.json()
-        setAvailablePlatforms([...data.supported, ...data.unavailable])
-        
-        // Don't set notification here to avoid loops - let the UI show the empty state instead
-      }
-    } catch (error) {
-      console.error('Failed to fetch available platforms:', error)
-      // Fallback to showing all platforms with unavailable status
-      const defaultPlatforms = [
-        { id: 'twitter', name: 'Twitter', displayName: 'Twitter/X', icon: '𝕏', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
-        { id: 'facebook', name: 'Facebook', displayName: 'Facebook', icon: '󠁦', color: 'bg-blue-600 text-white', available: false, reason: 'API credentials not configured' },
-        { id: 'instagram', name: 'Instagram', displayName: 'Instagram', icon: '📷', color: 'bg-gradient-to-r from-purple-500 to-pink-500 text-white', available: false, reason: 'API credentials not configured' },
-        { id: 'linkedin', name: 'LinkedIn', displayName: 'LinkedIn', icon: '💼', color: 'bg-blue-700 text-white', available: false, reason: 'API credentials not configured' },
-        { id: 'tiktok', name: 'TikTok', displayName: 'TikTok', icon: '🎵', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
-        { id: 'youtube', name: 'YouTube', displayName: 'YouTube', icon: '📺', color: 'bg-red-600 text-white', available: false, reason: 'API credentials not configured' }
-      ]
-      setAvailablePlatforms(defaultPlatforms)
-    }
-  }, [])
-
-  // Initial data fetching effect
-  useEffect(() => {
-    fetchSocialAccounts()
-    fetchClients()
-    fetchAvailablePlatforms()
-  }, [workspaceId])
-
-  // OAuth callback handling effect (run once)
-  useEffect(() => {
-    // Handle OAuth callback messages
-    const success = searchParams?.get('success')
-    const error = searchParams?.get('error')
-    const provider = searchParams?.get('provider')
-
-    if (success === 'account_connected' && provider) {
-      setNotification({
-        type: 'success',
-        message: `Successfully connected ${provider.charAt(0).toUpperCase() + provider.slice(1)} account!`
-      })
-      // Clear URL parameters
-      window.history.replaceState({}, '', window.location.pathname)
-    } else if (error) {
-      const errorMessages: Record<string, string> = {
-        oauth_error: 'OAuth authorization failed',
-        missing_params: 'Missing required parameters',
-        invalid_state: 'Invalid state parameter',
-        invalid_state_data: 'Invalid state data',
-        token_exchange_failed: 'Failed to exchange authorization code for token',
-        profile_fetch_failed: 'Failed to fetch user profile',
-        connection_failed: 'Connection failed',
-        callback_error: 'Callback processing error'
-      }
-      
-      setNotification({
-        type: 'error',
-        message: errorMessages[error] || 'Connection failed'
-      })
-      // Clear URL parameters
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [searchParams])
-
-  // Auto-hide notifications effect - TEMPORARILY DISABLED TO PREVENT LOOPS
-  // useEffect(() => {
-  //   if (notification) {
-  //     const timer = setTimeout(() => {
-  //       setNotification(null)
-  //     }, 5000)
-  //     return () => clearTimeout(timer)
-  //   }
-  // }, [notification])
-
-  const fetchSocialAccounts = useCallback(async () => {
+  // Simple refresh function for individual calls
+  const fetchSocialAccounts = async () => {
     try {
       setIsLoading(true)
       const response = await fetch(`/api/accounts?workspaceId=${workspaceId}`)
@@ -231,7 +150,125 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Proper useEffect for initial data loading
+  useEffect(() => {
+    let mounted = true
+
+    const loadInitialData = async () => {
+      try {
+        setIsLoading(true)
+        
+        // Load data in parallel
+        const [accountsResponse, platformsResponse, clientsResponse] = await Promise.all([
+          fetch(`/api/accounts?workspaceId=${workspaceId}`),
+          fetch('/api/accounts/platforms'),
+          fetch(`/api/clients?workspaceId=${workspaceId}`)
+        ])
+
+        if (mounted) {
+          // Handle accounts
+          if (accountsResponse.ok) {
+            const accountsData = await accountsResponse.json()
+            setAccounts(accountsData || [])
+          } else {
+            setAccounts([])
+          }
+
+          // Handle platforms
+          if (platformsResponse.ok) {
+            const platformsData = await platformsResponse.json()
+            setAvailablePlatforms([...platformsData.supported, ...platformsData.unavailable])
+          } else {
+            // Fallback platforms
+            const defaultPlatforms = [
+              { id: 'twitter', name: 'Twitter', displayName: 'Twitter/X', icon: '𝕏', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
+              { id: 'facebook', name: 'Facebook', displayName: 'Facebook', icon: '󠁦', color: 'bg-blue-600 text-white', available: false, reason: 'API credentials not configured' },
+              { id: 'instagram', name: 'Instagram', displayName: 'Instagram', icon: '📷', color: 'bg-gradient-to-r from-purple-500 to-pink-500 text-white', available: false, reason: 'API credentials not configured' },
+              { id: 'linkedin', name: 'LinkedIn', displayName: 'LinkedIn', icon: '💼', color: 'bg-blue-700 text-white', available: false, reason: 'API credentials not configured' },
+              { id: 'tiktok', name: 'TikTok', displayName: 'TikTok', icon: '🎵', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
+              { id: 'youtube', name: 'YouTube', displayName: 'YouTube', icon: '📺', color: 'bg-red-600 text-white', available: false, reason: 'API credentials not configured' }
+            ]
+            setAvailablePlatforms(defaultPlatforms)
+          }
+
+          // Handle clients
+          if (clientsResponse.ok) {
+            const clientsData = await clientsResponse.json()
+            setClients(clientsData.clients?.map((client: any) => ({
+              id: client.id,
+              name: client.name
+            })) || [])
+          }
+        }
+      } catch (error) {
+        console.error('Error loading initial data:', error)
+        if (mounted) {
+          setAccounts([])
+          setAvailablePlatforms([])
+          setClients([])
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadInitialData()
+
+    return () => {
+      mounted = false
+    }
   }, [workspaceId])
+
+  // Handle OAuth callback
+  useEffect(() => {
+    const success = searchParams?.get('success')
+    const error = searchParams?.get('error')
+    const provider = searchParams?.get('provider')
+
+    if (success === 'account_connected' && provider) {
+      setNotification({
+        type: 'success',
+        message: `Successfully connected ${provider.charAt(0).toUpperCase() + provider.slice(1)} account!`
+      })
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        oauth_error: 'OAuth authorization failed',
+        missing_params: 'Missing required parameters',
+        invalid_state: 'Invalid state parameter',
+        invalid_state_data: 'Invalid state data',
+        token_exchange_failed: 'Failed to exchange authorization code for token',
+        profile_fetch_failed: 'Failed to fetch user profile',
+        connection_failed: 'Connection failed',
+        callback_error: 'Callback processing error'
+      }
+      
+      setNotification({
+        type: 'error',
+        message: errorMessages[error] || 'Connection failed'
+      })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [searchParams])
+
+  // Auto-hide notifications after 5 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [notification])
+
+  // Manual notification dismiss
+  const dismissNotification = () => {
+    setNotification(null)
+  }
 
   const handleConnectAccount = async (provider: SocialAccount['provider']) => {
     setIsConnecting(true)
@@ -302,10 +339,33 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
       
       if (response.ok) {
         setAccounts(prev => prev.filter(acc => acc.id !== accountId))
+        setNotification({
+          type: 'success',
+          message: 'Account disconnected successfully'
+        })
+      } else {
+        setNotification({
+          type: 'error',
+          message: 'Failed to disconnect account'
+        })
       }
     } catch (error) {
       console.error('Delete error:', error)
+      setNotification({
+        type: 'error',
+        message: 'Failed to disconnect account'
+      })
+    } finally {
+      setDeleteConfirm({ isOpen: false, accountId: null, accountName: '' })
     }
+  }
+
+  const confirmDeleteAccount = (account: SocialAccount) => {
+    setDeleteConfirm({
+      isOpen: true,
+      accountId: account.id,
+      accountName: `${account.displayName} (@${account.handle})`
+    })
   }
 
   const getProviderIcon = (provider: SocialAccount['provider']) => {
@@ -400,15 +460,15 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
               Connect Account
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Connect Social Account</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Choose a platform to connect your social media account
               </p>
-              <div className="grid grid-cols-2 gap-3">
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
                 {availablePlatforms.map((platform) => {
                   const isConnected = accounts.some(acc => acc.provider.toLowerCase() === platform.id && acc.status === 'ACTIVE')
                   const isAvailable = platform.available
@@ -418,33 +478,57 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                       <Button
                         variant="outline"
                         className={cn(
-                          "h-20 w-full flex-col space-y-2",
-                          isAvailable ? platform.color : "bg-gray-100 text-gray-400 border-gray-200",
-                          (isConnected || !isAvailable) && "opacity-60",
-                          !isAvailable && "cursor-not-allowed"
+                          "h-24 w-full flex-col gap-2 p-4 hover:bg-muted/50 transition-colors",
+                          isAvailable && !isConnected && "hover:border-primary",
+                          isConnected && "bg-green-50 border-green-200 text-green-700",
+                          !isAvailable && "bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
                         )}
-                        onClick={() => isAvailable && handleConnectAccount(platform.id.toUpperCase() as SocialAccount['provider'])}
+                        onClick={() => isAvailable && !isConnected && handleConnectAccount(platform.id.toUpperCase() as SocialAccount['provider'])}
                         disabled={isConnecting || isConnected || !isAvailable}
                       >
                         <div className="text-2xl">{platform.icon}</div>
-                        <div className="text-sm font-medium">
+                        <div className="text-sm font-medium text-center">
                           {platform.displayName}
                         </div>
                         {isConnected && (
-                          <div className="text-xs opacity-75">Connected</div>
+                          <div className="absolute top-2 right-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </div>
                         )}
                         {!isAvailable && (
-                          <div className="text-xs opacity-75">Not Available</div>
+                          <div className="absolute top-2 right-2">
+                            <XCircle className="h-4 w-4 text-gray-400" />
+                          </div>
                         )}
                       </Button>
+                      {isConnected && (
+                        <div className="absolute -bottom-2 left-0 right-0 text-xs text-center text-green-600 bg-background px-2 rounded">
+                          Already Connected
+                        </div>
+                      )}
                       {!isAvailable && (
-                        <div className="absolute -bottom-1 left-0 right-0 text-xs text-center text-muted-foreground bg-background px-2 rounded">
-                          {platform.reason}
+                        <div className="absolute -bottom-2 left-0 right-0 text-xs text-center text-muted-foreground bg-background px-2 rounded">
+                          {platform.reason || 'Not configured'}
                         </div>
                       )}
                     </div>
                   )
                 })}
+              </div>
+              
+              {/* Help text */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-start space-x-2">
+                  <div className="text-blue-600 mt-0.5">ℹ️</div>
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Connection Tips:</p>
+                    <ul className="space-y-1 text-xs">
+                      <li>• You'll be redirected to authorize SociallyHub</li>
+                      <li>• Only necessary permissions are requested</li>
+                      <li>• You can disconnect anytime from settings</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           </DialogContent>
@@ -544,7 +628,7 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDeleteAccount(account.id)}
+                      onClick={() => confirmDeleteAccount(account)}
                       className="text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -674,6 +758,53 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
         onSave={handleSaveSettings}
         clients={clients}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirm.isOpen} onOpenChange={(open) => !open && setDeleteConfirm({ isOpen: false, accountId: null, accountName: '' })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+              Disconnect Account
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to disconnect <strong>{deleteConfirm.accountName}</strong>? 
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="flex items-start space-x-2">
+                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                <div className="text-sm text-red-800">
+                  <p className="font-medium">This action will:</p>
+                  <ul className="mt-1 space-y-1 text-xs">
+                    <li>• Remove access to post and manage content</li>
+                    <li>• Stop monitoring mentions and comments</li>
+                    <li>• Disable analytics for this account</li>
+                    <li>• You can reconnect anytime</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div className="flex space-x-3 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => setDeleteConfirm({ isOpen: false, accountId: null, accountName: '' })}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={() => deleteConfirm.accountId && handleDeleteAccount(deleteConfirm.accountId)}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Disconnect Account
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

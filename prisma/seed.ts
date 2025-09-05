@@ -52,9 +52,11 @@ async function main() {
       workspaceId: demoWorkspace.id,
       role: 'OWNER',
       permissions: {
-        canPost: true,
-        canSchedule: true,
         canManageTeam: true,
+        canManageContent: true,
+        canManageSettings: true,
+        canViewAnalytics: true,
+        canManageBilling: true,
       },
     },
   })
