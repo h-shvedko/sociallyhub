@@ -81,7 +81,8 @@
       "Bash(timeout 10 docker-compose logs app --follow)",
       "Bash(timeout 30 docker-compose logs app --tail=10)",
       "Read(//tmp/**)",
-      "Bash(timeout 10 docker-compose logs app --tail=5)"
+      "Bash(timeout 10 docker-compose logs app --tail=5)",
+      "Bash(timeout 45 docker-compose logs -f app)"
     ],
     "deny": [],
     "ask": []
