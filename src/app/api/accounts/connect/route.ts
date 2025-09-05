@@ -36,11 +36,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
     }
 
-    // Check if provider is supported
-    const supportedProviders = ['twitter', 'facebook', 'instagram', 'linkedin', 'tiktok', 'youtube']
-    if (!supportedProviders.includes(provider.toLowerCase())) {
+    // Check if provider is supported and available
+    const supportedProviders = socialMediaManager.getSupportedPlatforms().map(p => p.toLowerCase())
+    const allProviders = ['twitter', 'facebook', 'instagram', 'linkedin', 'tiktok', 'youtube']
+    
+    if (!allProviders.includes(provider.toLowerCase())) {
       return NextResponse.json({ 
         error: `Provider ${provider} is not supported` 
+      }, { status: 400 })
+    }
+
+    if (!supportedProviders.includes(provider.toLowerCase())) {
+      return NextResponse.json({ 
+        error: `${provider} is not available - API credentials not configured`,
+        code: 'PROVIDER_NOT_CONFIGURED',
+        availablePlatforms: supportedProviders
       }, { status: 400 })
     }
 

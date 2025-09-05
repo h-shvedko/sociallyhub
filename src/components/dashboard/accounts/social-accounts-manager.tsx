@@ -74,6 +74,15 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
   const [selectedAccount, setSelectedAccount] = useState<SocialAccount | null>(null)
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false)
   const [clients, setClients] = useState<Array<{id: string, name: string}>>([])
+  const [availablePlatforms, setAvailablePlatforms] = useState<Array<{
+    id: string
+    name: string
+    displayName: string
+    icon: string
+    color: string
+    available: boolean
+    reason?: string
+  }>>([])
 
   const handleOpenSettings = (account: SocialAccount) => {
     setSelectedAccount(account)
@@ -128,9 +137,39 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     }
   }
 
+  const fetchAvailablePlatforms = async () => {
+    try {
+      const response = await fetch('/api/accounts/platforms')
+      if (response.ok) {
+        const data = await response.json()
+        setAvailablePlatforms([...data.supported, ...data.unavailable])
+        
+        if (data.total === 0) {
+          setNotification({
+            type: 'error',
+            message: 'No social media platforms are configured. Please contact your administrator to set up API credentials.'
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch available platforms:', error)
+      // Fallback to showing all platforms with unavailable status
+      const defaultPlatforms = [
+        { id: 'twitter', name: 'Twitter', displayName: 'Twitter/X', icon: '𝕏', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
+        { id: 'facebook', name: 'Facebook', displayName: 'Facebook', icon: '󠁦', color: 'bg-blue-600 text-white', available: false, reason: 'API credentials not configured' },
+        { id: 'instagram', name: 'Instagram', displayName: 'Instagram', icon: '📷', color: 'bg-gradient-to-r from-purple-500 to-pink-500 text-white', available: false, reason: 'API credentials not configured' },
+        { id: 'linkedin', name: 'LinkedIn', displayName: 'LinkedIn', icon: '💼', color: 'bg-blue-700 text-white', available: false, reason: 'API credentials not configured' },
+        { id: 'tiktok', name: 'TikTok', displayName: 'TikTok', icon: '🎵', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
+        { id: 'youtube', name: 'YouTube', displayName: 'YouTube', icon: '📺', color: 'bg-red-600 text-white', available: false, reason: 'API credentials not configured' }
+      ]
+      setAvailablePlatforms(defaultPlatforms)
+    }
+  }
+
   useEffect(() => {
     fetchSocialAccounts()
     fetchClients()
+    fetchAvailablePlatforms()
     
     // Handle OAuth callback messages
     const success = searchParams?.get('success')
@@ -236,13 +275,25 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
         window.location.href = result.authUrl
       } else {
         console.error('Connection failed:', result.error)
-        alert(`Failed to connect ${provider}: ${result.error}`)
+        
+        let errorMessage = result.error
+        if (result.code === 'PROVIDER_NOT_CONFIGURED') {
+          errorMessage = `${provider} is not available because API credentials are not configured. Please contact your administrator.`
+        }
+        
+        setNotification({
+          type: 'error',
+          message: errorMessage
+        })
         setIsConnecting(false)
         setSelectedProvider(null)
       }
     } catch (error) {
       console.error('Connection error:', error)
-      alert('Connection failed. Please try again.')
+      setNotification({
+        type: 'error',
+        message: 'Connection failed. Please try again.'
+      })
       setIsConnecting(false)
       setSelectedProvider(null)
     }
@@ -321,9 +372,7 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     }
   }
 
-  const availableProviders: SocialAccount['provider'][] = [
-    'TWITTER', 'FACEBOOK', 'INSTAGRAM', 'LINKEDIN', 'TIKTOK', 'YOUTUBE'
-  ]
+  // This will be populated from availablePlatforms state
 
   return (
     <div className="flex flex-col space-y-6">
@@ -379,28 +428,40 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                 Choose a platform to connect your social media account
               </p>
               <div className="grid grid-cols-2 gap-3">
-                {availableProviders.map((provider) => {
-                  const isConnected = accounts.some(acc => acc.provider === provider && acc.status === 'ACTIVE')
+                {availablePlatforms.map((platform) => {
+                  const isConnected = accounts.some(acc => acc.provider.toLowerCase() === platform.id && acc.status === 'ACTIVE')
+                  const isAvailable = platform.available
+                  
                   return (
-                    <Button
-                      key={provider}
-                      variant="outline"
-                      className={cn(
-                        "h-20 flex-col space-y-2",
-                        getProviderColor(provider),
-                        isConnected && "opacity-50 cursor-not-allowed"
+                    <div key={platform.id} className="relative">
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "h-20 w-full flex-col space-y-2",
+                          isAvailable ? platform.color : "bg-gray-100 text-gray-400 border-gray-200",
+                          (isConnected || !isAvailable) && "opacity-60",
+                          !isAvailable && "cursor-not-allowed"
+                        )}
+                        onClick={() => isAvailable && handleConnectAccount(platform.id.toUpperCase() as SocialAccount['provider'])}
+                        disabled={isConnecting || isConnected || !isAvailable}
+                      >
+                        <div className="text-2xl">{platform.icon}</div>
+                        <div className="text-sm font-medium">
+                          {platform.displayName}
+                        </div>
+                        {isConnected && (
+                          <div className="text-xs opacity-75">Connected</div>
+                        )}
+                        {!isAvailable && (
+                          <div className="text-xs opacity-75">Not Available</div>
+                        )}
+                      </Button>
+                      {!isAvailable && (
+                        <div className="absolute -bottom-1 left-0 right-0 text-xs text-center text-muted-foreground bg-background px-2 rounded">
+                          {platform.reason}
+                        </div>
                       )}
-                      onClick={() => handleConnectAccount(provider)}
-                      disabled={isConnecting || isConnected}
-                    >
-                      <div className="text-2xl">{getProviderIcon(provider)}</div>
-                      <div className="text-sm font-medium capitalize">
-                        {provider.toLowerCase()}
-                      </div>
-                      {isConnected && (
-                        <div className="text-xs opacity-75">Connected</div>
-                      )}
-                    </Button>
+                    </div>
                   )
                 })}
               </div>
