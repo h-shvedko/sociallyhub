@@ -63,7 +63,6 @@ import { CreateReportDialog } from './create-report-dialog'
 import { EditTemplateDialog } from './edit-template-dialog'
 import { CreateScheduleDialog } from './create-schedule-dialog'
 import { CreateTemplateDialog } from './create-template-dialog'
-import { CreateScheduleDialog } from './create-schedule-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { ToastContainer } from '@/components/ui/toast'
 
