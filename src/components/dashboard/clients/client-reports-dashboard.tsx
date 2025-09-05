@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -137,6 +137,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const [reports, setReports] = useState<ClientReport[]>([])
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
   const [schedules, setSchedules] = useState<ReportSchedule[]>([])
+  const [forceUpdate, setForceUpdate] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isSchedulesLoading, setIsSchedulesLoading] = useState(false)
   const [selectedClient, setSelectedClient] = useState<string>('all')
@@ -161,14 +162,14 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     fetchReports()
     fetchTemplates()
     fetchSchedules() // Always fetch schedules
-  }, [selectedClient, selectedStatus, selectedType])
+  }, [selectedClient, selectedStatus, selectedType, fetchSchedules])
 
   // Fetch schedules when switching to scheduled tab
   useEffect(() => {
     if (activeTab === 'scheduled') {
       fetchSchedules()
     }
-  }, [activeTab])
+  }, [activeTab, fetchSchedules])
 
   const fetchReports = async () => {
     try {
@@ -191,8 +192,9 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     }
   }
 
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     try {
+      console.log('🔄 Fetching schedules...')
       setIsSchedulesLoading(true)
       const params = new URLSearchParams()
       
@@ -201,14 +203,22 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       const response = await fetch(`/api/client-reports/schedules?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
+        console.log('✅ Schedules fetched:', data.schedules?.length, 'schedules')
         setSchedules(data.schedules || [])
+        // Force component re-render
+        setForceUpdate(prev => prev + 1)
+        // Force a small delay to ensure state update completes
+        await new Promise(resolve => setTimeout(resolve, 50))
+      } else {
+        console.error('❌ Failed to fetch schedules:', response.status)
       }
     } catch (error) {
-      console.error('Error fetching schedules:', error)
+      console.error('❌ Error fetching schedules:', error)
     } finally {
       setIsSchedulesLoading(false)
+      console.log('🏁 Fetch schedules completed')
     }
-  }
+  }, [selectedClient])
 
   const fetchTemplates = async () => {
     try {
@@ -424,10 +434,14 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       })
 
       if (response.ok) {
+        console.log(`⚙️ Schedule toggled: ${isActive ? 'activated' : 'paused'}`)
         toast.success(`Schedule ${isActive ? 'activated' : 'paused'} successfully`)
+        console.log('🔄 Refreshing schedules after toggle...')
         await fetchSchedules()
+        console.log('✅ Schedule list should be updated now')
       } else {
         const error = await response.json()
+        console.error('❌ Toggle failed:', error)
         toast.error(`Failed to update schedule: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
@@ -469,12 +483,16 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       })
 
       if (response.ok) {
+        console.log('🗑️ Schedule deleted')
         toast.success('Schedule deleted successfully')
+        console.log('🔄 Refreshing schedules after deletion...')
         await fetchSchedules()
+        console.log('✅ Schedule list should be updated now')
         setShowDeleteScheduleDialog(false)
         setSelectedSchedule(null)
       } else {
         const error = await response.json()
+        console.error('❌ Delete failed:', error)
         toast.error(`Failed to delete schedule: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
@@ -1298,9 +1316,12 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         open={showCreateScheduleDialog}
         onOpenChange={setShowCreateScheduleDialog}
         onScheduleCreated={async (schedule) => {
+          console.log('🎆 Schedule created:', schedule)
           if (schedule) {
             toast.success('Schedule created successfully')
+            console.log('🔄 Refreshing schedules after creation...')
             await fetchSchedules()
+            console.log('✅ Schedule list should be updated now')
           }
           setShowCreateScheduleDialog(false)
         }}
@@ -1315,9 +1336,12 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           open={showEditScheduleDialog}
           onOpenChange={setShowEditScheduleDialog}
           onScheduleCreated={async (schedule) => {
+            console.log('✏️ Schedule updated:', schedule)
             if (schedule) {
               toast.success('Schedule updated successfully')
+              console.log('🔄 Refreshing schedules after update...')
               await fetchSchedules()
+              console.log('✅ Schedule list should be updated now')
             }
             setShowEditScheduleDialog(false)
             setSelectedSchedule(null)
