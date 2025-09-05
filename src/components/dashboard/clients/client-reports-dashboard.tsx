@@ -51,14 +51,19 @@ import {
   Share2,
   Filter,
   MoreVertical,
+  MoreHorizontal,
   RefreshCw,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  Play,
+  Pause
 } from 'lucide-react'
 import { CreateReportDialog } from './create-report-dialog'
 import { EditTemplateDialog } from './edit-template-dialog'
+import { CreateScheduleDialog } from './create-schedule-dialog'
 import { CreateTemplateDialog } from './create-template-dialog'
+import { CreateScheduleDialog } from './create-schedule-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { ToastContainer } from '@/components/ui/toast'
 
@@ -101,12 +106,40 @@ interface ReportTemplate {
   isDefault: boolean
 }
 
+interface ReportSchedule {
+  id: string
+  name: string
+  frequency: string
+  dayOfWeek?: number
+  dayOfMonth?: number
+  time: string
+  recipients: string[]
+  isActive: boolean
+  lastRun?: Date
+  nextRun?: Date
+  client: {
+    id: string
+    name: string
+    company?: string
+    email?: string
+  }
+  template: {
+    id: string
+    name: string
+    type: string
+    format: string[]
+  }
+  createdAt: Date
+}
+
 export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const { toasts, toast, removeToast } = useToast()
   const [activeTab, setActiveTab] = useState('overview')
   const [reports, setReports] = useState<ClientReport[]>([])
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
+  const [schedules, setSchedules] = useState<ReportSchedule[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSchedulesLoading, setIsSchedulesLoading] = useState(false)
   const [selectedClient, setSelectedClient] = useState<string>('all')
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedType, setSelectedType] = useState<string>('all')
@@ -118,13 +151,20 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const [showSendEmailDialog, setShowSendEmailDialog] = useState(false)
   const [showEditTemplateDialog, setShowEditTemplateDialog] = useState(false)
   const [showCreateTemplateDialog, setShowCreateTemplateDialog] = useState(false)
+  const [showCreateScheduleDialog, setShowCreateScheduleDialog] = useState(false)
+  const [showEditScheduleDialog, setShowEditScheduleDialog] = useState(false)
+  const [showDeleteScheduleDialog, setShowDeleteScheduleDialog] = useState(false)
   const [selectedReport, setSelectedReport] = useState<ClientReport | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null)
+  const [selectedSchedule, setSelectedSchedule] = useState<ReportSchedule | null>(null)
 
   useEffect(() => {
     fetchReports()
     fetchTemplates()
-  }, [selectedClient, selectedStatus, selectedType])
+    if (activeTab === 'scheduled') {
+      fetchSchedules()
+    }
+  }, [selectedClient, selectedStatus, selectedType, activeTab])
 
   const fetchReports = async () => {
     try {
@@ -144,6 +184,25 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       console.error('Error fetching reports:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchSchedules = async () => {
+    try {
+      setIsSchedulesLoading(true)
+      const params = new URLSearchParams()
+      
+      if (selectedClient && selectedClient !== 'all') params.append('clientId', selectedClient)
+
+      const response = await fetch(`/api/client-reports/schedules?${params.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSchedules(data.schedules || [])
+      }
+    } catch (error) {
+      console.error('Error fetching schedules:', error)
+    } finally {
+      setIsSchedulesLoading(false)
     }
   }
 
@@ -347,6 +406,77 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     } catch (error) {
       console.error('Error sending report:', error)
       toast.error('Failed to send report. Please try again.')
+    }
+  }
+
+  const toggleScheduleActive = async (scheduleId: string, isActive: boolean) => {
+    try {
+      const response = await fetch(`/api/client-reports/schedules/${scheduleId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ isActive }),
+      })
+
+      if (response.ok) {
+        toast.success(`Schedule ${isActive ? 'activated' : 'paused'} successfully`)
+        fetchSchedules()
+      } else {
+        const error = await response.json()
+        toast.error(`Failed to update schedule: ${error.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error updating schedule:', error)
+      toast.error('Failed to update schedule. Please try again.')
+    }
+  }
+
+  const runScheduleNow = async (scheduleId: string) => {
+    try {
+      const response = await fetch('/api/client-reports/schedules/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET || 'default-cron-secret'}`
+        },
+        body: JSON.stringify({ scheduleId }),
+      })
+
+      if (response.ok) {
+        toast.success('Schedule executed successfully')
+        fetchSchedules()
+        fetchReports()
+      } else {
+        const error = await response.json()
+        toast.error(`Failed to execute schedule: ${error.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error executing schedule:', error)
+      toast.error('Failed to execute schedule. Please try again.')
+    }
+  }
+
+  const handleDeleteScheduleConfirm = async () => {
+    if (!selectedSchedule) return
+
+    try {
+      const response = await fetch(`/api/client-reports/schedules/${selectedSchedule.id}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast.success('Schedule deleted successfully')
+        fetchSchedules()
+        setShowDeleteScheduleDialog(false)
+        setSelectedSchedule(null)
+      } else {
+        const error = await response.json()
+        toast.error(`Failed to delete schedule: ${error.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error deleting schedule:', error)
+      toast.error('Failed to delete schedule. Please try again.')
     }
   }
 
@@ -708,19 +838,246 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         </TabsContent>
 
         <TabsContent value="scheduled" className="space-y-4">
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-8">
-              <Clock className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Scheduled Reports</h3>
-              <p className="text-muted-foreground text-center mb-4">
-                Set up automated report generation and delivery
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Scheduled Reports</h2>
+              <p className="text-muted-foreground">
+                Automate report generation and delivery
               </p>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Schedule Report
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+            <Button 
+              onClick={() => setShowCreateScheduleDialog(true)}
+              className="shrink-0"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Schedule
+            </Button>
+          </div>
+
+          {/* Scheduled Reports Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <Clock className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-muted-foreground">Active Schedules</p>
+                    <p className="text-2xl font-bold">{schedules.filter(s => s.isActive).length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Calendar className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-muted-foreground">Total Schedules</p>
+                    <p className="text-2xl font-bold">{schedules.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <BarChart3 className="h-4 w-4 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-muted-foreground">Next Due</p>
+                    <p className="text-sm font-bold">
+                      {schedules.filter(s => s.isActive && s.nextRun).length > 0
+                        ? new Date(Math.min(...schedules
+                            .filter(s => s.isActive && s.nextRun)
+                            .map(s => new Date(s.nextRun).getTime())
+                          )).toLocaleDateString()
+                        : 'None'
+                      }
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <Mail className="h-4 w-4 text-orange-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-muted-foreground">Recipients</p>
+                    <p className="text-2xl font-bold">
+                      {schedules.reduce((total, s) => total + (s.recipients?.length || 0), 0)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Schedules List */}
+          {isSchedulesLoading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <span>Loading schedules...</span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : schedules.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Clock className="h-16 w-16 text-muted-foreground mb-4" />
+                <h3 className="text-xl font-semibold mb-2">No Scheduled Reports</h3>
+                <p className="text-muted-foreground text-center mb-6 max-w-md">
+                  Create your first automated report schedule to start generating reports automatically.
+                </p>
+                <Button onClick={() => setShowCreateScheduleDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Schedule
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {schedules.map((schedule) => (
+                <Card key={schedule.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold text-lg truncate">{schedule.name}</h3>
+                          <Badge 
+                            variant={schedule.isActive ? 'default' : 'secondary'}
+                            className={schedule.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}
+                          >
+                            {schedule.isActive ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <span className="font-medium text-muted-foreground">Client:</span>
+                            <p className="font-medium">{schedule.client.name}</p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-muted-foreground">Template:</span>
+                            <p className="font-medium">{schedule.template.name}</p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-muted-foreground">Frequency:</span>
+                            <p className="font-medium capitalize">{schedule.frequency.toLowerCase()}</p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-muted-foreground">Time:</span>
+                            <p className="font-medium">{schedule.time}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 text-sm">
+                          <div>
+                            <span className="font-medium text-muted-foreground">Recipients:</span>
+                            <p className="font-medium">
+                              {schedule.recipients?.length || 0} email{(schedule.recipients?.length || 0) !== 1 ? 's' : ''}
+                            </p>
+                            {schedule.recipients && schedule.recipients.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {schedule.recipients.slice(0, 2).join(', ')}
+                                {schedule.recipients.length > 2 && ` +${schedule.recipients.length - 2} more`}
+                              </p>
+                            )}
+                          </div>
+                          <div>
+                            <span className="font-medium text-muted-foreground">Next Run:</span>
+                            <p className="font-medium">
+                              {schedule.nextRun && schedule.isActive
+                                ? new Date(schedule.nextRun).toLocaleDateString('en-US', {
+                                    weekday: 'short',
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })
+                                : 'Not scheduled'
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {schedule.lastRun && (
+                          <div className="mt-4 text-sm">
+                            <span className="font-medium text-muted-foreground">Last Run:</span>
+                            <p className="font-medium text-xs text-muted-foreground">
+                              {new Date(schedule.lastRun).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedSchedule(schedule)
+                            setShowEditScheduleDialog(true)
+                          }}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Schedule
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toggleScheduleActive(schedule.id, !schedule.isActive)}>
+                            {schedule.isActive ? (
+                              <>
+                                <Pause className="h-4 w-4 mr-2" />
+                                Pause Schedule
+                              </>
+                            ) : (
+                              <>
+                                <Play className="h-4 w-4 mr-2" />
+                                Activate Schedule
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => runScheduleNow(schedule.id)}>
+                            <Play className="h-4 w-4 mr-2" />
+                            Run Now
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => {
+                              setSelectedSchedule(schedule)
+                              setShowDeleteScheduleDialog(true)
+                            }}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Schedule
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="history" className="space-y-4">
@@ -932,6 +1289,82 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         onTemplateCreated={handleTemplateCreated}
         toast={toast}
       />
+
+      {/* Create Schedule Dialog */}
+      <CreateScheduleDialog
+        open={showCreateScheduleDialog}
+        onOpenChange={setShowCreateScheduleDialog}
+        onScheduleCreated={(schedule) => {
+          if (schedule) {
+            toast.success('Schedule created successfully')
+            fetchSchedules()
+          }
+          setShowCreateScheduleDialog(false)
+        }}
+        clients={clients}
+        templates={templates}
+        toast={toast}
+      />
+
+      {/* Edit Schedule Dialog */}
+      {selectedSchedule && (
+        <CreateScheduleDialog
+          open={showEditScheduleDialog}
+          onOpenChange={setShowEditScheduleDialog}
+          onScheduleCreated={(schedule) => {
+            if (schedule) {
+              toast.success('Schedule updated successfully')
+              fetchSchedules()
+            }
+            setShowEditScheduleDialog(false)
+            setSelectedSchedule(null)
+          }}
+          clients={clients}
+          templates={templates}
+          editSchedule={selectedSchedule}
+          toast={toast}
+        />
+      )}
+
+      {/* Delete Schedule Dialog */}
+      <Dialog open={showDeleteScheduleDialog} onOpenChange={setShowDeleteScheduleDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-500" />
+              Delete Schedule
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this schedule? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSchedule && (
+            <div className="my-4 p-4 border rounded-lg bg-muted/50">
+              <h4 className="font-semibold">{selectedSchedule.name}</h4>
+              <p className="text-sm text-muted-foreground">Client: {selectedSchedule.client.name}</p>
+              <p className="text-sm text-muted-foreground">Frequency: {selectedSchedule.frequency}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteScheduleDialog(false)
+                setSelectedSchedule(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteScheduleConfirm}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Schedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />

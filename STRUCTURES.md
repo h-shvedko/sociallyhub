@@ -95,6 +95,9 @@ sociallyhub/
 - `POST /api/client-reports/[id]/send` - Email report
 - `GET/POST /api/client-reports/templates` - List/Create report templates
 - `GET/PUT/DELETE /api/client-reports/templates/[id]` - Template CRUD operations
+- `GET/POST /api/client-reports/schedules` - List/Create scheduled reports
+- `GET/PUT/DELETE /api/client-reports/schedules/[id]` - Schedule CRUD operations
+- `POST /api/client-reports/schedules/run` - Execute scheduled reports (cron endpoint)
 
 ### Campaigns
 - `GET/POST /api/campaigns` - Campaign management
