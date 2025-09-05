@@ -1101,16 +1101,305 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           )}
         </TabsContent>
 
-        <TabsContent value="history" className="space-y-4">
+        <TabsContent value="history" className="space-y-6">
+          {/* History Analytics Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Total Reports</p>
+                    <p className="text-3xl font-bold text-blue-600">{reports.length}</p>
+                  </div>
+                  <div className="p-3 bg-blue-100 rounded-lg">
+                    <FileText className="h-6 w-6 text-blue-600" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  All time generated reports
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Completed</p>
+                    <p className="text-3xl font-bold text-green-600">
+                      {reports.filter(r => r.status === 'COMPLETED').length}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-green-100 rounded-lg">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Successfully generated
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Downloads</p>
+                    <p className="text-3xl font-bold text-purple-600">
+                      {reports.reduce((total, report) => total + (report.downloadCount || 0), 0)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-purple-100 rounded-lg">
+                    <Download className="h-6 w-6 text-purple-600" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Total download count
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">This Month</p>
+                    <p className="text-3xl font-bold text-orange-600">
+                      {reports.filter(r => {
+                        const reportDate = new Date(r.createdAt)
+                        const now = new Date()
+                        return reportDate.getMonth() === now.getMonth() && 
+                               reportDate.getFullYear() === now.getFullYear()
+                      }).length}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-orange-100 rounded-lg">
+                    <Calendar className="h-6 w-6 text-orange-600" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Reports this month
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* History Filters */}
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-8">
-              <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Report History</h3>
-              <p className="text-muted-foreground text-center">
-                View detailed history and analytics for all generated reports
-              </p>
+            <CardContent className="p-6">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Search report history..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="max-w-sm"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="All Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="COMPLETED">Completed</SelectItem>
+                      <SelectItem value="DRAFT">Draft</SelectItem>
+                      <SelectItem value="GENERATING">Generating</SelectItem>
+                      <SelectItem value="FAILED">Failed</SelectItem>
+                      <SelectItem value="SENT">Sent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={selectedType} onValueChange={setSelectedType}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="EXECUTIVE">Executive</SelectItem>
+                      <SelectItem value="PERFORMANCE">Performance</SelectItem>
+                      <SelectItem value="ANALYTICS">Analytics</SelectItem>
+                      <SelectItem value="CUSTOM">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardContent>
           </Card>
+
+          {/* Report History List */}
+          {isLoading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <span>Loading report history...</span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : filteredReports.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <BarChart3 className="h-16 w-16 text-muted-foreground mb-4" />
+                <h3 className="text-xl font-semibold mb-2">No Report History</h3>
+                <p className="text-muted-foreground text-center mb-6 max-w-md">
+                  No reports match your current filters. Try adjusting your search or create your first report.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {filteredReports.map((report) => (
+                <Card key={report.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        {/* Report Header */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <h3 className="font-semibold text-lg truncate">{report.name}</h3>
+                          <Badge 
+                            variant={report.status === 'COMPLETED' ? 'default' : 
+                                   report.status === 'FAILED' ? 'destructive' : 'secondary'}
+                          >
+                            {report.status}
+                          </Badge>
+                          <Badge variant="outline">{report.type}</Badge>
+                          <Badge variant="outline">{report.format}</Badge>
+                        </div>
+                        
+                        {/* Report Details Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <span className="font-medium text-muted-foreground">Client:</span>
+                            <p className="font-medium">{report.client.name}</p>
+                            {report.client.company && (
+                              <p className="text-xs text-muted-foreground">{report.client.company}</p>
+                            )}
+                          </div>
+                          <div>
+                            <span className="font-medium text-muted-foreground">Created:</span>
+                            <p className="font-medium">
+                              {new Date(report.createdAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-muted-foreground">Frequency:</span>
+                            <p className="font-medium capitalize">{report.frequency.toLowerCase().replace('_', ' ')}</p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-muted-foreground">Downloads:</span>
+                            <p className="font-medium">{report.downloadCount || 0} times</p>
+                          </div>
+                        </div>
+                        
+                        {/* Report Metrics */}
+                        {report.lastGenerated && (
+                          <div className="mt-4 text-sm">
+                            <span className="font-medium text-muted-foreground">Last Generated:</span>
+                            <p className="font-medium text-xs text-muted-foreground">
+                              {new Date(report.lastGenerated).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* Recipients */}
+                        {report.recipients && report.recipients.length > 0 && (
+                          <div className="mt-4 text-sm">
+                            <span className="font-medium text-muted-foreground">Recipients:</span>
+                            <p className="font-medium text-xs text-muted-foreground">
+                              {report.recipients.slice(0, 3).join(', ')}
+                              {report.recipients.length > 3 && ` +${report.recipients.length - 3} more`}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* Description */}
+                        {report.description && (
+                          <div className="mt-4">
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                              {report.description}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Action Menu */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {report.status === 'COMPLETED' && (
+                            <>
+                              <DropdownMenuItem onClick={() => handleDownloadReport(report.id)}>
+                                <Download className="h-4 w-4 mr-2" />
+                                Download Report
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => {
+                                setSelectedReport(report)
+                                setShowSendEmailDialog(true)
+                              }}>
+                                <Send className="h-4 w-4 mr-2" />
+                                Send via Email
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedReport(report)
+                            setShowViewDialog(true)
+                          }}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedReport(report)
+                            setShowEditDialog(true)
+                          }}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Report
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteReport(report)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Report
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    
+                    {/* File Info */}
+                    {report.fileSize && (
+                      <div className="mt-4 pt-4 border-t border-muted">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>File Size: {report.fileSize}</span>
+                          <span>ID: {report.id.slice(-8)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
