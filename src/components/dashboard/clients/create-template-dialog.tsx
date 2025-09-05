@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,11 +24,10 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { X, Plus } from 'lucide-react'
 
-interface EditTemplateDialogProps {
+interface CreateTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  template: any
-  onTemplateUpdated: () => void
+  onTemplateCreated: (template?: any) => void
   toast: any
 }
 
@@ -57,33 +56,25 @@ const availableMetrics = [
 
 const availableFormats = ['PDF', 'HTML', 'CSV', 'EXCEL']
 
-export function EditTemplateDialog({ 
+export function CreateTemplateDialog({ 
   open, 
   onOpenChange, 
-  template,
-  onTemplateUpdated,
+  onTemplateCreated,
   toast 
-}: EditTemplateDialogProps) {
+}: CreateTemplateDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [type, setType] = useState('PERFORMANCE')
-  const [selectedFormats, setSelectedFormats] = useState<string[]>([])
-  const [selectedMetrics, setSelectedMetrics] = useState<string[]>([])
+  const [selectedFormats, setSelectedFormats] = useState<string[]>(['PDF'])
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>([
+    'total_reach',
+    'engagement_rate',
+    'impressions',
+    'clicks'
+  ])
   const [isActive, setIsActive] = useState(true)
   const [isDefault, setIsDefault] = useState(false)
-
-  useEffect(() => {
-    if (template) {
-      setName(template.name || '')
-      setDescription(template.description || '')
-      setType(template.type || 'PERFORMANCE')
-      setSelectedFormats(template.format || [])
-      setSelectedMetrics(template.metrics || [])
-      setIsActive(template.isActive !== undefined ? template.isActive : true)
-      setIsDefault(template.isDefault || false)
-    }
-  }, [template])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -106,8 +97,8 @@ export function EditTemplateDialog({
     setIsLoading(true)
 
     try {
-      const response = await fetch(`/api/client-reports/templates/${template.id}`, {
-        method: 'PUT',
+      const response = await fetch('/api/client-reports/templates', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -124,18 +115,29 @@ export function EditTemplateDialog({
 
       if (response.ok) {
         const data = await response.json()
-        toast.success('Template updated successfully')
-        onTemplateUpdated(data.template)
+        toast.success('Template created successfully')
+        onTemplateCreated(data.template)
+        resetForm()
       } else {
         const error = await response.json()
-        toast.error(`Failed to update template: ${error.error || 'Unknown error'}`)
+        toast.error(`Failed to create template: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error updating template:', error)
-      toast.error('Failed to update template. Please try again.')
+      console.error('Error creating template:', error)
+      toast.error('Failed to create template. Please try again.')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const resetForm = () => {
+    setName('')
+    setDescription('')
+    setType('PERFORMANCE')
+    setSelectedFormats(['PDF'])
+    setSelectedMetrics(['total_reach', 'engagement_rate', 'impressions', 'clicks'])
+    setIsActive(true)
+    setIsDefault(false)
   }
 
   const handleFormatToggle = (format: string) => {
@@ -158,13 +160,20 @@ export function EditTemplateDialog({
     return metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
+  const handleOpenChange = (open: boolean) => {
+    onOpenChange(open)
+    if (!open) {
+      resetForm()
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Report Template</DialogTitle>
+          <DialogTitle>Create New Report Template</DialogTitle>
           <DialogDescription>
-            Modify the template configuration and metrics
+            Create a reusable template for generating client reports
           </DialogDescription>
         </DialogHeader>
 
@@ -173,7 +182,7 @@ export function EditTemplateDialog({
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="template-name">Template Name</Label>
+                <Label htmlFor="template-name">Template Name *</Label>
                 <Input
                   id="template-name"
                   value={name}
@@ -212,7 +221,7 @@ export function EditTemplateDialog({
 
           {/* Formats */}
           <div>
-            <Label>Export Formats</Label>
+            <Label>Export Formats *</Label>
             <div className="grid grid-cols-4 gap-2 mt-2">
               {availableFormats.map((format) => (
                 <div key={format} className="flex items-center space-x-2">
@@ -231,7 +240,7 @@ export function EditTemplateDialog({
 
           {/* Metrics */}
           <div>
-            <Label>Metrics to Include</Label>
+            <Label>Metrics to Include *</Label>
             <div className="mt-2 space-y-2">
               <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3">
                 {availableMetrics.map((metric) => (
@@ -299,13 +308,13 @@ export function EditTemplateDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
               disabled={isLoading}
             >
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? 'Updating...' : 'Update Template'}
+              {isLoading ? 'Creating...' : 'Create Template'}
             </Button>
           </DialogFooter>
         </form>

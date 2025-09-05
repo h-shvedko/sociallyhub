@@ -37,8 +37,12 @@ class TranslationService {
 
   private async translateWithOpenAI(texts: string[], targetLanguage: string, context?: string): Promise<string[]> {
     if (!translationConfig.apiKey) {
-      // In development without API key, return original texts
-      console.warn('OpenAI API key not configured - translations disabled')
+      // In development without API key, return original texts silently
+      // Only warn once in development mode
+      if (process.env.NODE_ENV === 'development' && !globalThis.__translationWarningShown) {
+        console.info('ℹ️ OpenAI API key not configured. Translation features disabled. Add OPENAI_API_KEY to enable multilingual support.')
+        globalThis.__translationWarningShown = true
+      }
       return texts
     }
 

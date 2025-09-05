@@ -91,9 +91,10 @@ sociallyhub/
 ### Client Reports
 - `GET/POST /api/client-reports` - List/Create reports
 - `GET/PUT/DELETE /api/client-reports/[id]` - Report CRUD
-- `GET /api/client-reports/[id]/download` - Download report
+- `GET /api/client-reports/[id]/download` - Download report (PDF/HTML/CSV/Excel)
 - `POST /api/client-reports/[id]/send` - Email report
-- `GET/POST /api/client-reports/templates` - Report templates
+- `GET/POST /api/client-reports/templates` - List/Create report templates
+- `GET/PUT/DELETE /api/client-reports/templates/[id]` - Template CRUD operations
 
 ### Campaigns
 - `GET/POST /api/campaigns` - Campaign management
@@ -140,7 +141,9 @@ ClientsDashboard
 ├── ClientReportsDashboard
 │   ├── ReportsOverview
 │   ├── CreateReportDialog
-│   └── ReportTemplates
+│   ├── EditTemplateDialog
+│   ├── CreateTemplateDialog
+│   └── ReportTemplates (with Add/Edit/Use functionality)
 └── InvoiceCreationDialog
 
 // Analytics
@@ -228,14 +231,23 @@ npx prisma studio
 
 ## Recent Enhancements
 
+### Template Management Enhancement (Latest - September 2025)
+- **Real-time Updates**: Immediate UI updates without page reload
+- **Template Creation**: Full CRUD operations with "Add Template" functionality  
+- **Template Editing**: Professional dialogs with validation and metrics selection
+- **Use Template**: Pre-fills report creation with template configuration
+- **Export Formats**: Enhanced HTML/CSV/Excel with proper MS Office compatibility
+- **Excel Support**: Professional spreadsheet format with proper metadata
+- **Developer Experience**: Improved translation service warnings
+
 ### Client Reports System (September 2025)
 - Complete report generation with templates
-- Multi-format exports (PDF/Excel/CSV)
+- Multi-format exports (PDF/Excel/CSV/HTML)
 - Professional email distribution
 - Automated scheduling framework
 - Real-time status tracking
 
-### Email & Download Improvements (Latest)
+### Email & Download Improvements (September 2025)
 - **Email Templates**: Modern gradient design with responsive layout
 - **PDF Generation**: Print-optimized HTML with proper formatting
 - **Metric Display**: Dynamic values with visual indicators

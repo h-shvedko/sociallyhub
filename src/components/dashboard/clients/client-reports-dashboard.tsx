@@ -58,6 +58,7 @@ import {
 } from 'lucide-react'
 import { CreateReportDialog } from './create-report-dialog'
 import { EditTemplateDialog } from './edit-template-dialog'
+import { CreateTemplateDialog } from './create-template-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { ToastContainer } from '@/components/ui/toast'
 
@@ -116,6 +117,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showSendEmailDialog, setShowSendEmailDialog] = useState(false)
   const [showEditTemplateDialog, setShowEditTemplateDialog] = useState(false)
+  const [showCreateTemplateDialog, setShowCreateTemplateDialog] = useState(false)
   const [selectedReport, setSelectedReport] = useState<ClientReport | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null)
 
@@ -261,11 +263,29 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     setShowCreateDialog(true)
   }
 
-  const handleTemplateUpdated = () => {
-    // Refresh templates list
+  const handleTemplateUpdated = (updatedTemplate?: any) => {
+    // Update the specific template in the local state immediately
+    if (updatedTemplate) {
+      setTemplates(prevTemplates => 
+        prevTemplates.map(template => 
+          template.id === updatedTemplate.id ? updatedTemplate : template
+        )
+      )
+    }
+    // Also refresh from server to ensure consistency
     fetchTemplates()
     setShowEditTemplateDialog(false)
     setSelectedTemplate(null)
+  }
+
+  const handleTemplateCreated = (newTemplate?: any) => {
+    // Add the new template to the local state immediately
+    if (newTemplate) {
+      setTemplates(prevTemplates => [newTemplate, ...prevTemplates])
+    }
+    // Also refresh from server to ensure consistency
+    fetchTemplates()
+    setShowCreateTemplateDialog(false)
   }
 
   const confirmDeleteReport = async () => {
@@ -601,6 +621,18 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         </TabsContent>
 
         <TabsContent value="templates" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold">Report Templates</h3>
+              <p className="text-muted-foreground text-sm">
+                Manage and customize report templates for faster report generation
+              </p>
+            </div>
+            <Button onClick={() => setShowCreateTemplateDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Template
+            </Button>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {templates.map((template) => (
               <Card key={template.id} className={template.isDefault ? 'ring-2 ring-primary' : ''}>
@@ -892,6 +924,14 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           toast={toast}
         />
       )}
+
+      {/* Create Template Dialog */}
+      <CreateTemplateDialog
+        open={showCreateTemplateDialog}
+        onOpenChange={setShowCreateTemplateDialog}
+        onTemplateCreated={handleTemplateCreated}
+        toast={toast}
+      />
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
