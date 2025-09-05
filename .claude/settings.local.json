@@ -72,7 +72,8 @@
       "Bash(timeout 15 docker-compose logs --tail=10 app)",
       "Bash(timeout 30 docker-compose exec app npm run:*)",
       "Bash(timeout 10 docker-compose logs --tail=15 app)",
-      "Bash(timeout 60 docker-compose exec app npx tsc --noEmit)"
+      "Bash(timeout 60 docker-compose exec app npx tsc --noEmit)",
+      "Bash(timeout 90 docker-compose exec app npm run:*)"
     ],
     "deny": [],
     "ask": []

@@ -36,41 +36,41 @@ export function Toast({ toast, onRemove }: ToastProps) {
   const getStyles = () => {
     switch (toast.type) {
       case 'success':
-        return 'bg-green-50 border-green-200'
+        return 'bg-green-50 border-green-300 shadow-green-100'
       case 'error':
-        return 'bg-red-50 border-red-200'
+        return 'bg-red-50 border-red-300 shadow-red-100'
       case 'warning':
-        return 'bg-yellow-50 border-yellow-200'
+        return 'bg-yellow-50 border-yellow-300 shadow-yellow-100'
       case 'info':
-        return 'bg-blue-50 border-blue-200'
+        return 'bg-blue-50 border-blue-300 shadow-blue-100'
       default:
-        return 'bg-blue-50 border-blue-200'
+        return 'bg-blue-50 border-blue-300 shadow-blue-100'
     }
   }
 
   return (
-    <div className={`max-w-sm w-full shadow-lg rounded-lg pointer-events-auto border ${getStyles()}`}>
+    <div className={`min-w-80 max-w-sm w-full shadow-lg rounded-lg pointer-events-auto border-2 ${getStyles()} transform transition-all duration-300 ease-in-out`}>
       <div className="p-4">
         <div className="flex items-start">
           <div className="flex-shrink-0">
             {getIcon()}
           </div>
-          <div className="ml-3 w-0 flex-1 pt-0.5">
+          <div className="ml-3 flex-1 min-w-0">
             {toast.title && (
-              <p className="text-sm font-medium text-gray-900">
+              <p className="text-sm font-semibold text-gray-900 mb-1">
                 {toast.title}
               </p>
             )}
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-gray-700 leading-relaxed">
               {toast.message}
             </p>
           </div>
-          <div className="ml-4 flex-shrink-0 flex">
+          <div className="ml-4 flex-shrink-0">
             <button
-              className="inline-flex text-gray-400 hover:text-gray-500 focus:outline-none"
+              className="inline-flex text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300 rounded"
               onClick={() => onRemove(toast.id)}
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -88,9 +88,11 @@ export function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-4">
+    <div className="fixed top-6 right-6 z-[9999] space-y-3 max-w-md">
       {toasts.map((toast) => (
-        <Toast key={toast.id} toast={toast} onRemove={onRemove} />
+        <div key={toast.id} className="animate-in slide-in-from-right-full duration-300">
+          <Toast toast={toast} onRemove={onRemove} />
+        </div>
       ))}
     </div>
   )

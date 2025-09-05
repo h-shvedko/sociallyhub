@@ -128,12 +128,11 @@ export function CreateScheduleDialog({
 
       if (response.ok) {
         const data = await response.json()
-        toast.success(`Schedule ${editSchedule ? 'updated' : 'created'} successfully`)
         onScheduleCreated(data.schedule)
         resetForm()
       } else {
         const error = await response.json()
-        toast.error(`Failed to create schedule: ${error.error || 'Unknown error'}`)
+        toast.error(`Failed to ${editSchedule ? 'update' : 'create'} schedule: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error creating schedule:', error)

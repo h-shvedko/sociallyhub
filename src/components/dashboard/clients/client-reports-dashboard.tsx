@@ -160,10 +160,15 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   useEffect(() => {
     fetchReports()
     fetchTemplates()
+    fetchSchedules() // Always fetch schedules
+  }, [selectedClient, selectedStatus, selectedType])
+
+  // Fetch schedules when switching to scheduled tab
+  useEffect(() => {
     if (activeTab === 'scheduled') {
       fetchSchedules()
     }
-  }, [selectedClient, selectedStatus, selectedType, activeTab])
+  }, [activeTab])
 
   const fetchReports = async () => {
     try {
@@ -420,7 +425,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
 
       if (response.ok) {
         toast.success(`Schedule ${isActive ? 'activated' : 'paused'} successfully`)
-        fetchSchedules()
+        await fetchSchedules()
       } else {
         const error = await response.json()
         toast.error(`Failed to update schedule: ${error.error || 'Unknown error'}`)
@@ -444,8 +449,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
 
       if (response.ok) {
         toast.success('Schedule executed successfully')
-        fetchSchedules()
-        fetchReports()
+        await Promise.all([fetchSchedules(), fetchReports()])
       } else {
         const error = await response.json()
         toast.error(`Failed to execute schedule: ${error.error || 'Unknown error'}`)
@@ -466,7 +470,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
 
       if (response.ok) {
         toast.success('Schedule deleted successfully')
-        fetchSchedules()
+        await fetchSchedules()
         setShowDeleteScheduleDialog(false)
         setSelectedSchedule(null)
       } else {
@@ -1293,10 +1297,10 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       <CreateScheduleDialog
         open={showCreateScheduleDialog}
         onOpenChange={setShowCreateScheduleDialog}
-        onScheduleCreated={(schedule) => {
+        onScheduleCreated={async (schedule) => {
           if (schedule) {
             toast.success('Schedule created successfully')
-            fetchSchedules()
+            await fetchSchedules()
           }
           setShowCreateScheduleDialog(false)
         }}
@@ -1310,10 +1314,10 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         <CreateScheduleDialog
           open={showEditScheduleDialog}
           onOpenChange={setShowEditScheduleDialog}
-          onScheduleCreated={(schedule) => {
+          onScheduleCreated={async (schedule) => {
             if (schedule) {
               toast.success('Schedule updated successfully')
-              fetchSchedules()
+              await fetchSchedules()
             }
             setShowEditScheduleDialog(false)
             setSelectedSchedule(null)
