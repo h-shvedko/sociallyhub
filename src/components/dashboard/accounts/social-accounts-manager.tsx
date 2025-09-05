@@ -182,59 +182,32 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
         const data = await response.json()
         setAccounts(data || [])
       } else {
-        console.error('Failed to fetch accounts')
-        // Demo data fallback
-        setAccounts([
-          {
-            id: '1',
-            provider: 'TWITTER',
-            accountId: 'demo_twitter_123',
-            displayName: 'Demo Company',
-            handle: '@democompany',
-            profileImageUrl: '/demo/twitter-avatar.jpg',
-            status: 'ACTIVE',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            stats: {
-              postsCount: 45,
-              inboxItemsCount: 12,
-              lastPostDate: new Date(Date.now() - 3600000).toISOString()
-            }
-          },
-          {
-            id: '2',
-            provider: 'LINKEDIN',
-            accountId: 'demo_linkedin_456',
-            displayName: 'Demo Company LinkedIn',
-            handle: 'demo-company',
-            profileImageUrl: '/demo/linkedin-avatar.jpg',
-            status: 'ACTIVE',
-            createdAt: new Date(Date.now() - 86400000).toISOString(),
-            updatedAt: new Date(Date.now() - 86400000).toISOString(),
-            stats: {
-              postsCount: 23,
-              inboxItemsCount: 8,
-              lastPostDate: new Date(Date.now() - 86400000).toISOString()
-            }
-          },
-          {
-            id: '3',
-            provider: 'FACEBOOK',
-            accountId: 'demo_facebook_789',
-            displayName: 'Demo Company Page',
-            handle: 'DemoCompanyPage',
-            status: 'ERROR',
-            createdAt: new Date(Date.now() - 172800000).toISOString(),
-            updatedAt: new Date(Date.now() - 172800000).toISOString(),
-            stats: {
-              postsCount: 15,
-              inboxItemsCount: 5
-            }
-          }
-        ])
+        console.error('Failed to fetch accounts:', response.status, response.statusText)
+        setAccounts([])
+        if (response.status === 401) {
+          setNotification({
+            type: 'error',
+            message: 'Authentication required. Please sign in again.'
+          })
+        } else if (response.status === 403) {
+          setNotification({
+            type: 'error',
+            message: 'No access to workspace accounts.'
+          })
+        } else {
+          setNotification({
+            type: 'error',
+            message: 'Failed to load social accounts. Please try again.'
+          })
+        }
       }
     } catch (error) {
       console.error('Error fetching social accounts:', error)
+      setAccounts([])
+      setNotification({
+        type: 'error',
+        message: 'Network error. Please check your connection and try again.'
+      })
     } finally {
       setIsLoading(false)
     }
@@ -482,14 +455,14 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                         <BarChart3 className="h-3 w-3" />
                         <span>Posts</span>
                       </div>
-                      <div className="text-lg font-semibold">{account.stats.postsCount}</div>
+                      <div className="text-lg font-semibold">{account.stats?.postsCount || 0}</div>
                     </div>
                     <div>
                       <div className="flex items-center justify-center space-x-1 text-sm text-muted-foreground mb-1">
                         <MessageSquare className="h-3 w-3" />
                         <span>Inbox</span>
                       </div>
-                      <div className="text-lg font-semibold">{account.stats.inboxItemsCount}</div>
+                      <div className="text-lg font-semibold">{account.stats?.inboxItemsCount || 0}</div>
                     </div>
                     <div>
                       <div className="flex items-center justify-center space-x-1 text-sm text-muted-foreground mb-1">
@@ -497,7 +470,7 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                         <span>Last</span>
                       </div>
                       <div className="text-sm font-medium">
-                        {account.stats.lastPostDate 
+                        {account.stats?.lastPostDate 
                           ? new Date(account.stats.lastPostDate).toLocaleDateString()
                           : 'Never'
                         }
@@ -512,7 +485,7 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                         variant="outline"
                         size="sm"
                         onClick={() => handleRefreshAccount(account.id)}
-                        disabled={account.status === 'ERROR'}
+                        disabled={account.status === 'ERROR' || account.status === 'REVOKED'}
                       >
                         <RefreshCw className="h-3 w-3 mr-1" />
                         Refresh

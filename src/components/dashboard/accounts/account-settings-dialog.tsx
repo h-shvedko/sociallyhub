@@ -188,12 +188,12 @@ export function AccountSettingsDialog({
               </div>
               <div>
                 <Label htmlFor="client">Associated Client</Label>
-                <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                <Select value={selectedClientId || "none"} onValueChange={(value) => setSelectedClientId(value === "none" ? "" : value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a client (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No client assigned</SelectItem>
+                    <SelectItem value="none">No client assigned</SelectItem>
                     {clients.map((client) => (
                       <SelectItem key={client.id} value={client.id}>
                         {client.name}
