@@ -144,12 +144,7 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
         const data = await response.json()
         setAvailablePlatforms([...data.supported, ...data.unavailable])
         
-        if (data.total === 0) {
-          setNotification({
-            type: 'error',
-            message: 'No social media platforms are configured. Please contact your administrator to set up API credentials.'
-          })
-        }
+        // Don't set notification here to avoid loops - let the UI show the empty state instead
       }
     } catch (error) {
       console.error('Failed to fetch available platforms:', error)
@@ -208,15 +203,15 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     }
   }, [searchParams])
 
-  // Auto-hide notifications effect
-  useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null)
-      }, 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [notification])
+  // Auto-hide notifications effect - TEMPORARILY DISABLED TO PREVENT LOOPS
+  // useEffect(() => {
+  //   if (notification) {
+  //     const timer = setTimeout(() => {
+  //       setNotification(null)
+  //     }, 5000)
+  //     return () => clearTimeout(timer)
+  //   }
+  // }, [notification])
 
   const fetchSocialAccounts = useCallback(async () => {
     try {
@@ -229,30 +224,10 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
       } else {
         console.error('Failed to fetch accounts:', response.status, response.statusText)
         setAccounts([])
-        if (response.status === 401) {
-          setNotification({
-            type: 'error',
-            message: 'Authentication required. Please sign in again.'
-          })
-        } else if (response.status === 403) {
-          setNotification({
-            type: 'error',
-            message: 'No access to workspace accounts.'
-          })
-        } else {
-          setNotification({
-            type: 'error',
-            message: 'Failed to load social accounts. Please try again.'
-          })
-        }
       }
     } catch (error) {
       console.error('Error fetching social accounts:', error)
       setAccounts([])
-      setNotification({
-        type: 'error',
-        message: 'Network error. Please check your connection and try again.'
-      })
     } finally {
       setIsLoading(false)
     }
