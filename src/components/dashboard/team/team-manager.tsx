@@ -131,10 +131,12 @@ export function TeamManager({ workspaceId, workspaceName }: TeamManagerProps) {
   const fetchTeamData = async () => {
     try {
       setIsLoading(true)
+      console.log('Fetching team data for workspace:', workspaceId)
       const response = await fetch(`/api/team?workspaceId=${workspaceId}`)
       
       if (response.ok) {
         const data = await response.json()
+        console.log('Fetched team members:', data.members?.length || 0)
         setMembers(data.members || [])
         setStats(data.stats || null)
       } else {
@@ -196,7 +198,9 @@ export function TeamManager({ workspaceId, workspaceName }: TeamManagerProps) {
           type: 'success',
           message: result.message || 'Team member invited successfully'
         })
-        fetchTeamData() // Refresh team list to show new member
+        console.log('Invitation successful, refreshing team data...')
+        await fetchTeamData() // Refresh team list to show new member
+        console.log('Team data refresh completed')
       } else {
         setNotification({
           type: 'error',

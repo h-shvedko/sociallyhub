@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
 import { normalizeUserId } from '@/lib/auth/demo-user'
+import { emailService } from '@/lib/notifications/email-service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -131,8 +132,36 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // In a real app, you would send an email invitation here
-    // For now, we'll just return success
+    // Get workspace and inviter info for email
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { name: true }
+    })
+
+    const inviter = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true }
+    })
+
+    // Send team invitation email
+    try {
+      if (workspace && inviter) {
+        // For immediate invitation (no token), we'll send a welcome email instead
+        const dashboardUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3099'}/dashboard`
+        
+        await emailService.sendTeamInvitationEmail(
+          email,
+          inviter.name || inviter.email || 'Team Admin',
+          workspace.name,
+          dashboardUrl
+        )
+        
+        console.log('Team invitation email sent successfully to:', email)
+      }
+    } catch (emailError) {
+      console.error('Failed to send team invitation email:', emailError)
+      // Don't fail the invitation if email fails
+    }
 
     return NextResponse.json({
       success: true,
