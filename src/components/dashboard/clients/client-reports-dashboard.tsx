@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -162,14 +162,14 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     fetchReports()
     fetchTemplates()
     fetchSchedules() // Always fetch schedules
-  }, [selectedClient, selectedStatus, selectedType, fetchSchedules])
+  }, [selectedClient, selectedStatus, selectedType])
 
   // Fetch schedules when switching to scheduled tab
   useEffect(() => {
     if (activeTab === 'scheduled') {
       fetchSchedules()
     }
-  }, [activeTab, fetchSchedules])
+  }, [activeTab])
 
   const fetchReports = async () => {
     try {
@@ -192,7 +192,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
     }
   }
 
-  const fetchSchedules = useCallback(async () => {
+  const fetchSchedules = async () => {
     try {
       console.log('🔄 Fetching schedules...')
       setIsSchedulesLoading(true)
@@ -218,7 +218,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       setIsSchedulesLoading(false)
       console.log('🏁 Fetch schedules completed')
     }
-  }, [selectedClient])
+  }
 
   const fetchTemplates = async () => {
     try {
