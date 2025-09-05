@@ -139,9 +139,37 @@ export async function GET(request: NextRequest) {
       })
     )
 
+    // Get pending invitations
+    const pendingInvitations = await prisma.teamInvitation.findMany({
+      where: {
+        workspaceId: workspaceId,
+        status: 'PENDING',
+        expiresAt: {
+          gt: new Date()
+        }
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        expiresAt: true,
+        invitedBy: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    })
+
     // Calculate workspace statistics
     const workspaceStats = {
       totalMembers: teamMembers.length,
+      pendingInvitations: pendingInvitations.length,
       activeMembers: membersWithStats.filter(member => 
         member.stats.lastActivity && 
         new Date(member.stats.lastActivity) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -155,6 +183,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       members: membersWithStats,
+      pendingInvitations,
       stats: workspaceStats
     })
 

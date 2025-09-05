@@ -70,8 +70,21 @@ interface TeamMember {
   }
 }
 
+interface PendingInvitation {
+  id: string
+  email: string
+  role: 'OWNER' | 'ADMIN' | 'PUBLISHER' | 'ANALYST' | 'CLIENT_VIEWER'
+  createdAt: string
+  expiresAt: string
+  invitedBy: {
+    name: string
+    email: string
+  }
+}
+
 interface TeamStats {
   totalMembers: number
+  pendingInvitations: number
   activeMembers: number
   totalAssignedItems: number
   totalResolvedItems: number
@@ -85,6 +98,7 @@ interface TeamManagerProps {
 
 export function TeamManager({ workspaceId, workspaceName }: TeamManagerProps) {
   const [members, setMembers] = useState<TeamMember[]>([])
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([])
   const [stats, setStats] = useState<TeamStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -137,11 +151,14 @@ export function TeamManager({ workspaceId, workspaceName }: TeamManagerProps) {
       if (response.ok) {
         const data = await response.json()
         console.log('Fetched team members:', data.members?.length || 0)
+        console.log('Fetched pending invitations:', data.pendingInvitations?.length || 0)
         setMembers(data.members || [])
+        setPendingInvitations(data.pendingInvitations || [])
         setStats(data.stats || null)
       } else {
         console.error('Failed to fetch team data')
         setMembers([])
+        setPendingInvitations([])
         setStats(null)
         setNotification({
           type: 'error',
@@ -151,6 +168,7 @@ export function TeamManager({ workspaceId, workspaceName }: TeamManagerProps) {
     } catch (error) {
       console.error('Error fetching team data:', error)
       setMembers([])
+      setPendingInvitations([])
       setStats(null)
       setNotification({
         type: 'error',
@@ -194,12 +212,21 @@ export function TeamManager({ workspaceId, workspaceName }: TeamManagerProps) {
       if (response.ok) {
         setIsInviteDialogOpen(false)
         setInviteData({ email: '', role: 'PUBLISHER' })
+        
+        // Show success message with invitation URL for testing
+        const baseMessage = result.message || 'Team member invited successfully'
+        const invitationUrl = result.invitationUrl
+        const displayMessage = invitationUrl 
+          ? `${baseMessage}. Invitation link: ${invitationUrl}`
+          : baseMessage
+        
         setNotification({
           type: 'success',
-          message: result.message || 'Team member invited successfully'
+          message: displayMessage
         })
+        
         console.log('Invitation successful, refreshing team data...')
-        await fetchTeamData() // Refresh team list to show new member
+        await fetchTeamData() // Refresh team list to show pending invitations
         console.log('Team data refresh completed')
       } else {
         setNotification({
@@ -527,6 +554,18 @@ export function TeamManager({ workspaceId, workspaceName }: TeamManagerProps) {
                 <div>
                   <div className="text-2xl font-bold">{stats.totalMembers}</div>
                   <p className="text-xs text-muted-foreground">Total Members</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center space-x-2">
+                <UserPlus className="h-4 w-4 text-orange-500" />
+                <div>
+                  <div className="text-2xl font-bold">{stats.pendingInvitations}</div>
+                  <p className="text-xs text-muted-foreground">Pending Invitations</p>
                 </div>
               </div>
             </CardContent>

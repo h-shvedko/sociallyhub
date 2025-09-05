@@ -38,97 +38,55 @@ export async function POST(request: NextRequest) {
       }, { status: 403 })
     }
 
-    // Check if user already exists
-    let invitedUser = await prisma.user.findUnique({
+    // Check if user already exists and is already in workspace
+    const existingUser = await prisma.user.findUnique({
       where: { email }
     })
 
-    // If user doesn't exist, create them
-    if (!invitedUser) {
-      invitedUser = await prisma.user.create({
-        data: {
-          email,
-          name: email.split('@')[0], // Temporary name from email
-          emailVerified: null // They'll need to verify on first login
+    if (existingUser) {
+      const existingMembership = await prisma.userWorkspace.findFirst({
+        where: {
+          userId: existingUser.id,
+          workspaceId
         }
       })
+
+      if (existingMembership) {
+        return NextResponse.json({ 
+          error: 'User is already a member of this workspace' 
+        }, { status: 400 })
+      }
     }
 
-    // Check if user is already in workspace
-    const existingMembership = await prisma.userWorkspace.findFirst({
+    // Check for existing pending invitation
+    const existingInvitation = await prisma.teamInvitation.findFirst({
       where: {
-        userId: invitedUser.id,
-        workspaceId
+        email,
+        workspaceId,
+        status: 'PENDING',
+        expiresAt: {
+          gt: new Date()
+        }
       }
     })
 
-    if (existingMembership) {
+    if (existingInvitation) {
       return NextResponse.json({ 
-        error: 'User is already a member of this workspace' 
+        error: 'An invitation has already been sent to this email' 
       }, { status: 400 })
     }
 
-    // Define default permissions based on role
-    const getDefaultPermissions = (role: string) => {
-      switch (role) {
-        case 'OWNER':
-          return {
-            canManageTeam: true,
-            canManageContent: true,
-            canManageSettings: true,
-            canViewAnalytics: true,
-            canManageBilling: true
-          }
-        case 'ADMIN':
-          return {
-            canManageTeam: true,
-            canManageContent: true,
-            canManageSettings: true,
-            canViewAnalytics: true,
-            canManageBilling: false
-          }
-        case 'PUBLISHER':
-          return {
-            canManageTeam: false,
-            canManageContent: true,
-            canManageSettings: false,
-            canViewAnalytics: false,
-            canManageBilling: false
-          }
-        case 'ANALYST':
-          return {
-            canManageTeam: false,
-            canManageContent: false,
-            canManageSettings: false,
-            canViewAnalytics: true,
-            canManageBilling: false
-          }
-        case 'CLIENT_VIEWER':
-          return {
-            canManageTeam: false,
-            canManageContent: false,
-            canManageSettings: false,
-            canViewAnalytics: true,
-            canManageBilling: false
-          }
-        default:
-          return {
-            canManageTeam: false,
-            canManageContent: false,
-            canManageSettings: false,
-            canViewAnalytics: false,
-            canManageBilling: false
-          }
-      }
-    }
+    // Create invitation with 7-day expiry
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7)
 
-    // Create workspace membership
-    await prisma.userWorkspace.create({
+    const invitation = await prisma.teamInvitation.create({
       data: {
-        userId: invitedUser.id,
-        workspaceId,
+        email,
         role,
-        permissions: getDefaultPermissions(role)
+        workspaceId,
+        invitedById: userId,
+        expiresAt
       }
     })
 
@@ -143,17 +101,16 @@ export async function POST(request: NextRequest) {
       select: { name: true, email: true }
     })
 
-    // Send team invitation email
+    // Send team invitation email with token
     try {
       if (workspace && inviter) {
-        // For immediate invitation (no token), we'll send a welcome email instead
-        const dashboardUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3099'}/dashboard`
+        const invitationUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3099'}/team/invite/${invitation.token}`
         
         await emailService.sendTeamInvitationEmail(
           email,
           inviter.name || inviter.email || 'Team Admin',
           workspace.name,
-          dashboardUrl
+          invitationUrl
         )
         
         console.log('Team invitation email sent successfully to:', email)
@@ -165,7 +122,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully invited ${email} as ${role}`
+      message: `Successfully sent invitation to ${email}`,
+      invitationUrl: `${process.env.NEXTAUTH_URL || 'http://localhost:3099'}/team/invite/${invitation.token}` // For testing
     })
 
   } catch (error) {
