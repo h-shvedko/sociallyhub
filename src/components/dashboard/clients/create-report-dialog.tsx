@@ -46,6 +46,7 @@ interface CreateReportDialogProps {
   onOpenChange: (open: boolean) => void
   clients?: any[]
   templates?: any[]
+  selectedTemplate?: any
   onReportCreated?: (report: any) => void
   editReport?: any
   toast?: any
@@ -78,13 +79,14 @@ export function CreateReportDialog({
   onOpenChange,
   clients = [],
   templates = [],
+  selectedTemplate,
   onReportCreated,
   editReport,
   toast
 }: CreateReportDialogProps) {
   const [activeTab, setActiveTab] = useState('basic')
   const [isLoading, setIsLoading] = useState(false)
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   
   // Form state
   const [formData, setFormData] = useState({
@@ -105,7 +107,7 @@ export function CreateReportDialog({
   })
   const [recipientInput, setRecipientInput] = useState('')
 
-  // Initialize form data when editing
+  // Initialize form data when editing or using a template
   useEffect(() => {
     if (editReport) {
       setFormData({
@@ -118,7 +120,20 @@ export function CreateReportDialog({
         frequency: editReport.frequency || 'ON_DEMAND',
         recipients: editReport.recipients || []
       })
-      setSelectedTemplate(editReport.template?.id || '')
+      setSelectedTemplateId(editReport.template?.id || '')
+    } else if (selectedTemplate) {
+      // Pre-select template when using template
+      setSelectedTemplateId(selectedTemplate.id)
+      setFormData({
+        clientId: '',
+        templateId: selectedTemplate.id,
+        name: `${selectedTemplate.name} - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+        description: selectedTemplate.description || '',
+        type: selectedTemplate.type || 'CUSTOM',
+        format: selectedTemplate.format?.[0] || 'PDF',
+        frequency: 'ON_DEMAND',
+        recipients: []
+      })
     } else {
       // Reset form when creating new report
       setFormData({
@@ -131,18 +146,18 @@ export function CreateReportDialog({
         frequency: 'ON_DEMAND',
         recipients: []
       })
-      setSelectedTemplate('')
+      setSelectedTemplateId('')
     }
-  }, [editReport, open])
+  }, [editReport, selectedTemplate, open])
 
   useEffect(() => {
-    if (selectedTemplate && templates.length > 0) {
-      const template = templates.find(t => t.id === selectedTemplate)
+    if (selectedTemplateId && templates.length > 0) {
+      const template = templates.find(t => t.id === selectedTemplateId)
       if (template) {
         setFormData(prev => ({
           ...prev,
           templateId: template.id,
-          name: `${template.name} - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+          name: prev.name || `${template.name} - ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
           type: template.type,
           format: template.format[0] || 'PDF'
         }))
@@ -158,7 +173,7 @@ export function CreateReportDialog({
         }
       }
     }
-  }, [selectedTemplate, templates])
+  }, [selectedTemplateId, templates])
 
   const handleMetricToggle = (metricId: string) => {
     setSelectedMetrics(prev =>
@@ -251,7 +266,7 @@ export function CreateReportDialog({
       recipients: []
     })
     setSelectedMetrics(defaultMetrics)
-    setSelectedTemplate('')
+    setSelectedTemplateId('')
     setRecipientInput('')
     setActiveTab('basic')
   }
@@ -295,11 +310,11 @@ export function CreateReportDialog({
                         <Card
                           key={template.id}
                           className={`cursor-pointer transition-all ${
-                            selectedTemplate === template.id
+                            selectedTemplateId === template.id
                               ? 'ring-2 ring-primary'
                               : 'hover:shadow-md'
                           }`}
-                          onClick={() => setSelectedTemplate(template.id)}
+                          onClick={() => setSelectedTemplateId(template.id)}
                         >
                           <CardContent className="p-4">
                             <div className="flex items-start justify-between mb-2">

@@ -57,6 +57,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { CreateReportDialog } from './create-report-dialog'
+import { EditTemplateDialog } from './edit-template-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { ToastContainer } from '@/components/ui/toast'
 
@@ -114,7 +115,9 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showSendEmailDialog, setShowSendEmailDialog] = useState(false)
+  const [showEditTemplateDialog, setShowEditTemplateDialog] = useState(false)
   const [selectedReport, setSelectedReport] = useState<ClientReport | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null)
 
   useEffect(() => {
     fetchReports()
@@ -245,6 +248,24 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const handleSendEmail = (report: ClientReport) => {
     setSelectedReport(report)
     setShowSendEmailDialog(true)
+  }
+
+  const handleEditTemplate = (template: ReportTemplate) => {
+    setSelectedTemplate(template)
+    setShowEditTemplateDialog(true)
+  }
+
+  const handleUseTemplate = (template: ReportTemplate) => {
+    // Open the create report dialog with the template pre-selected
+    setSelectedTemplate(template)
+    setShowCreateDialog(true)
+  }
+
+  const handleTemplateUpdated = () => {
+    // Refresh templates list
+    fetchTemplates()
+    setShowEditTemplateDialog(false)
+    setSelectedTemplate(null)
   }
 
   const confirmDeleteReport = async () => {
@@ -631,11 +652,18 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                       </div>
                     </div>
                     <div className="flex justify-between pt-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleEditTemplate(template)}
+                      >
                         <Edit className="h-4 w-4 mr-1" />
                         Edit
                       </Button>
-                      <Button size="sm">
+                      <Button 
+                        size="sm"
+                        onClick={() => handleUseTemplate(template)}
+                      >
                         <Plus className="h-4 w-4 mr-1" />
                         Use Template
                       </Button>
@@ -679,10 +707,17 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
       {/* Create Report Dialog */}
       <CreateReportDialog 
         open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
+        onOpenChange={(open) => {
+          setShowCreateDialog(open)
+          if (!open) {
+            // Clear selected template when dialog closes
+            setSelectedTemplate(null)
+          }
+        }}
         onReportCreated={handleReportCreated}
         clients={clients}
         templates={templates}
+        selectedTemplate={selectedTemplate}
         toast={toast}
       />
 
@@ -846,6 +881,17 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Template Dialog */}
+      {selectedTemplate && (
+        <EditTemplateDialog
+          open={showEditTemplateDialog}
+          onOpenChange={setShowEditTemplateDialog}
+          template={selectedTemplate}
+          onTemplateUpdated={handleTemplateUpdated}
+          toast={toast}
+        />
+      )}
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
