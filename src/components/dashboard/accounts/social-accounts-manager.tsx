@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -122,7 +122,7 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     }
   }
 
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async () => {
     try {
       const response = await fetch(`/api/clients?workspaceId=${workspaceId}`)
       if (response.ok) {
@@ -135,9 +135,9 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     } catch (error) {
       console.error('Failed to fetch clients:', error)
     }
-  }
+  }, [workspaceId])
 
-  const fetchAvailablePlatforms = async () => {
+  const fetchAvailablePlatforms = useCallback(async () => {
     try {
       const response = await fetch('/api/accounts/platforms')
       if (response.ok) {
@@ -164,13 +164,17 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
       ]
       setAvailablePlatforms(defaultPlatforms)
     }
-  }
+  }, [])
 
+  // Initial data fetching effect
   useEffect(() => {
     fetchSocialAccounts()
     fetchClients()
     fetchAvailablePlatforms()
-    
+  }, [workspaceId])
+
+  // OAuth callback handling effect (run once)
+  useEffect(() => {
     // Handle OAuth callback messages
     const success = searchParams?.get('success')
     const error = searchParams?.get('error')
@@ -202,17 +206,19 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
       // Clear URL parameters
       window.history.replaceState({}, '', window.location.pathname)
     }
+  }, [searchParams])
 
-    // Auto-hide notifications after 5 seconds
+  // Auto-hide notifications effect
+  useEffect(() => {
     if (notification) {
       const timer = setTimeout(() => {
         setNotification(null)
       }, 5000)
       return () => clearTimeout(timer)
     }
-  }, [workspaceId, searchParams, notification])
+  }, [notification])
 
-  const fetchSocialAccounts = async () => {
+  const fetchSocialAccounts = useCallback(async () => {
     try {
       setIsLoading(true)
       const response = await fetch(`/api/accounts?workspaceId=${workspaceId}`)
@@ -250,7 +256,7 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [workspaceId])
 
   const handleConnectAccount = async (provider: SocialAccount['provider']) => {
     setIsConnecting(true)
