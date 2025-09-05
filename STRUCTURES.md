@@ -87,6 +87,7 @@ sociallyhub/
 - `GET/PUT/DELETE /api/clients/[id]` - Client CRUD
 - `POST /api/clients/[id]/message` - Send messages
 - `GET /api/clients/[id]/invoices` - Client invoices
+- `GET /api/clients/export` - Export client data (CSV/Excel/PDF formats with search filtering)
 
 ### Client Reports
 - `GET/POST /api/client-reports` - List/Create reports

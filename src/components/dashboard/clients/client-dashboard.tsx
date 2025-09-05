@@ -14,6 +14,12 @@ import {
   SelectValue 
 } from '@/components/ui/select'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Users,
   Plus,
   Search,
@@ -34,7 +40,10 @@ import {
   Trash2,
   UserPlus,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  ChevronDown,
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react'
 import { 
   Client, 
@@ -139,6 +148,76 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
     return matchesSearch && matchesStatus
   })
 
+  // Export functionality
+  const handleExportClients = async (format: 'csv' | 'excel' | 'pdf') => {
+    try {
+      const params = new URLSearchParams({
+        format,
+        ...(searchTerm && { search: searchTerm })
+      })
+
+      const response = await fetch(`/api/clients/export?${params.toString()}`)
+      
+      if (!response.ok) {
+        throw new Error('Export failed')
+      }
+
+      if (format === 'excel') {
+        // For Excel, we get JSON data and convert it client-side
+        const data = await response.json()
+        downloadExcelFile(data.data, data.filename)
+      } else {
+        // For CSV and PDF, we get the file directly
+        const blob = await response.blob()
+        const contentDisposition = response.headers.get('Content-Disposition')
+        const filename = contentDisposition 
+          ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+          : `clients_export_${new Date().toISOString().split('T')[0]}.${format === 'pdf' ? 'html' : format}`
+        
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      console.error('Export error:', error)
+      // You could add a toast notification here
+      alert('Export failed. Please try again.')
+    }
+  }
+
+  const downloadExcelFile = (data: any[], filename: string) => {
+    // Simple CSV-to-Excel conversion for browser compatibility
+    // In a real app, you might use a library like SheetJS
+    const headers = Object.keys(data[0] || {})
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => 
+        headers.map(header => {
+          const value = row[header]
+          if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+            return `"${value.replace(/"/g, '""')}"`
+          }
+          return value
+        }).join(',')
+      )
+    ].join('\n')
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename.replace('.xlsx', '.csv') // Fallback to CSV
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
   const getStatusColor = (status: ClientStatus) => {
     switch (status) {
       case ClientStatus.ACTIVE:
@@ -242,10 +321,29 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => handleExportClients('csv')}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportClients('excel')}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export as Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportClients('pdf')}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export as PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button onClick={() => setShowOnboarding(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Client

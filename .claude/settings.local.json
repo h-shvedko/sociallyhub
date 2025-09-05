@@ -76,7 +76,9 @@
       "Bash(timeout 90 docker-compose exec app npm run:*)",
       "Bash(timeout 5 docker-compose logs app --tail=5)",
       "Bash(timeout 10 docker-compose logs app --tail=20)",
-      "Bash(timeout 15 docker-compose exec app npm run dev)"
+      "Bash(timeout 15 docker-compose exec app npm run dev)",
+      "Bash(timeout 30 docker-compose logs app --tail=20)",
+      "Bash(timeout 10 docker-compose logs app --follow)"
     ],
     "deny": [],
     "ask": []
