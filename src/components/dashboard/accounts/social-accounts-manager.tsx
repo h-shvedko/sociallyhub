@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { AccountSettingsDialog } from './account-settings-dialog'
 
 interface SocialAccount {
   id: string
@@ -35,11 +37,14 @@ interface SocialAccount {
   accountId: string
   displayName: string
   handle: string
-  profileImageUrl?: string
-  status: 'ACTIVE' | 'INACTIVE' | 'ERROR' | 'EXPIRED'
+  accountType: string
+  status: 'ACTIVE' | 'TOKEN_EXPIRED' | 'REVOKED' | 'ERROR'
+  scopes: string[]
+  metadata: any
+  tokenExpiry: string | null
   createdAt: string
   updatedAt: string
-  stats: {
+  stats?: {
     postsCount: number
     inboxItemsCount: number
     lastPostDate?: string
@@ -52,18 +57,121 @@ interface SocialAccount {
 
 interface SocialAccountsManagerProps {
   workspaceId: string
+  workspaceName: string
 }
 
-export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProps) {
+export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAccountsManagerProps) {
+  const searchParams = useSearchParams()
   const [accounts, setAccounts] = useState<SocialAccount[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<SocialAccount['provider'] | null>(null)
+  const [notification, setNotification] = useState<{
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
+  const [selectedAccount, setSelectedAccount] = useState<SocialAccount | null>(null)
+  const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false)
+  const [clients, setClients] = useState<Array<{id: string, name: string}>>([])
+
+  const handleOpenSettings = (account: SocialAccount) => {
+    setSelectedAccount(account)
+    setIsSettingsDialogOpen(true)
+  }
+
+  const handleSaveSettings = async (accountId: string, settings: any) => {
+    try {
+      const response = await fetch(`/api/accounts/${accountId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(settings)
+      })
+
+      if (response.ok) {
+        // Refresh accounts list
+        fetchSocialAccounts()
+        setNotification({
+          type: 'success',
+          message: 'Account settings updated successfully'
+        })
+      } else {
+        const error = await response.json()
+        setNotification({
+          type: 'error',
+          message: error.error || 'Failed to update account settings'
+        })
+      }
+    } catch (error) {
+      console.error('Settings save error:', error)
+      setNotification({
+        type: 'error',
+        message: 'Failed to update account settings'
+      })
+    }
+  }
+
+  const fetchClients = async () => {
+    try {
+      const response = await fetch(`/api/clients?workspaceId=${workspaceId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setClients(data.clients?.map((client: any) => ({
+          id: client.id,
+          name: client.name
+        })) || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch clients:', error)
+    }
+  }
 
   useEffect(() => {
     fetchSocialAccounts()
-  }, [workspaceId])
+    fetchClients()
+    
+    // Handle OAuth callback messages
+    const success = searchParams?.get('success')
+    const error = searchParams?.get('error')
+    const provider = searchParams?.get('provider')
+
+    if (success === 'account_connected' && provider) {
+      setNotification({
+        type: 'success',
+        message: `Successfully connected ${provider.charAt(0).toUpperCase() + provider.slice(1)} account!`
+      })
+      // Clear URL parameters
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        oauth_error: 'OAuth authorization failed',
+        missing_params: 'Missing required parameters',
+        invalid_state: 'Invalid state parameter',
+        invalid_state_data: 'Invalid state data',
+        token_exchange_failed: 'Failed to exchange authorization code for token',
+        profile_fetch_failed: 'Failed to fetch user profile',
+        connection_failed: 'Connection failed',
+        callback_error: 'Callback processing error'
+      }
+      
+      setNotification({
+        type: 'error',
+        message: errorMessages[error] || 'Connection failed'
+      })
+      // Clear URL parameters
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
+    // Auto-hide notifications after 5 seconds
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [workspaceId, searchParams, notification])
 
   const fetchSocialAccounts = async () => {
     try {
@@ -137,11 +245,33 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
     setSelectedProvider(provider)
     
     try {
-      // Redirect to OAuth flow
-      window.location.href = `/api/social/connect?provider=${provider.toLowerCase()}&workspaceId=${workspaceId}`
+      const response = await fetch('/api/accounts/connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          provider: provider.toLowerCase(),
+          workspaceId
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.authUrl) {
+        // Redirect to OAuth flow
+        window.location.href = result.authUrl
+      } else {
+        console.error('Connection failed:', result.error)
+        alert(`Failed to connect ${provider}: ${result.error}`)
+        setIsConnecting(false)
+        setSelectedProvider(null)
+      }
     } catch (error) {
       console.error('Connection error:', error)
+      alert('Connection failed. Please try again.')
       setIsConnecting(false)
+      setSelectedProvider(null)
     }
   }
 
@@ -202,8 +332,8 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
     switch (status) {
       case 'ACTIVE': return <CheckCircle className="h-4 w-4 text-green-500" />
       case 'ERROR': return <XCircle className="h-4 w-4 text-red-500" />
-      case 'EXPIRED': return <AlertCircle className="h-4 w-4 text-orange-500" />
-      case 'INACTIVE': return <AlertCircle className="h-4 w-4 text-gray-500" />
+      case 'TOKEN_EXPIRED': return <AlertCircle className="h-4 w-4 text-orange-500" />
+      case 'REVOKED': return <XCircle className="h-4 w-4 text-red-500" />
       default: return <AlertCircle className="h-4 w-4 text-gray-500" />
     }
   }
@@ -212,8 +342,8 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
     switch (status) {
       case 'ACTIVE': return 'Connected'
       case 'ERROR': return 'Connection Error'
-      case 'EXPIRED': return 'Token Expired'
-      case 'INACTIVE': return 'Inactive'
+      case 'TOKEN_EXPIRED': return 'Token Expired'
+      case 'REVOKED': return 'Access Revoked'
       default: return 'Unknown'
     }
   }
@@ -224,6 +354,34 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
 
   return (
     <div className="flex flex-col space-y-6">
+      {/* Notification Banner */}
+      {notification && (
+        <div className={`p-4 rounded-lg border ${
+          notification.type === 'success' 
+            ? 'bg-green-50 border-green-200 text-green-800' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-2">
+              {notification.type === 'success' ? (
+                <CheckCircle className="h-5 w-5" />
+              ) : (
+                <XCircle className="h-5 w-5" />
+              )}
+              <span>{notification.message}</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNotification(null)}
+              className="h-6 w-6 p-0"
+            >
+              ×
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Social Accounts</h1>
@@ -359,7 +517,11 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
                         <RefreshCw className="h-3 w-3 mr-1" />
                         Refresh
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleOpenSettings(account)}
+                      >
                         <Settings className="h-3 w-3 mr-1" />
                         Settings
                       </Button>
@@ -402,7 +564,7 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
                     </div>
                   )}
 
-                  {account.status === 'EXPIRED' && (
+                  {account.status === 'TOKEN_EXPIRED' && (
                     <div className="pt-2 border-t">
                       <div className="flex items-center space-x-2 text-sm text-orange-600">
                         <AlertCircle className="h-3 w-3" />
@@ -416,6 +578,23 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
                       >
                         <ExternalLink className="h-3 w-3 mr-1" />
                         Reauthorize
+                      </Button>
+                    </div>
+                  )}
+
+                  {account.status === 'REVOKED' && (
+                    <div className="pt-2 border-t">
+                      <div className="flex items-center space-x-2 text-sm text-red-600">
+                        <XCircle className="h-3 w-3" />
+                        <span>Access has been revoked. Please reconnect.</span>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        className="mt-2 w-full"
+                        onClick={() => handleConnectAccount(account.provider)}
+                      >
+                        <Zap className="h-3 w-3 mr-1" />
+                        Reconnect
                       </Button>
                     </div>
                   )}
@@ -468,6 +647,18 @@ export function SocialAccountsManager({ workspaceId }: SocialAccountsManagerProp
           </div>
         </CardContent>
       </Card>
+
+      {/* Account Settings Dialog */}
+      <AccountSettingsDialog
+        account={selectedAccount}
+        isOpen={isSettingsDialogOpen}
+        onClose={() => {
+          setIsSettingsDialogOpen(false)
+          setSelectedAccount(null)
+        }}
+        onSave={handleSaveSettings}
+        clients={clients}
+      />
     </div>
   )
 }
