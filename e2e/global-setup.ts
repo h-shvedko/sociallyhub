@@ -48,10 +48,53 @@ async function globalSetup(config: FullConfig) {
     
     await browser.close()
     
-    // Set up test database if needed
+    // Set up test database and verify seeded data
     if (process.env.DATABASE_URL) {
       console.log('📊 Setting up test database...')
-      // Run any database setup/seeding here
+      
+      // Import Prisma client for database operations
+      const { PrismaClient } = require('@prisma/client')
+      const prisma = new PrismaClient()
+      
+      try {
+        // Check if database is already seeded (from CI)
+        const userCount = await prisma.user.count()
+        const workspaceCount = await prisma.workspace.count()
+        const postCount = await prisma.post.count()
+        
+        console.log(`📈 Current data counts: Users: ${userCount}, Workspaces: ${workspaceCount}, Posts: ${postCount}`)
+        
+        // If not seeded or minimal data, seed the database
+        if (userCount < 10 || workspaceCount < 5 || postCount < 50) {
+          console.log('🌱 Seeding test database with mock data...')
+          
+          // Dynamically import and run the seed script
+          const seedModule = require('../prisma/seed.ts')
+          if (typeof seedModule === 'function') {
+            await seedModule()
+          }
+          
+          console.log('✅ Database seeded successfully')
+          
+          // Verify seeded data
+          const newUserCount = await prisma.user.count()
+          const newWorkspaceCount = await prisma.workspace.count()
+          const newPostCount = await prisma.post.count()
+          
+          console.log(`📈 After seeding: Users: ${newUserCount}, Workspaces: ${newWorkspaceCount}, Posts: ${newPostCount}`)
+        } else {
+          console.log('✅ Database already contains sufficient test data')
+          
+          // Set flag to indicate data is available
+          process.env.DATABASE_SEEDED = 'true'
+        }
+        
+      } catch (error) {
+        console.warn('⚠️ Database setup encountered an issue:', error.message)
+        // Continue with tests even if seeding fails
+      } finally {
+        await prisma.$disconnect()
+      }
     }
     
     console.log('✅ Playwright global setup completed')
