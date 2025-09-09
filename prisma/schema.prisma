@@ -89,6 +89,10 @@ model Workspace {
   
   // Team Invitation Relations
   teamInvitations       TeamInvitation[] @relation("WorkspaceInvitations")
+  
+  // Branding & Customization Relations
+  clientBranding        ClientBranding? @relation("WorkspaceClientBranding")
+  landingPageConfig     LandingPageConfig? @relation("WorkspaceLandingPage")
 
   @@map("workspaces")
 }
@@ -132,6 +136,10 @@ model User {
   
   // Team Invitation Relations
   sentInvitations      TeamInvitation[] @relation("InvitationSender")
+  
+  // Settings Relations
+  settings             UserSettings? @relation("UserSettingsRelation")
+  notificationPreferences NotificationPreferences? @relation("UserNotificationPreferences")
 
   @@map("users")
 }
@@ -195,6 +203,7 @@ model Client {
   invoices       Invoice[]
   reports        ClientReport[]
   reportSchedules ClientReportSchedule[]
+  branding       ClientBranding[] @relation("ClientBrandingRelation")
 
   @@map("clients")
 }
@@ -2319,4 +2328,182 @@ model BudgetSettings {
   workspace            Workspace @relation("WorkspaceBudgetSettings", fields: [workspaceId], references: [id], onDelete: Cascade)
   
   @@map("budget_settings")
+}
+
+// ========================================
+// USER SETTINGS & PREFERENCES
+// ========================================
+
+model UserSettings {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  
+  // Appearance Settings
+  theme       String   @default("system") // light, dark, system
+  colorScheme String   @default("default") // default, blue, green, purple, etc.
+  fontScale   String   @default("normal") // small, normal, large
+  compactMode Boolean  @default(false)
+  sidebarCollapsed Boolean @default(false)
+  
+  // Language & Time Settings
+  language    String   @default("en")
+  timezone    String   @default("UTC")
+  dateFormat  String   @default("MM/dd/yyyy") // MM/dd/yyyy, dd/MM/yyyy, yyyy-MM-dd
+  timeFormat  String   @default("12h") // 12h, 24h
+  weekStartDay String  @default("sunday") // sunday, monday
+  
+  // Dashboard Preferences
+  defaultView String   @default("overview") // overview, posts, analytics, inbox
+  showWelcomeMessage Boolean @default(true)
+  enableAnimations Boolean @default(true)
+  enableSounds    Boolean @default(false)
+  
+  // Privacy Settings
+  profileVisible Boolean @default(true)
+  activityVisible Boolean @default(true)
+  analyticsOptOut Boolean @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  user User @relation("UserSettingsRelation", fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_settings")
+}
+
+model NotificationPreferences {
+  id      String @id @default(cuid())
+  userId  String @unique
+  
+  // Channel Preferences (JSON structure for flexibility)
+  // Format: { "type": { "email": boolean, "push": boolean, "inApp": boolean } }
+  preferences Json @default("{}")
+  
+  // Global Settings
+  emailEnabled     Boolean @default(true)
+  pushEnabled      Boolean @default(true)
+  inAppEnabled     Boolean @default(true)
+  soundEnabled     Boolean @default(true)
+  
+  // Digest Settings
+  dailyDigest      Boolean @default(false)
+  weeklyDigest     Boolean @default(true)
+  monthlyDigest    Boolean @default(false)
+  digestTime       String  @default("09:00") // HH:mm format
+  digestTimezone   String  @default("UTC")
+  
+  // Do Not Disturb
+  dndEnabled       Boolean @default(false)
+  dndStartTime     String? // HH:mm format
+  dndEndTime       String? // HH:mm format
+  dndDays          String[] @default([]) // ["monday", "tuesday", etc.]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user User @relation("UserNotificationPreferences", fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notification_preferences")
+}
+
+// ========================================
+// CLIENT BRANDING & CUSTOMIZATION
+// ========================================
+
+model ClientBranding {
+  id          String @id @default(cuid())
+  workspaceId String @unique // One branding config per workspace
+  clientId    String? // Optional - can be workspace-level or client-specific
+  
+  // Basic Branding
+  title       String @default("SociallyHub")
+  logoUrl     String?
+  faviconUrl  String?
+  
+  // Color Scheme
+  primaryColor   String @default("#3B82F6") // Tailwind blue-500
+  secondaryColor String @default("#1E40AF") // Tailwind blue-700
+  accentColor    String @default("#10B981") // Tailwind emerald-500
+  
+  // Advanced Color Palette (JSON for flexibility)
+  colorPalette Json @default("{}")
+  
+  // Typography
+  fontFamily     String @default("Inter")
+  fontScale      String @default("normal") // small, normal, large
+  
+  // Layout Customization
+  layoutConfig Json @default("{}") // Sidebar position, header style, etc.
+  
+  // Custom CSS (for advanced customization)
+  customCSS    String?
+  
+  // Feature Toggles
+  features Json @default("{}") // Enable/disable specific features per client
+  
+  // White Label Settings
+  isWhiteLabel Boolean @default(false)
+  customDomain String?
+  hideCredits  Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  workspace Workspace @relation("WorkspaceClientBranding", fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client?   @relation("ClientBrandingRelation", fields: [clientId], references: [id], onDelete: SetNull)
+  
+  @@map("client_branding")
+}
+
+model LandingPageConfig {
+  id          String @id @default(cuid())
+  workspaceId String @unique
+  
+  // Page Metadata
+  title       String @default("SociallyHub - Social Media Management Platform")
+  description String @default("Manage all your social media accounts from one powerful platform")
+  keywords    String[] @default([])
+  
+  // Hero Section
+  heroConfig Json @default("{}")
+  
+  // Features Section
+  featuresConfig Json @default("{}")
+  
+  // Testimonials Section
+  testimonialsConfig Json @default("{}")
+  
+  // Pricing Section
+  pricingConfig Json @default("{}")
+  
+  // CTA Sections
+  ctaConfig Json @default("{}")
+  
+  // Footer Configuration
+  footerConfig Json @default("{}")
+  
+  // SEO & Analytics
+  analyticsCode String?
+  seoConfig     Json @default("{}")
+  
+  // Custom Sections (for flexibility)
+  customSections Json @default("[]")
+  
+  // Publication Status
+  isPublished Boolean @default(false)
+  publishedAt DateTime?
+  
+  // Version Control
+  version     Int @default(1)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  workspace Workspace @relation("WorkspaceLandingPage", fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  @@map("landing_page_config")
 }

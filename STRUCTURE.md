@@ -944,3 +944,83 @@
   - Breaking changes notification
 
 **Description:** Enterprise-grade CI/CD pipeline with comprehensive database integration, enhanced code coverage enforcement, and realistic E2E testing using 30,000+ seeded records for production-quality validation.
+
+## Settings & Customization System
+
+### Enhanced User Settings (`src/contexts/settings-context.tsx`) - **NEW**
+**Description:** Comprehensive settings management system with database integration and real-time preference application
+
+#### Features Implemented:
+- **UserSettings Database Model**: Complete user preference storage (theme, language, timezone, UI preferences)
+- **NotificationPreferences Model**: Granular notification control across all channels (email, push, in-app)
+- **Settings Context & Hook**: React context for global settings management with real-time updates
+- **Date/Time Formatting**: User preference-based date/time rendering with timezone support
+- **Theme Management**: Dynamic theme application (light/dark/system) with CSS variable injection
+- **Multi-language Support**: Locale-based formatting and interface customization
+
+#### API Endpoints:
+- **`/api/user/settings`** - GET/PUT user settings with validation and defaults
+- **`/api/user/notification-preferences`** - GET/PUT notification preferences with channel management
+- **Database Integration**: Automatic upsert operations with default value handling
+- **Real-time Updates**: Immediate UI updates when settings change
+
+### Client Branding & Customization System
+
+#### Database Models (Enhanced):
+- **`ClientBranding`** - Complete branding customization per workspace/client
+  - Basic branding (title, logo, favicon)
+  - Color schemes (primary, secondary, accent with palette support)
+  - Typography (font family, scale)
+  - Layout configuration (JSON-based flexibility)
+  - White-label features (custom domains, hide credits)
+  - Custom CSS injection for advanced styling
+
+- **`LandingPageConfig`** - JSON-based CMS for landing pages
+  - Hero, features, testimonials, pricing sections
+  - SEO configuration and analytics integration
+  - Version control and publication management
+  - Custom sections for extensibility
+
+#### Branding Utilities (`src/lib/utils/branding.ts`) - **NEW**
+- **Dynamic Theme Application**: Real-time branding injection with CSS variables
+- **Color Management**: Hex validation, RGB conversion, contrast ratio calculation
+- **Accessibility Compliance**: WCAG-compliant contrast checking and text color selection
+- **Font Management**: Dynamic font family and scale application
+- **Tailwind Integration**: Dynamic class generation for branded components
+
+#### Admin APIs:
+- **`/api/admin/client-branding`** - Complete branding CRUD with permission validation
+- **`/api/admin/landing-page`** - CMS functionality with preview and publication
+- **Role-based Access**: OWNER/ADMIN only access with workspace isolation
+- **Validation**: Comprehensive input validation for colors, domains, CSS
+
+### Date/Time System (`src/lib/utils/date-time.ts`) - **NEW**
+**Description:** Comprehensive internationalization and timezone handling system
+
+#### Features:
+- **Timezone Support**: 40+ timezone options with proper offset handling
+- **Date Format Options**: Multiple format patterns (US, UK, ISO, named months)
+- **Time Formats**: 12-hour and 24-hour display options
+- **Locale Integration**: date-fns integration with 10 supported locales
+- **User Preference Rendering**: Automatic formatting based on user settings
+- **Relative Time**: "2 hours ago" style formatting with localization
+- **Timezone Conversion**: Proper timezone conversion utilities
+- **System Integration**: Automatic system timezone detection
+
+#### Utilities:
+```typescript
+formatDateWithPreferences(date, format, locale, timezone)
+formatTimeWithPreferences(date, format, locale, timezone)
+formatDateTimeWithPreferences(date, dateFormat, timeFormat, locale, timezone)
+formatRelativeTime(date, locale)
+convertToTimezone(date, timezone)
+```
+
+### Settings UI Enhancement (Enhanced Existing)
+**File:** `src/app/dashboard/settings/page.tsx` - **ENHANCED**
+- **Database Integration**: Connected to UserSettings and NotificationPreferences models
+- **Real-time Updates**: Immediate preference application without page reload
+- **Comprehensive Categories**: General, Notifications, Appearance, Privacy & Security
+- **Advanced Notification Management**: Channel-specific preferences for all notification types
+- **Theme Customization**: Live theme preview and application
+- **Accessibility Features**: Font scaling, compact mode, high contrast options
