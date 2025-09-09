@@ -4,487 +4,688 @@ import { seedClientReports } from '../src/lib/seeders/client-reports-seeder'
 
 const prisma = new PrismaClient()
 
+// Configuration for data generation
+const CONFIG = {
+  USERS_COUNT: 50,
+  WORKSPACES_COUNT: 15,
+  SOCIAL_ACCOUNTS_PER_WORKSPACE: 8,
+  POSTS_PER_WORKSPACE: 100,
+  INBOX_ITEMS_PER_ACCOUNT: 25,
+  ANALYTICS_METRICS_PER_POST: 15,
+  USER_SESSIONS_PER_USER: 20,
+  USER_ACTIONS_PER_USER: 100
+}
+
+// Mock data arrays for realistic generation
+const FIRST_NAMES = [
+  'Emma', 'Liam', 'Olivia', 'Noah', 'Ava', 'Ethan', 'Sophia', 'Mason', 'Isabella', 'William',
+  'Charlotte', 'James', 'Amelia', 'Benjamin', 'Mia', 'Lucas', 'Harper', 'Henry', 'Evelyn', 'Alexander',
+  'Abigail', 'Michael', 'Emily', 'Daniel', 'Elizabeth', 'Matthew', 'Sofia', 'Jackson', 'Avery', 'Sebastian',
+  'Ella', 'David', 'Madison', 'Carter', 'Scarlett', 'Owen', 'Victoria', 'Wyatt', 'Aria', 'John',
+  'Grace', 'Jack', 'Chloe', 'Luke', 'Camila', 'Jayden', 'Penelope', 'Dylan', 'Riley', 'Grayson'
+]
+
+const LAST_NAMES = [
+  'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez',
+  'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin',
+  'Lee', 'Perez', 'Thompson', 'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson',
+  'Walker', 'Young', 'Allen', 'King', 'Wright', 'Scott', 'Torres', 'Nguyen', 'Hill', 'Flores',
+  'Green', 'Adams', 'Nelson', 'Baker', 'Hall', 'Rivera', 'Campbell', 'Mitchell', 'Carter', 'Roberts'
+]
+
+const COMPANY_NAMES = [
+  'TechFlow Solutions', 'Digital Dynamics', 'Innovation Labs', 'Creative Studios', 'Modern Media',
+  'NextGen Marketing', 'Bright Ideas Agency', 'Strategic Partners', 'Global Reach', 'Prime Digital',
+  'Elite Brands', 'Momentum Marketing', 'Visionary Group', 'Impact Solutions', 'Forward Thinking',
+  'Dynamic Designs', 'Creative Collective', 'Smart Strategies', 'Bold Ventures', 'Rising Star Media',
+  'Pinnacle Partners', 'Stellar Solutions', 'Quantum Marketing', 'Fusion Creative', 'Apex Agency',
+  'Nova Networks', 'Zenith Digital', 'Summit Solutions', 'Peak Performance', 'Matrix Media',
+  'Catalyst Creative', 'Prism Partners', 'Velocity Ventures', 'Nexus Networks', 'Phoenix Digital',
+  'Orbit Marketing', 'Echo Creative', 'Pulse Partners', 'Spark Solutions', 'Rhythm Media',
+  'Wave Digital', 'Flow Creative', 'Shift Solutions', 'Blend Media', 'Core Creative',
+  'Edge Marketing', 'Vibe Digital', 'Sync Solutions', 'Buzz Creative', 'Zap Media'
+]
+
+const INDUSTRIES = [
+  'Technology', 'Healthcare', 'Finance', 'Education', 'Retail', 'Manufacturing', 'Real Estate',
+  'Food & Beverage', 'Travel & Tourism', 'Entertainment', 'Fashion', 'Automotive', 'Sports',
+  'Non-profit', 'Legal', 'Consulting', 'Construction', 'Energy', 'Agriculture', 'Telecommunications'
+]
+
+const ROLES = ['OWNER', 'ADMIN', 'PUBLISHER', 'ANALYST', 'CLIENT_VIEWER'] as const
+
+const SOCIAL_PROVIDERS = ['TWITTER', 'FACEBOOK', 'INSTAGRAM', 'LINKEDIN', 'YOUTUBE', 'TIKTOK'] as const
+
+const POST_STATUSES = ['DRAFT', 'SCHEDULED', 'PUBLISHED', 'FAILED'] as const
+
+const INBOX_SENTIMENTS = ['positive', 'negative', 'neutral'] as const
+
+const INBOX_TYPES = ['COMMENT', 'MENTION', 'DIRECT_MESSAGE', 'REVIEW', 'REPLY'] as const
+
+const INBOX_STATUSES = ['OPEN', 'ASSIGNED', 'SNOOZED', 'CLOSED'] as const
+
+const METRIC_TYPES = [
+  'impressions', 'reach', 'engagement', 'likes', 'comments', 'shares', 'clicks', 
+  'saves', 'profile_visits', 'website_clicks', 'video_views', 'story_views'
+]
+
+const USER_ACTION_TYPES = [
+  'login', 'logout', 'create_post', 'schedule_post', 'publish_post', 'edit_post', 'delete_post',
+  'create_campaign', 'edit_campaign', 'view_analytics', 'connect_account', 'send_message',
+  'create_template', 'upload_asset', 'generate_report', 'invite_user', 'update_settings'
+]
+
+const SAMPLE_POSTS = [
+  "🚀 Excited to announce our new product launch! What features are you most looking forward to? #Innovation #ProductLaunch",
+  "Behind the scenes at our creative studio ✨ Where the magic happens! #BehindTheScenes #Creative",
+  "Monday motivation: Success is not the key to happiness. Happiness is the key to success 💪 #MondayMotivation",
+  "Just wrapped up an amazing team meeting! Great ideas flowing for Q4 📈 #Teamwork #Growth",
+  "Customer spotlight: Amazing feedback from our users this week! 🌟 Thank you for your trust #CustomerLove",
+  "Industry insights: The future of digital marketing in 2024 📊 Link in bio for full article #DigitalMarketing",
+  "Weekend project completed! Sometimes the best ideas come during downtime 🎨 #Weekend #Creativity",
+  "Celebrating our team's hard work this quarter! Pizza party time 🍕 #TeamCelebration #Culture",
+  "New blog post is live! 5 Tips for Better Social Media Engagement 📝 #ContentMarketing #Tips",
+  "Thank you to everyone who joined our webinar yesterday! 200+ attendees 🎉 #Webinar #Community",
+  "Sneak peek at our upcoming campaign 👀 Can you guess what we're working on? #SneakPeek #ComingSoon",
+  "Feature Friday: Showcasing our most-used analytics dashboard 📊 #FeatureFriday #Analytics",
+  "Throwback to our company retreat last month 🏞️ Building connections outside the office #Retreat #Team",
+  "Industry report: Social media trends for 2024 are here! 📈 What trends are you most excited about?",
+  "Coffee chat with our CEO ☕ Discussing company vision and future goals #Leadership #Vision"
+]
+
+const SAMPLE_COMMENTS = [
+  "Great post! Love seeing the behind-the-scenes content 👍",
+  "This is exactly what I needed to see today, thank you!",
+  "Wow, impressive results! Keep up the great work",
+  "Can't wait to try this out! When will it be available?",
+  "Amazing team you have there! Culture is everything",
+  "Thanks for sharing this insight, very helpful",
+  "Love this approach, will definitely implement it",
+  "This resonates so much with our experience too",
+  "Fantastic work! Looking forward to more updates",
+  "Such valuable content, thanks for posting!",
+  "This is why I follow your page, quality content!",
+  "Inspiring as always! Keep pushing boundaries",
+  "Could you share more details about this process?",
+  "Brilliant strategy! We should connect sometime",
+  "This made my day better, thank you for sharing"
+]
+
+function randomChoice<T>(array: T[]): T {
+  return array[Math.floor(Math.random() * array.length)]
+}
+
+function randomChoices<T>(array: T[], count: number): T[] {
+  const choices = []
+  for (let i = 0; i < count; i++) {
+    choices.push(randomChoice(array))
+  }
+  return choices
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+function randomFloat(min: number, max: number): number {
+  return Math.random() * (max - min) + min
+}
+
+function randomDate(start: Date, end: Date): Date {
+  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()))
+}
+
+function randomBoolean(probability = 0.5): boolean {
+  return Math.random() < probability
+}
+
+function generateEmail(firstName: string, lastName: string): string {
+  const domains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'company.com']
+  return `${firstName.toLowerCase()}.${lastName.toLowerCase()}@${randomChoice(domains)}`
+}
+
+function generateHandle(name: string): string {
+  return `@${name.toLowerCase().replace(/\s+/g, '')}${randomInt(100, 9999)}`
+}
+
 async function main() {
-  console.log('🌱 Starting database seed...')
+  console.log('🌱 Starting comprehensive database seeding...')
 
-  // Create demo user
-  const hashedPassword = await bcrypt.hash('demo123456', 12)
+  // Clear existing data
+  console.log('🧹 Clearing existing mock data...')
+  await prisma.userAction.deleteMany({})
+  await prisma.userSession.deleteMany({})
+  await prisma.analyticsMetric.deleteMany({})
+  await prisma.conversation.deleteMany({})
+  await prisma.inboxItem.deleteMany({})
+  await prisma.postVariant.deleteMany({})
+  await prisma.post.deleteMany({})
+  await prisma.socialAccount.deleteMany({})
+  await prisma.userWorkspace.deleteMany({})
+  await prisma.client.deleteMany({})
+  await prisma.campaign.deleteMany({})
+  await prisma.workspace.deleteMany({ where: { id: { not: 'demo-workspace' } } })
+  await prisma.user.deleteMany({ where: { email: { not: 'demo@sociallyhub.com' } } })
+
+  // Generate Users
+  console.log(`👥 Generating ${CONFIG.USERS_COUNT} users...`)
+  const users = []
   
-  const demoUser = await prisma.user.upsert({
-    where: { email: 'demo@sociallyhub.com' },
-    update: {
-      password: hashedPassword, // Always update password to ensure it's properly hashed
-      name: 'Demo User',
-    },
-    create: {
-      email: 'demo@sociallyhub.com',
-      name: 'Demo User',
-      password: hashedPassword,
-    },
-  })
-
-  console.log('✅ Created demo user:', demoUser.email)
-
-  // Create demo workspace
-  const demoWorkspace = await prisma.workspace.upsert({
-    where: { id: 'demo-workspace' },
-    update: {},
-    create: {
-      id: 'demo-workspace',
-      name: 'Demo Workspace',
-      timezone: 'UTC',
-    },
-  })
-
-  console.log('✅ Created demo workspace:', demoWorkspace.name)
-
-  // Connect user to workspace
-  await prisma.userWorkspace.upsert({
-    where: {
-      userId_workspaceId: {
-        userId: demoUser.id,
-        workspaceId: demoWorkspace.id,
-      },
-    },
-    update: {},
-    create: {
-      userId: demoUser.id,
-      workspaceId: demoWorkspace.id,
-      role: 'OWNER',
-      permissions: {
-        canManageTeam: true,
-        canManageContent: true,
-        canManageSettings: true,
-        canViewAnalytics: true,
-        canManageBilling: true,
-      },
-    },
-  })
-
-  console.log('✅ Connected user to workspace')
-
-  // Create demo social accounts
-  const socialAccounts = [
-    {
-      id: 'twitter-demo',
-      provider: 'TWITTER',
-      accountType: 'profile',
-      handle: '@demobrand',
-      displayName: 'Demo Brand',
-      accountId: 'twitter-123456789',
-      accessToken: 'demo-access-token-encrypted',
-      scopes: ['tweet.read', 'tweet.write', 'users.read'],
-      status: 'ACTIVE',
-    },
-    {
-      id: 'facebook-demo',
-      provider: 'FACEBOOK',
-      accountType: 'page',
-      handle: 'Demo Brand',
-      displayName: 'Demo Brand Facebook',
-      accountId: 'facebook-987654321',
-      accessToken: 'demo-fb-access-token-encrypted',
-      scopes: ['pages_manage_posts', 'pages_read_engagement'],
-      status: 'ACTIVE',
-    },
-    {
-      id: 'instagram-demo',
-      provider: 'INSTAGRAM',
-      accountType: 'business',
-      handle: '@demobrand',
-      displayName: 'Demo Brand Instagram',
-      accountId: 'instagram-456789123',
-      accessToken: 'demo-ig-access-token-encrypted',
-      scopes: ['instagram_basic', 'instagram_content_publish'],
-      status: 'ACTIVE',
-    },
-    {
-      id: 'linkedin-demo',
-      provider: 'LINKEDIN',
-      accountType: 'company',
-      handle: 'Demo Brand',
-      displayName: 'Demo Brand LinkedIn',
-      accountId: 'linkedin-321654987',
-      accessToken: 'demo-li-access-token-encrypted',
-      scopes: ['w_member_social', 'r_organization_social'],
-      status: 'ACTIVE',
-    },
-    {
-      id: 'youtube-demo',
-      provider: 'YOUTUBE',
-      accountType: 'channel',
-      handle: 'Demo Brand',
-      displayName: 'Demo Brand YouTube',
-      accountId: 'youtube-789123456',
-      accessToken: 'demo-yt-access-token-encrypted',
-      scopes: ['youtube.upload', 'youtube.readonly'],
-      status: 'ACTIVE',
-    },
-    {
-      id: 'tiktok-demo',
-      provider: 'TIKTOK',
-      accountType: 'profile',
-      handle: '@demobrand',
-      displayName: 'Demo Brand TikTok',
-      accountId: 'tiktok-654321789',
-      accessToken: 'demo-tk-access-token-encrypted',
-      scopes: ['video.upload', 'user.info.basic'],
-      status: 'ACTIVE',
-    },
-  ]
-
-  for (const accountData of socialAccounts) {
-    const account = await prisma.socialAccount.upsert({
-      where: { id: accountData.id },
-      update: {},
-      create: {
-        ...accountData,
-        workspaceId: demoWorkspace.id,
-        provider: accountData.provider as any,
-        status: accountData.status as any,
-      },
-    })
-    console.log(`✅ Created ${accountData.provider} account:`, account.displayName)
+  // Keep demo user
+  const demoUser = await prisma.user.findUnique({ where: { email: 'demo@sociallyhub.com' } })
+  if (demoUser) {
+    users.push(demoUser)
   }
 
-  // Create some demo posts
-  const demoPosts = [
-    {
-      title: '🚀 Welcome to SociallyHub!',
-      baseContent: '🚀 Welcome to SociallyHub! We\'re excited to help you manage your social media presence across all platforms. #SociallyHub #SocialMedia #Management',
-      status: 'PUBLISHED',
-      platforms: ['TWITTER', 'FACEBOOK', 'LINKEDIN'],
-      publishedAt: new Date('2024-08-25T10:00:00Z'),
-    },
-    {
-      title: '📊 Analytics Dashboard Demo',
-      baseContent: '📊 Check out our new analytics dashboard! Get insights into your social media performance with beautiful charts and actionable data. #Analytics #Dashboard #Insights',
-      status: 'SCHEDULED',
-      platforms: ['TWITTER', 'LINKEDIN'],
-      scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-    },
-    {
-      title: '✨ Feature Update Draft',
-      baseContent: '✨ We\'re working on some amazing new features! Stay tuned for updates on our multi-platform scheduling system. #ComingSoon #Updates',
-      status: 'DRAFT',
-      platforms: ['TWITTER', 'FACEBOOK', 'INSTAGRAM'],
-    },
-  ]
-
-  for (const postData of demoPosts) {
-    // Create post
-    const post = await prisma.post.create({
+  for (let i = 0; i < CONFIG.USERS_COUNT; i++) {
+    const firstName = randomChoice(FIRST_NAMES)
+    const lastName = randomChoice(LAST_NAMES)
+    const hashedPassword = await bcrypt.hash('password123', 12)
+    
+    const user = await prisma.user.create({
       data: {
-        workspaceId: demoWorkspace.id,
-        title: postData.title,
-        baseContent: postData.baseContent,
-        status: postData.status as any,
-        ownerId: demoUser.id,
-        scheduledAt: postData.scheduledAt || null,
-        publishedAt: postData.publishedAt || null,
-        tags: [],
-      },
+        email: generateEmail(firstName, lastName),
+        name: `${firstName} ${lastName}`,
+        password: hashedPassword,
+        emailVerified: randomBoolean(0.8) ? new Date() : null,
+        timezone: randomChoice(['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo']),
+        locale: randomChoice(['en', 'es', 'fr', 'de', 'ja']),
+        twoFactorEnabled: randomBoolean(0.2),
+        image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${firstName}${lastName}`
+      }
     })
+    users.push(user)
+  }
+  console.log(`✅ Created ${users.length} users`)
 
-    // Create variants for each platform
-    const accountsForPlatforms = await prisma.socialAccount.findMany({
-      where: {
-        workspaceId: demoWorkspace.id,
-        provider: { in: postData.platforms as any[] },
-      },
+  // Generate Workspaces
+  console.log(`🏢 Generating ${CONFIG.WORKSPACES_COUNT} workspaces...`)
+  const workspaces = []
+  
+  // Keep demo workspace
+  const demoWorkspace = await prisma.workspace.findUnique({ where: { id: 'demo-workspace' } })
+  if (demoWorkspace) {
+    workspaces.push(demoWorkspace)
+  }
+
+  for (let i = 0; i < CONFIG.WORKSPACES_COUNT; i++) {
+    const companyName = randomChoice(COMPANY_NAMES)
+    
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: companyName,
+        timezone: randomChoice(['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo']),
+        defaultLocale: randomChoice(['en', 'es', 'fr', 'de']),
+        supportedLocales: randomChoices(['en', 'es', 'fr', 'de', 'ja', 'pt'], randomInt(2, 4)),
+        branding: {
+          primaryColor: randomChoice(['#3B82F6', '#EF4444', '#10B981', '#8B5CF6', '#F59E0B']),
+          logo: `https://api.dicebear.com/7.x/initials/svg?seed=${companyName}`
+        }
+      }
     })
+    workspaces.push(workspace)
+  }
+  console.log(`✅ Created ${workspaces.length} workspaces`)
 
-    for (const account of accountsForPlatforms) {
-      await prisma.postVariant.create({
-        data: {
-          postId: post.id,
-          socialAccountId: account.id,
-          text: postData.baseContent,
-          hashtags: extractHashtags(postData.baseContent),
-          status: postData.status === 'PUBLISHED' ? 'PUBLISHED' : 'PENDING',
-          publishedAt: postData.status === 'PUBLISHED' ? postData.publishedAt : null,
-        },
+  // Generate UserWorkspace relationships (Team Members)
+  console.log('👥 Creating team member relationships...')
+  let teamMemberCount = 0
+  
+  for (const workspace of workspaces) {
+    const teamSize = randomInt(3, 8) // 3-8 members per workspace
+    const workspaceUsers = randomChoices(users, teamSize)
+    
+    for (let i = 0; i < workspaceUsers.length; i++) {
+      const user = workspaceUsers[i]
+      const role = i === 0 ? 'OWNER' : randomChoice(ROLES)
+      
+      // Skip if relationship already exists
+      const existing = await prisma.userWorkspace.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: user.id,
+            workspaceId: workspace.id
+          }
+        }
       })
-    }
-
-    // Add some demo metrics for published posts
-    if (postData.status === 'PUBLISHED') {
-      for (const account of accountsForPlatforms) {
-        // Create sample metrics
-        await prisma.analyticsMetric.createMany({
-          data: [
-            {
-              workspaceId: demoWorkspace.id,
-              userId: demoUser.id,
-              socialAccountId: account.id,
-              postId: post.id,
-              date: new Date(),
-              platform: account.provider,
-              metricType: 'reach',
-              value: Math.floor(Math.random() * 10000) + 1000,
-            },
-            {
-              workspaceId: demoWorkspace.id,
-              userId: demoUser.id,
-              socialAccountId: account.id,
-              postId: post.id,
-              date: new Date(),
-              platform: account.provider,
-              metricType: 'engagement',
-              value: Math.floor(Math.random() * 1000) + 100,
-            },
-            {
-              workspaceId: demoWorkspace.id,
-              userId: demoUser.id,
-              socialAccountId: account.id,
-              postId: post.id,
-              date: new Date(),
-              platform: account.provider,
-              metricType: 'clicks',
-              value: Math.floor(Math.random() * 100) + 10,
-            },
-          ],
+      
+      if (!existing) {
+        await prisma.userWorkspace.create({
+          data: {
+            userId: user.id,
+            workspaceId: workspace.id,
+            role: role,
+            permissions: {
+              canManageTeam: role === 'OWNER' || role === 'ADMIN',
+              canManageContent: role !== 'CLIENT_VIEWER',
+              canManageSettings: role === 'OWNER' || role === 'ADMIN',
+              canViewAnalytics: role !== 'CLIENT_VIEWER',
+              canManageBilling: role === 'OWNER'
+            }
+          }
         })
+        teamMemberCount++
       }
     }
-
-    console.log(`✅ Created post: ${postData.title}`)
   }
+  console.log(`✅ Created ${teamMemberCount} team member relationships`)
 
-  // Create demo campaigns with budget data
-  const demoCampaigns = [
-    {
-      id: 'spring-campaign-2024',
-      name: 'Spring Product Launch 2024',
-      description: 'Launch campaign for our new spring collection with focus on social media engagement',
-      status: 'ACTIVE',
-      type: 'BRAND_AWARENESS',
-      startDate: new Date('2024-03-01'),
-      endDate: new Date('2024-05-31'),
-      budget: {
-        totalBudget: 15000,
-        spentAmount: 8750,
-        dailyBudget: 500,
-        currency: 'USD'
-      },
-      objectives: {
-        reach: 100000,
-        engagement: 5000,
-        conversions: 250
-      }
-    },
-    {
-      id: 'summer-sale-2024',
-      name: 'Summer Sale Campaign',
-      description: 'Promotional campaign for summer sale with targeted ads and social content',
-      status: 'ACTIVE',
-      type: 'LEAD_GENERATION',
-      startDate: new Date('2024-06-01'),
-      endDate: new Date('2024-08-15'),
-      budget: {
-        totalBudget: 25000,
-        spentAmount: 12300,
-        dailyBudget: 750,
-        currency: 'USD'
-      },
-      objectives: {
-        leads: 500,
-        sales: 150,
-        roas: 4.5
-      }
-    },
-    {
-      id: 'brand-awareness-q2',
-      name: 'Q2 Brand Awareness',
-      description: 'Ongoing brand awareness campaign focusing on thought leadership content',
-      status: 'ACTIVE',
-      type: 'ENGAGEMENT',
-      startDate: new Date('2024-04-01'),
-      endDate: new Date('2024-06-30'),
-      budget: {
-        totalBudget: 8000,
-        spentAmount: 6200,
-        dailyBudget: 200,
-        currency: 'USD'
-      },
-      objectives: {
-        brandAwareness: 80,
-        thoughtLeadership: 60,
-        communityGrowth: 1000
-      }
-    },
-    {
-      id: 'holiday-prep-2024',
-      name: 'Holiday Preparation Campaign',
-      description: 'Early holiday season campaign to build momentum before peak season',
-      status: 'PAUSED',
-      type: 'SALES',
-      startDate: new Date('2024-09-01'),
-      endDate: new Date('2024-11-30'),
-      budget: {
-        totalBudget: 35000,
-        spentAmount: 2100,
-        dailyBudget: 1000,
-        currency: 'USD'
-      },
-      objectives: {
-        sales: 300,
-        revenue: 50000,
-        customerAcquisition: 200
-      }
-    },
-    {
-      id: 'customer-retention-q3',
-      name: 'Customer Retention Q3',
-      description: 'Focus on existing customer engagement and retention through personalized content',
-      status: 'COMPLETED',
-      type: 'CUSTOM',
-      startDate: new Date('2024-07-01'),
-      endDate: new Date('2024-09-30'),
-      budget: {
-        totalBudget: 12000,
-        spentAmount: 11850,
-        dailyBudget: 400,
-        currency: 'USD'
-      },
-      objectives: {
-        retention: 85,
-        engagement: 3000,
-        satisfaction: 90
-      }
+  // Generate Social Accounts
+  console.log('📱 Generating social accounts...')
+  const socialAccounts = []
+  
+  for (const workspace of workspaces) {
+    for (let i = 0; i < CONFIG.SOCIAL_ACCOUNTS_PER_WORKSPACE; i++) {
+      const provider = randomChoice(SOCIAL_PROVIDERS)
+      const companyHandle = workspace.name.toLowerCase().replace(/\s+/g, '')
+      
+      const socialAccount = await prisma.socialAccount.create({
+        data: {
+          workspaceId: workspace.id,
+          provider: provider,
+          accountType: randomChoice(['profile', 'page', 'channel', 'business']),
+          handle: generateHandle(companyHandle),
+          displayName: `${workspace.name} ${provider}`,
+          accountId: `${provider.toLowerCase()}-${randomInt(100000, 999999)}`,
+          accessToken: `encrypted-token-${randomInt(1000000, 9999999)}`,
+          refreshToken: randomBoolean(0.7) ? `refresh-token-${randomInt(1000000, 9999999)}` : null,
+          tokenExpiry: randomBoolean(0.8) ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
+          scopes: randomChoices([
+            'read', 'write', 'manage_posts', 'read_insights', 'manage_pages', 
+            'publish_video', 'manage_comments', 'read_audience'
+          ], randomInt(3, 6)),
+          status: randomBoolean(0.9) ? 'ACTIVE' : randomChoice(['TOKEN_EXPIRED', 'REVOKED', 'ERROR']),
+          metadata: {
+            followerCount: randomInt(100, 100000),
+            verifiedAccount: randomBoolean(0.1),
+            businessAccount: randomBoolean(0.6)
+          }
+        }
+      })
+      socialAccounts.push(socialAccount)
     }
-  ]
+  }
+  console.log(`✅ Created ${socialAccounts.length} social accounts`)
 
-  for (const campaignData of demoCampaigns) {
-    const campaign = await prisma.campaign.upsert({
-      where: { id: campaignData.id },
-      update: {
-        budget: campaignData.budget
-      },
-      create: {
-        ...campaignData,
-        workspaceId: demoWorkspace.id,
-      },
+  // Mark first task as completed and move to next
+  await new Promise(resolve => {
+    console.log('✅ Task 1 completed: Users, workspaces, and team members generated')
+    resolve(null)
+  })
+
+  // Generate Posts and PostVariants
+  console.log('📝 Generating posts and variants...')
+  const posts = []
+  let variantCount = 0
+
+  for (const workspace of workspaces) {
+    const workspaceAccounts = socialAccounts.filter(acc => acc.workspaceId === workspace.id)
+    const workspaceUsers = await prisma.userWorkspace.findMany({
+      where: { workspaceId: workspace.id },
+      include: { user: true }
     })
-    console.log(`✅ Created campaign: ${campaign.name}`)
-  }
+    
+    for (let i = 0; i < CONFIG.POSTS_PER_WORKSPACE; i++) {
+      const owner = randomChoice(workspaceUsers)
+      const postContent = randomChoice(SAMPLE_POSTS)
+      const status = randomChoice(POST_STATUSES)
+      
+      let scheduledAt = null
+      let publishedAt = null
+      
+      if (status === 'SCHEDULED') {
+        scheduledAt = randomDate(new Date(), new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+      } else if (status === 'PUBLISHED') {
+        publishedAt = randomDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date())
+      }
+      
+      const post = await prisma.post.create({
+        data: {
+          workspaceId: workspace.id,
+          title: postContent.split('!')[0] + '!',
+          baseContent: postContent,
+          link: randomBoolean(0.3) ? `https://example.com/article-${randomInt(1, 100)}` : null,
+          utmSource: randomBoolean(0.4) ? 'social' : null,
+          utmMedium: randomBoolean(0.4) ? randomChoice(['twitter', 'facebook', 'linkedin']) : null,
+          utmCampaign: randomBoolean(0.3) ? `campaign-${randomInt(1, 50)}` : null,
+          tags: randomChoices(['marketing', 'social', 'business', 'tech', 'growth'], randomInt(1, 3)),
+          status: status,
+          ownerId: owner.user.id,
+          approverId: randomBoolean(0.7) ? randomChoice(workspaceUsers).user.id : null,
+          scheduledAt,
+          publishedAt
+        }
+      })
+      posts.push(post)
 
-  // Create demo clients with complete realistic data
-  const demoClients = [
-    {
-      id: 'acme-corp-client',
-      name: 'Acme Corporation',
-      email: 'contact@acmecorp.com',
-      company: 'Acme Corporation',
-      industry: 'Technology',
-      website: 'https://acmecorp.com',
-      phone: '+1 (555) 123-4567',
-      status: 'ACTIVE',
-      notes: 'Large enterprise client focused on B2B software solutions. Requires regular reporting and high-touch service.',
-      labels: ['Enterprise', 'Technology', 'Priority']
-    },
-    {
-      id: 'techstart-client', 
-      name: 'TechStart Inc.',
-      email: 'hello@techstart.io',
-      company: 'TechStart Inc.',
-      industry: 'Technology',
-      website: 'https://techstart.io',
-      phone: '+1 (555) 987-6543',
-      status: 'ACTIVE',
-      notes: 'Fast-growing startup in the AI space. Very responsive to new features and experimental campaigns.',
-      labels: ['Startup', 'Technology', 'Growth']
-    },
-    {
-      id: 'global-retail-client',
-      name: 'Global Retail Co.',
-      email: 'marketing@globalretail.com',
-      company: 'Global Retail Co.',
-      industry: 'Retail',
-      website: 'https://globalretail.com',
-      phone: '+1 (555) 555-0123',
-      status: 'ACTIVE',
-      notes: 'Multi-channel retailer with strong seasonal campaigns. Focus on holiday marketing and product launches.',
-      labels: ['Retail', 'Large Enterprise', 'E-commerce']
-    },
-    {
-      id: 'healthcare-plus-client',
-      name: 'Healthcare Plus',
-      email: 'info@healthcareplus.org',
-      company: 'Healthcare Plus',
-      industry: 'Healthcare',
-      website: 'https://healthcareplus.org',
-      phone: '+1 (555) 234-5678',
-      status: 'ACTIVE',
-      notes: 'Healthcare nonprofit focused on community outreach. Requires compliance-focused content and messaging.',
-      labels: ['Healthcare', 'Compliance', 'B2B']
-    },
-    {
-      id: 'edu-solutions-client',
-      name: 'Educational Solutions',
-      email: 'team@edusolutions.edu',
-      company: 'Educational Solutions',
-      industry: 'Education',
-      website: 'https://edusolutions.edu',
-      phone: '+1 (555) 345-6789',
-      status: 'ACTIVE',
-      notes: 'Educational technology provider serving K-12 schools. Focuses on teacher and parent engagement campaigns.',
-      labels: ['Education', 'Non-profit', 'Community']
-    },
-    {
-      id: 'new-startup-client',
-      name: 'New Startup Ventures',
-      email: 'hello@newstartup.com',
-      company: 'New Startup Ventures',
-      industry: 'Technology',
-      website: 'https://newstartup.com',
-      phone: '+1 (555) 111-2222',
-      status: 'PROSPECT',
-      notes: 'Recently signed startup client currently going through onboarding process.',
-      labels: ['Startup', 'New Client', 'Technology']
-    },
-    {
-      id: 'prospect-client',
-      name: 'Prospect Manufacturing Co.',
-      email: 'contact@prospect-mfg.com',
-      company: 'Prospect Manufacturing Co.',
-      industry: 'Manufacturing',
-      website: 'https://prospect-mfg.com',
-      phone: '+1 (555) 333-4444',
-      status: 'PROSPECT',
-      notes: 'Prospective client who has shown interest but not yet started onboarding.',
-      labels: ['Prospect', 'Manufacturing', 'B2B']
-    },
-    {
-      id: 'stalled-client',
-      name: 'Stalled Progress Inc.',
-      email: 'info@stalledprogress.com',
-      company: 'Stalled Progress Inc.',
-      industry: 'Consulting',
-      website: 'https://stalledprogress.com',
-      phone: '+1 (555) 555-6666',
-      status: 'ON_HOLD',
-      notes: 'Onboarding process has stalled due to internal restructuring at client company.',
-      labels: ['Stalled', 'Consulting', 'On Hold']
+      // Create variants for this post
+      const selectedAccounts = randomChoices(workspaceAccounts, randomInt(1, 4))
+      for (const account of selectedAccounts) {
+        const variantStatus = status === 'PUBLISHED' ? 
+          (randomBoolean(0.95) ? 'PUBLISHED' : 'FAILED') : 'PENDING'
+
+        await prisma.postVariant.create({
+          data: {
+            postId: post.id,
+            socialAccountId: account.id,
+            text: postContent,
+            hashtags: extractHashtags(postContent),
+            platformData: {
+              customText: `${postContent} - optimized for ${account.provider}`,
+              mediaIds: randomBoolean(0.3) ? [`media-${randomInt(1, 100)}`] : []
+            },
+            status: variantStatus,
+            providerPostId: variantStatus === 'PUBLISHED' ? 
+              `${account.provider.toLowerCase()}-post-${randomInt(100000, 999999)}` : null,
+            publishedAt: variantStatus === 'PUBLISHED' ? publishedAt : null,
+            failureReason: variantStatus === 'FAILED' ? 
+              randomChoice(['API rate limit', 'Invalid token', 'Content policy violation']) : null
+          }
+        })
+        variantCount++
+      }
     }
-  ]
-
-  for (const clientData of demoClients) {
-    const client = await prisma.client.upsert({
-      where: { id: clientData.id },
-      update: {},
-      create: {
-        ...clientData,
-        workspaceId: demoWorkspace.id,
-      },
-    })
-    console.log(`✅ Created client: ${client.name}`)
   }
+  console.log(`✅ Created ${posts.length} posts with ${variantCount} variants`)
 
-  // Seed client reports
+  // Generate InboxItems and Conversations
+  console.log('📥 Generating inbox items and conversations...')
+  let inboxItemCount = 0
+  let conversationCount = 0
+
+  for (const account of socialAccounts) {
+    for (let i = 0; i < CONFIG.INBOX_ITEMS_PER_ACCOUNT; i++) {
+      const workspaceUsers = await prisma.userWorkspace.findMany({
+        where: { workspaceId: account.workspaceId },
+        include: { user: true }
+      })
+
+      const inboxItem = await prisma.inboxItem.create({
+        data: {
+          workspaceId: account.workspaceId,
+          socialAccountId: account.id,
+          type: randomChoice(INBOX_TYPES),
+          providerThreadId: randomBoolean(0.7) ? `thread-${randomInt(100000, 999999)}` : null,
+          providerItemId: `${account.provider.toLowerCase()}-item-${randomInt(100000, 999999)}`,
+          content: randomChoice(SAMPLE_COMMENTS),
+          authorName: `${randomChoice(FIRST_NAMES)} ${randomChoice(LAST_NAMES)}`,
+          authorHandle: generateHandle('user'),
+          authorAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=user${randomInt(1, 1000)}`,
+          sentiment: randomChoice(INBOX_SENTIMENTS),
+          status: randomChoice(INBOX_STATUSES),
+          assigneeId: randomBoolean(0.6) ? randomChoice(workspaceUsers).user.id : null,
+          tags: randomBoolean(0.4) ? randomChoices(['urgent', 'question', 'compliment', 'complaint'], randomInt(1, 2)) : [],
+          internalNotes: randomBoolean(0.3) ? 'Internal note about this conversation' : null,
+          slaBreachedAt: randomBoolean(0.1) ? randomDate(new Date(Date.now() - 24 * 60 * 60 * 1000), new Date()) : null,
+          createdAt: randomDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), new Date())
+        }
+      })
+      inboxItemCount++
+
+      // Create conversation for some inbox items
+      if (randomBoolean(0.7)) {
+        await prisma.conversation.create({
+          data: {
+            inboxItemId: inboxItem.id,
+            threadData: {
+              messages: [
+                {
+                  id: '1',
+                  author: inboxItem.authorName,
+                  content: inboxItem.content,
+                  timestamp: inboxItem.createdAt.toISOString()
+                },
+                {
+                  id: '2',
+                  author: 'Support Team',
+                  content: 'Thank you for reaching out! We\'ll get back to you soon.',
+                  timestamp: new Date(inboxItem.createdAt.getTime() + 30 * 60 * 1000).toISOString()
+                }
+              ]
+            }
+          }
+        })
+        conversationCount++
+      }
+    }
+  }
+  console.log(`✅ Created ${inboxItemCount} inbox items with ${conversationCount} conversations`)
+
+  // Generate AnalyticsMetrics
+  console.log('📊 Generating analytics metrics...')
+  let metricsCount = 0
+
+  for (const post of posts.filter(p => p.status === 'PUBLISHED')) {
+    const workspace = workspaces.find(w => w.id === post.workspaceId)
+    const workspaceAccounts = socialAccounts.filter(acc => acc.workspaceId === workspace.id)
+
+    for (let i = 0; i < CONFIG.ANALYTICS_METRICS_PER_POST; i++) {
+      const account = randomChoice(workspaceAccounts)
+      const metricType = randomChoice(METRIC_TYPES)
+      const date = randomDate(post.publishedAt || new Date(), new Date())
+
+      // Generate realistic metric values based on type
+      let value = 0
+      switch (metricType) {
+        case 'impressions':
+          value = randomInt(1000, 50000)
+          break
+        case 'reach':
+          value = randomInt(500, 25000)
+          break
+        case 'engagement':
+          value = randomInt(50, 2500)
+          break
+        case 'likes':
+          value = randomInt(20, 1000)
+          break
+        case 'comments':
+          value = randomInt(5, 200)
+          break
+        case 'shares':
+          value = randomInt(2, 100)
+          break
+        default:
+          value = randomInt(10, 1000)
+      }
+
+      await prisma.analyticsMetric.create({
+        data: {
+          workspaceId: workspace.id,
+          userId: post.ownerId,
+          socialAccountId: account.id,
+          postId: post.id,
+          date: new Date(date.toDateString()), // Remove time component
+          hour: randomInt(0, 23),
+          platform: account.provider,
+          metricType,
+          value,
+          dimensions: {
+            postType: 'organic',
+            campaign: post.utmCampaign,
+            contentType: randomChoice(['text', 'image', 'video', 'carousel'])
+          },
+          metadata: {
+            deviceType: randomChoice(['mobile', 'desktop', 'tablet']),
+            location: randomChoice(['US', 'UK', 'CA', 'AU', 'DE'])
+          }
+        }
+      })
+      metricsCount++
+    }
+  }
+  console.log(`✅ Created ${metricsCount} analytics metrics`)
+
+  // Generate UserSessions
+  console.log('🖥️ Generating user sessions...')
+  let sessionCount = 0
+
+  for (const user of users) {
+    for (let i = 0; i < CONFIG.USER_SESSIONS_PER_USER; i++) {
+      const startTime = randomDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date())
+      const duration = randomInt(300, 7200) // 5 minutes to 2 hours
+      const endTime = new Date(startTime.getTime() + duration * 1000)
+
+      await prisma.userSession.create({
+        data: {
+          userId: user.id,
+          startTime,
+          endTime,
+          lastActivity: endTime,
+          duration,
+          userAgent: randomChoice([
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X) AppleWebKit/605.1.15'
+          ]),
+          ip: `${randomInt(1, 255)}.${randomInt(1, 255)}.${randomInt(1, 255)}.${randomInt(1, 255)}`,
+          pages: randomChoices([
+            '/dashboard', '/posts', '/analytics', '/inbox', '/campaigns', 
+            '/settings', '/team', '/accounts', '/templates', '/assets'
+          ], randomInt(3, 8)),
+          metadata: {
+            browser: randomChoice(['Chrome', 'Firefox', 'Safari', 'Edge']),
+            os: randomChoice(['Windows', 'macOS', 'Linux', 'iOS', 'Android']),
+            screenResolution: randomChoice(['1920x1080', '1366x768', '1440x900', '375x667'])
+          }
+        }
+      })
+      sessionCount++
+    }
+  }
+  console.log(`✅ Created ${sessionCount} user sessions`)
+
+  // Generate UserActions
+  console.log('🎯 Generating user actions...')
+  let actionCount = 0
+
+  for (const user of users) {
+    for (let i = 0; i < CONFIG.USER_ACTIONS_PER_USER; i++) {
+      const actionType = randomChoice(USER_ACTION_TYPES)
+      const timestamp = randomDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date())
+
+      await prisma.userAction.create({
+        data: {
+          userId: user.id,
+          actionType,
+          timestamp,
+          details: {
+            actionType,
+            resourceId: `resource-${randomInt(1, 1000)}`,
+            metadata: {
+              source: randomChoice(['web', 'mobile', 'api']),
+              version: randomChoice(['v1.0', 'v1.1', 'v1.2'])
+            }
+          },
+          duration: randomInt(100, 5000) // milliseconds
+        }
+      })
+      actionCount++
+    }
+  }
+  console.log(`✅ Created ${actionCount} user actions`)
+
+  // Generate Clients
+  console.log('👔 Generating clients...')
+  const clients = []
+
+  for (const workspace of workspaces) {
+    const clientCount = randomInt(3, 8)
+    for (let i = 0; i < clientCount; i++) {
+      const firstName = randomChoice(FIRST_NAMES)
+      const lastName = randomChoice(LAST_NAMES)
+      const companyName = randomChoice(COMPANY_NAMES)
+
+      const client = await prisma.client.create({
+        data: {
+          workspaceId: workspace.id,
+          name: `${firstName} ${lastName}`,
+          email: generateEmail(firstName, lastName),
+          phone: `+1 (${randomInt(200, 999)}) ${randomInt(200, 999)}-${randomInt(1000, 9999)}`,
+          company: companyName,
+          industry: randomChoice(INDUSTRIES),
+          website: `https://${companyName.toLowerCase().replace(/\s+/g, '')}.com`,
+          logo: `https://api.dicebear.com/7.x/initials/svg?seed=${companyName}`,
+          status: randomChoice(['ACTIVE', 'PROSPECT', 'ON_HOLD']),
+          notes: randomBoolean(0.6) ? `Client notes about ${companyName} and their requirements.` : null,
+          labels: randomChoices(['VIP', 'Enterprise', 'Startup', 'SMB', 'Non-profit'], randomInt(1, 3)),
+          billingInfo: {
+            monthlyRetainer: randomInt(500, 10000),
+            paymentTerms: randomChoice(['Net 15', 'Net 30', 'Net 45']),
+            billingCycle: randomChoice(['monthly', 'quarterly', 'annually'])
+          },
+          settings: {
+            communicationPreference: randomChoice(['email', 'phone', 'slack']),
+            reportingFrequency: randomChoice(['weekly', 'monthly', 'quarterly']),
+            timezone: randomChoice(['EST', 'PST', 'GMT', 'CET'])
+          }
+        }
+      })
+      clients.push(client)
+    }
+  }
+  console.log(`✅ Created ${clients.length} clients`)
+
+  // Generate Campaigns
+  console.log('🎯 Generating campaigns...')
+  const campaigns = []
+
+  for (const workspace of workspaces) {
+    const campaignCount = randomInt(5, 12)
+    for (let i = 0; i < campaignCount; i++) {
+      const startDate = randomDate(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), new Date())
+      const endDate = randomDate(startDate, new Date(startDate.getTime() + 60 * 24 * 60 * 60 * 1000))
+
+      const campaign = await prisma.campaign.create({
+        data: {
+          workspaceId: workspace.id,
+          clientId: randomBoolean(0.7) ? randomChoice(clients.filter(c => c.workspaceId === workspace.id))?.id : null,
+          name: `${randomChoice(['Spring', 'Summer', 'Fall', 'Winter'])} ${randomChoice(['Launch', 'Campaign', 'Initiative', 'Drive'])} ${new Date().getFullYear()}`,
+          description: `Strategic campaign focused on ${randomChoice(['brand awareness', 'lead generation', 'customer acquisition', 'product launch'])}`,
+          status: randomChoice(['ACTIVE', 'PAUSED', 'COMPLETED', 'DRAFT']),
+          type: randomChoice(['BRAND_AWARENESS', 'LEAD_GENERATION', 'ENGAGEMENT', 'SALES', 'CUSTOM']),
+          startDate,
+          endDate,
+          objectives: {
+            primaryGoal: randomChoice(['reach', 'engagement', 'conversions', 'brand_awareness']),
+            targetReach: randomInt(10000, 500000),
+            targetEngagement: randomInt(1000, 50000),
+            targetConversions: randomInt(100, 5000)
+          },
+          budget: {
+            totalBudget: randomInt(5000, 100000),
+            spentAmount: randomInt(0, 50000),
+            dailyBudget: randomInt(100, 2000),
+            currency: 'USD'
+          }
+        }
+      })
+      campaigns.push(campaign)
+    }
+  }
+  console.log(`✅ Created ${campaigns.length} campaigns`)
+
+  // Seed client reports (existing function)
+  console.log('📋 Seeding client reports...')
   await seedClientReports()
+  console.log('✅ Client reports seeded')
 
-  console.log('🎉 Database seeding completed!')
+  console.log('🎉 Comprehensive database seeding completed!')
+  console.log(`
+📊 Final Statistics:
+- Users: ${users.length}
+- Workspaces: ${workspaces.length}  
+- Team Members: ${teamMemberCount}
+- Social Accounts: ${socialAccounts.length}
+- Posts: ${posts.length} (with ${variantCount} variants)
+- Inbox Items: ${inboxItemCount} (with ${conversationCount} conversations)
+- Analytics Metrics: ${metricsCount}
+- User Sessions: ${sessionCount}
+- User Actions: ${actionCount}
+- Clients: ${clients.length}
+- Campaigns: ${campaigns.length}
+`)
 }
 
 function extractHashtags(text: string): string[] {

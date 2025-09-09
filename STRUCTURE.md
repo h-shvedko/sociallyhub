@@ -702,38 +702,65 @@
 - `src/lib/i18n/translation-service.ts` - Translation service
 - `src/lib/i18n/config.ts` - i18n configuration
 
-## Database Models Summary
+## Database Mock Data Generation System
 
-### Core Models
-- **User** - User accounts and authentication with email verification support
-- **Workspace** - Multi-tenant workspaces
-- **UserWorkspace** - User-workspace relationships with RBAC
-- **Client** - Client management for agencies
-- **VerificationToken** - Email verification tokens with expiration (24-hour validity)
+### Comprehensive Mock Data Seeder
+**File:** `prisma/seed.ts` - **ENHANCED** Enterprise-grade mock data generation system
+**Configuration:** Highly configurable data generation with realistic scaling
+- **Users**: 50+ realistic user profiles with proper authentication and timezone settings
+- **Workspaces**: 15+ company workspaces with branding and multi-language support
+- **Team Members**: 3-8 members per workspace with role-based permissions (OWNER, ADMIN, PUBLISHER, ANALYST, CLIENT_VIEWER)
+- **Social Accounts**: 8+ accounts per workspace across all platforms (Twitter, Facebook, Instagram, LinkedIn, YouTube, TikTok)
+- **Posts**: 100+ posts per workspace with variants, scheduling, and engagement data
+- **Inbox Items**: 25+ interactions per account with sentiment analysis and conversation threading
+- **Analytics Metrics**: 15+ metrics per post with realistic performance data and demographic insights
+- **User Sessions**: 20+ sessions per user with browser metadata and activity tracking
+- **User Actions**: 100+ actions per user covering all platform interactions
+- **Clients**: 3-8 clients per workspace with complete business information and billing data
+- **Campaigns**: 5-12 campaigns per workspace with budget tracking and performance objectives
 
-### Social Media
-- **SocialAccount** - Connected social accounts
-- **Post** - Content posts
-- **PostVariant** - Platform-specific variations
-- **Campaign** - Marketing campaigns
-- **InboxItem** - Social media messages
-- **Conversation** - Message threads
+### Mock Data Features
+- **Realistic Data Generation**: Names, emails, companies, industries using probability-based selection
+- **Platform Diversity**: Complete coverage of all social media platforms with realistic engagement patterns
+- **Time-Based Data**: Historical data spanning 30-90 days with realistic posting schedules
+- **Sentiment Variety**: Positive, negative, and neutral sentiment distribution for inbox items
+- **Role Diversity**: Complete RBAC implementation with varied permission sets across team members
+- **Geographic Distribution**: Multi-timezone and multi-locale data for global testing scenarios
+- **Performance Metrics**: Realistic engagement rates, reach data, and conversion tracking
+- **Error Scenarios**: Failed posts, expired tokens, and SLA breaches for comprehensive testing
 
-### Analytics & AI
-- **AnalyticsMetric** - Performance metrics and real-time data
+### Database Models Summary
+
+### Core Models (ENHANCED WITH MOCK DATA)
+- **User** - 50+ realistic user profiles with authentication, timezones, and avatar generation
+- **Workspace** - 15+ company workspaces with branding, localization, and team structures
+- **UserWorkspace** - Complete RBAC relationships with realistic permission distributions
+- **Client** - 3-8 clients per workspace with full business profiles and billing information
+- **VerificationToken** - Email verification system with 24-hour expiration handling
+
+### Social Media (POPULATED WITH REALISTIC DATA)
+- **SocialAccount** - 120+ social accounts across all platforms with varied statuses and metadata
+- **Post** - 1500+ content posts with realistic scheduling, publishing, and engagement patterns
+- **PostVariant** - Platform-specific variations with optimized content and performance tracking
+- **Campaign** - 100+ marketing campaigns with budget tracking and objective management
+- **InboxItem** - 3000+ social interactions with sentiment analysis and assignment tracking
+- **Conversation** - Thread management with multi-message conversations and response tracking
+
+### Analytics & AI (COMPREHENSIVE DATA SET)
+- **AnalyticsMetric** - 20,000+ performance data points with realistic engagement patterns
 - **CustomDashboard** - User-specific dashboard configurations and layouts
-- **AIContentSuggestion** - AI-generated content
-- **SentimentAnalysis** - Sentiment tracking
-- **AudienceSegment** - Audience clustering
-- **ContentABTest** - A/B testing data
-- **UserSession** - User activity tracking
-- **UserAction** - Detailed behavior analytics
+- **UserSession** - 1000+ user sessions with browser metadata and activity patterns
+- **UserAction** - 5000+ user actions covering comprehensive platform usage analytics
+- **AIContentSuggestion** - AI-generated content suggestions (framework ready)
+- **SentimentAnalysis** - Emotion tracking across all social interactions
+- **AudienceSegment** - Audience clustering and demographic analysis
+- **ContentABTest** - A/B testing data with statistical significance tracking
 
-### System
-- **AuditEvent** - Activity logging
-- **Alert** - System alerts
-- **AutomationRule** - Automation configuration
-- **NotificationPreference** - User preferences
+### System (OPERATIONAL DATA)
+- **AuditEvent** - Activity logging for all user and system actions
+- **Alert** - System alerts and monitoring notifications
+- **AutomationRule** - Automation configuration with trigger/action patterns
+- **NotificationPreference** - User notification preferences and delivery settings
 
 ## Testing Infrastructure
 
