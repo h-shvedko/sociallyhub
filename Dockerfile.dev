@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init curl
 
 WORKDIR /app
 
@@ -9,7 +9,10 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies for development)
-RUN npm ci && npm cache clean --force
+# Force clean install to ensure all modules are properly installed
+RUN rm -rf node_modules package-lock.json && \
+    npm install --legacy-peer-deps --verbose && \
+    npm cache clean --force
 
 # Copy source code
 COPY . .

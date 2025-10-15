@@ -71,8 +71,8 @@ services:
       - ./components.json:/app/components.json
       - ./.env.local:/app/.env.local
       - next_cache:/app/.next
-      # Exclude node_modules to prevent host overriding container's dependencies
-      - /app/node_modules
+      # Use named volume for node_modules to prevent host conflicts
+      - node_modules:/app/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,8 +110,8 @@ services:
     volumes:
       - ./prisma:/app/prisma
       - ./.env.local:/app/.env.local
-      # Exclude node_modules to prevent host overriding container's dependencies  
-      - /app/node_modules
+      # Use named volume for node_modules to prevent host conflicts
+      - node_modules:/app/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,3 +123,4 @@ volumes:
   postgres_data:
   redis_data:
   next_cache:
+  node_modules:

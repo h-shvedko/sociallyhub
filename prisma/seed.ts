@@ -116,11 +116,14 @@ function randomChoice<T>(array: T[]): T {
 }
 
 function randomChoices<T>(array: T[], count: number): T[] {
-  const choices = []
-  for (let i = 0; i < count; i++) {
-    choices.push(randomChoice(array))
-  }
-  return choices
+  // Ensure we don't try to pick more items than available
+  const actualCount = Math.min(count, array.length)
+
+  // Create a copy of the array and shuffle it
+  const shuffled = [...array].sort(() => Math.random() - 0.5)
+
+  // Return the first N unique items
+  return shuffled.slice(0, actualCount)
 }
 
 function randomInt(min: number, max: number): number {
@@ -170,12 +173,26 @@ async function main() {
   // Generate Users
   console.log(`👥 Generating ${CONFIG.USERS_COUNT} users...`)
   const users = []
-  
-  // Keep demo user
-  const demoUser = await prisma.user.findUnique({ where: { email: 'demo@sociallyhub.com' } })
-  if (demoUser) {
-    users.push(demoUser)
+
+  // Ensure demo user exists
+  let demoUser = await prisma.user.findUnique({ where: { email: 'demo@sociallyhub.com' } })
+  if (!demoUser) {
+    console.log('📧 Creating demo user...')
+    const hashedPassword = await bcrypt.hash('demo123456', 12)
+    demoUser = await prisma.user.create({
+      data: {
+        email: 'demo@sociallyhub.com',
+        name: 'Demo User',
+        password: hashedPassword,
+        emailVerified: new Date(),
+        image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demo',
+        timezone: 'UTC',
+        locale: 'en'
+      }
+    })
+    console.log('✅ Demo user created')
   }
+  users.push(demoUser)
 
   for (let i = 0; i < CONFIG.USERS_COUNT; i++) {
     const firstName = randomChoice(FIRST_NAMES)
@@ -201,12 +218,27 @@ async function main() {
   // Generate Workspaces
   console.log(`🏢 Generating ${CONFIG.WORKSPACES_COUNT} workspaces...`)
   const workspaces = []
-  
-  // Keep demo workspace
-  const demoWorkspace = await prisma.workspace.findUnique({ where: { id: 'demo-workspace' } })
-  if (demoWorkspace) {
-    workspaces.push(demoWorkspace)
+
+  // Ensure demo workspace exists
+  let demoWorkspace = await prisma.workspace.findUnique({ where: { id: 'demo-workspace' } })
+  if (!demoWorkspace) {
+    console.log('🏢 Creating demo workspace...')
+    demoWorkspace = await prisma.workspace.create({
+      data: {
+        id: 'demo-workspace',
+        name: 'SociallyHub Demo',
+        timezone: 'UTC',
+        defaultLocale: 'en',
+        supportedLocales: ['en'],
+        branding: {
+          primaryColor: '#3B82F6',
+          logo: 'https://api.dicebear.com/7.x/initials/svg?seed=SociallyHub%20Demo'
+        }
+      }
+    })
+    console.log('✅ Demo workspace created')
   }
+  workspaces.push(demoWorkspace)
 
   for (let i = 0; i < CONFIG.WORKSPACES_COUNT; i++) {
     const companyName = randomChoice(COMPANY_NAMES)
@@ -230,7 +262,36 @@ async function main() {
   // Generate UserWorkspace relationships (Team Members)
   console.log('👥 Creating team member relationships...')
   let teamMemberCount = 0
-  
+
+  // Ensure demo user is owner of demo workspace
+  const existingDemoRelation = await prisma.userWorkspace.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: demoUser.id,
+        workspaceId: demoWorkspace.id
+      }
+    }
+  })
+
+  if (!existingDemoRelation) {
+    await prisma.userWorkspace.create({
+      data: {
+        userId: demoUser.id,
+        workspaceId: demoWorkspace.id,
+        role: 'OWNER',
+        permissions: {
+          canManageTeam: true,
+          canManageContent: true,
+          canManageSettings: true,
+          canViewAnalytics: true,
+          canManageBilling: true
+        }
+      }
+    })
+    teamMemberCount++
+    console.log('✅ Demo user added to demo workspace as OWNER')
+  }
+
   for (const workspace of workspaces) {
     const teamSize = randomInt(3, 8) // 3-8 members per workspace
     const workspaceUsers = randomChoices(users, teamSize)
@@ -459,10 +520,33 @@ async function main() {
     const workspace = workspaces.find(w => w.id === post.workspaceId)
     const workspaceAccounts = socialAccounts.filter(acc => acc.workspaceId === workspace.id)
 
+    // Create a set to track unique combinations and prevent duplicates
+    const usedCombinations = new Set<string>()
+
     for (let i = 0; i < CONFIG.ANALYTICS_METRICS_PER_POST; i++) {
-      const account = randomChoice(workspaceAccounts)
-      const metricType = randomChoice(METRIC_TYPES)
-      const date = randomDate(post.publishedAt || new Date(), new Date())
+      let attempts = 0
+      let combinationKey = ''
+      let account: any, metricType: string, date: Date, hour: number
+
+      // Try to find a unique combination
+      do {
+        account = randomChoice(workspaceAccounts)
+        metricType = randomChoice(METRIC_TYPES)
+        date = randomDate(post.publishedAt || new Date(), new Date())
+        hour = randomInt(0, 23)
+
+        // Create unique key from constraint fields
+        const dateStr = new Date(date.toDateString()).toISOString()
+        combinationKey = `${post.ownerId}-${account.id}-${post.id}-${dateStr}-${hour}-${metricType}`
+        attempts++
+      } while (usedCombinations.has(combinationKey) && attempts < 50)
+
+      // Skip if we couldn't find a unique combination after 50 attempts
+      if (usedCombinations.has(combinationKey)) {
+        continue
+      }
+
+      usedCombinations.add(combinationKey)
 
       // Generate realistic metric values based on type
       let value = 0
@@ -496,7 +580,7 @@ async function main() {
           socialAccountId: account.id,
           postId: post.id,
           date: new Date(date.toDateString()), // Remove time component
-          hour: randomInt(0, 23),
+          hour,
           platform: account.provider,
           metricType,
           value,
