@@ -301,20 +301,21 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                 <Plus className="h-4 w-4" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col w-full">
               <DialogHeader className="flex-shrink-0">
                 <DialogTitle>{editingResponse ? 'Edit Automated Response' : 'Create Automated Response'}</DialogTitle>
                 <DialogDescription>
                   {editingResponse ? 'Update your automated response settings' : 'Set up automated responses to handle common inquiries'}
                 </DialogDescription>
               </DialogHeader>
-              
-              <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2"
+
+              <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2 w-full"
                    style={{ scrollbarWidth: 'thin' }}>
                 {/* Basic Info */}
-                <div className="space-y-2">
+                <div className="space-y-2 w-full">
                   <Label>Response Name</Label>
                   <Input
+                    className="w-full"
                     placeholder="e.g., Thank you for positive feedback"
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -322,13 +323,13 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                 </div>
 
                 {/* Trigger Type */}
-                <div className="space-y-2">
+                <div className="space-y-2 w-full">
                   <Label>Trigger Type</Label>
-                  <Select 
-                    value={formData.triggerType} 
+                  <Select
+                    value={formData.triggerType}
                     onValueChange={(value: any) => setFormData(prev => ({ ...prev, triggerType: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -341,14 +342,14 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                 </div>
 
                 {/* Trigger Value */}
-                <div className="space-y-2">
+                <div className="space-y-2 w-full">
                   <Label>Trigger Value</Label>
                   {formData.triggerType === 'sentiment' ? (
-                    <Select 
-                      value={formData.triggerValue} 
+                    <Select
+                      value={formData.triggerValue}
                       onValueChange={(value) => setFormData(prev => ({ ...prev, triggerValue: value }))}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -359,6 +360,7 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                     </Select>
                   ) : (
                     <Input
+                      className="w-full"
                       placeholder={
                         formData.triggerType === 'keyword' ? 'Enter keywords (comma separated)' :
                         formData.triggerType === 'platform' ? 'Select platforms' :
@@ -371,21 +373,22 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                 </div>
 
                 {/* Response Template */}
-                <div className="space-y-2">
+                <div className="space-y-2 w-full">
                   <Label>Response Template</Label>
                   <Textarea
+                    className="min-h-[100px] w-full resize-none"
                     placeholder="Enter your automated response message..."
                     value={formData.responseTemplate}
                     onChange={(e) => setFormData(prev => ({ ...prev, responseTemplate: e.target.value }))}
-                    className="min-h-[100px]"
                   />
                 </div>
 
                 {/* Settings */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-4 w-full">
+                  <div className="space-y-2 min-w-0">
                     <Label>Priority (1-10)</Label>
                     <Input
+                      className="w-full"
                       type="number"
                       min="1"
                       max="10"
@@ -393,10 +396,11 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
                       onChange={(e) => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) || 1 }))}
                     />
                   </div>
-                  
-                  <div className="space-y-2">
+
+                  <div className="space-y-2 min-w-0">
                     <Label>Delay (minutes)</Label>
                     <Input
+                      className="w-full"
                       type="number"
                       min="0"
                       value={formData.delayMinutes}
@@ -416,8 +420,12 @@ export function AutomatedResponses({ workspaceId }: AutomatedResponsesProps) {
 
               </div>
               
-              <div className="flex gap-2 pt-4 border-t flex-shrink-0">
-                <Button onClick={editingResponse ? handleUpdateResponse : handleCreateResponse} disabled={!formData.name || !formData.responseTemplate}>
+              <div className="flex gap-2 pt-4 border-t flex-shrink-0 w-full">
+                <Button
+                  className="flex-1"
+                  onClick={editingResponse ? handleUpdateResponse : handleCreateResponse}
+                  disabled={!formData.name || !formData.responseTemplate}
+                >
                   {editingResponse ? 'Update Response' : 'Create Response'}
                 </Button>
                 <Button variant="outline" onClick={handleCancelEdit}>
