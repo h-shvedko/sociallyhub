@@ -35,6 +35,7 @@ type CalendarView = 'month' | 'week' | 'day'
 interface Post {
   id: string
   title: string
+  baseContent?: any  // The actual content from API
   status: 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED'
   scheduledAt: string | null
   platforms: string[]
@@ -44,9 +45,10 @@ interface CalendarGridProps {
   view: CalendarView
   currentDate: Date
   onDateSelect: (date: Date) => void
+  onPostClick?: (post: Post) => void
 }
 
-export function CalendarGrid({ view, currentDate, onDateSelect }: CalendarGridProps) {
+export function CalendarGrid({ view, currentDate, onDateSelect, onPostClick }: CalendarGridProps) {
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -67,6 +69,7 @@ export function CalendarGrid({ view, currentDate, onDateSelect }: CalendarGridPr
         const response = await fetch('/api/posts')
         if (response.ok) {
           const data = await response.json()
+          console.log('📅 Fetched posts:', data.posts)
           setPosts(data.posts || [])
         }
       } catch (error) {
@@ -219,6 +222,7 @@ export function CalendarGrid({ view, currentDate, onDateSelect }: CalendarGridPr
                     isSelectedDay={isSelectedDay}
                     isTodayDate={isTodayDate}
                     onDateSelect={onDateSelect}
+                    onPostClick={onPostClick}
                   />
                 )
               })}
@@ -228,7 +232,7 @@ export function CalendarGrid({ view, currentDate, onDateSelect }: CalendarGridPr
         <DragOverlay>
           {activeDragPost ? (
             <div className="opacity-80 transform rotate-2 shadow-lg">
-              <CalendarEvent post={activeDragPost} compact />
+              <CalendarEvent post={activeDragPost} compact onPostClick={onPostClick} />
             </div>
           ) : null}
         </DragOverlay>
@@ -283,7 +287,7 @@ export function CalendarGrid({ view, currentDate, onDateSelect }: CalendarGridPr
                       {dayPosts
                         .filter(post => post.scheduledAt && new Date(post.scheduledAt).getHours() === i)
                         .map(post => (
-                          <CalendarEvent key={post.id} post={post} compact />
+                          <CalendarEvent key={post.id} post={post} compact onPostClick={onPostClick} />
                         ))}
                     </div>
                   ))}
@@ -327,7 +331,7 @@ export function CalendarGrid({ view, currentDate, onDateSelect }: CalendarGridPr
                       {dayPosts
                         .filter(post => post.scheduledAt && new Date(post.scheduledAt).getHours() === i)
                         .map(post => (
-                          <CalendarEvent key={post.id} post={post} />
+                          <CalendarEvent key={post.id} post={post} onPostClick={onPostClick} />
                         ))}
                     </div>
                   ))}
@@ -370,7 +374,7 @@ export function CalendarGrid({ view, currentDate, onDateSelect }: CalendarGridPr
                 <h3 className="font-semibold mb-3">All Posts</h3>
                 <div className="space-y-2">
                   {dayPosts.map(post => (
-                    <CalendarEvent key={post.id} post={post} detailed />
+                    <CalendarEvent key={post.id} post={post} detailed onPostClick={onPostClick} />
                   ))}
                 </div>
               </CardContent>
@@ -394,6 +398,7 @@ interface DroppableCalendarDayProps {
   isSelectedDay: boolean
   isTodayDate: boolean
   onDateSelect: (date: Date) => void
+  onPostClick?: (post: Post) => void
 }
 
 function DroppableCalendarDay({
@@ -402,7 +407,8 @@ function DroppableCalendarDay({
   isCurrentMonth,
   isSelectedDay,
   isTodayDate,
-  onDateSelect
+  onDateSelect,
+  onPostClick
 }: DroppableCalendarDayProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: date.toISOString(),
@@ -429,7 +435,7 @@ function DroppableCalendarDay({
       </div>
       <div className="space-y-1">
         {posts.slice(0, 3).map((post) => (
-          <DraggableCalendarEvent key={post.id} post={post} compact />
+          <DraggableCalendarEvent key={post.id} post={post} compact onPostClick={onPostClick} />
         ))}
         {posts.length > 3 && (
           <div className="text-xs text-muted-foreground">

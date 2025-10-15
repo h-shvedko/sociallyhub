@@ -19,6 +19,7 @@ import {
 interface Post {
   id: string
   title: string
+  baseContent?: any  // The actual content from API
   status: 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED'
   scheduledAt: string | null
   platforms: string[]
@@ -28,6 +29,7 @@ interface CalendarEventProps {
   post: Post
   compact?: boolean
   detailed?: boolean
+  onPostClick?: (post: Post) => void
 }
 
 const statusConfig = {
@@ -62,7 +64,7 @@ const platformIcons = {
   TIKTOK: Circle // Default for TikTok
 }
 
-export function CalendarEvent({ post, compact = false, detailed = false }: CalendarEventProps) {
+export function CalendarEvent({ post, compact = false, detailed = false, onPostClick }: CalendarEventProps) {
   const status = statusConfig[post.status]
   const StatusIcon = status.icon
 
@@ -73,6 +75,10 @@ export function CalendarEvent({ post, compact = false, detailed = false }: Calen
           "text-xs p-2 rounded-md border cursor-pointer hover:shadow-sm transition-all duration-200",
           status.color
         )}
+        onClick={(e) => {
+          e.stopPropagation()
+          onPostClick?.(post)
+        }}
       >
         <div className="flex items-center gap-1 mb-1">
           <StatusIcon className="h-3 w-3 shrink-0" />
@@ -89,7 +95,12 @@ export function CalendarEvent({ post, compact = false, detailed = false }: Calen
 
   if (detailed) {
     return (
-      <Card className="shadow-sm hover:shadow-md transition-shadow">
+      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation()
+          onPostClick?.(post)
+        }}
+      >
         <CardContent className="p-3">
           <div className="flex items-start justify-between gap-2 mb-2">
             <h4 className="font-medium text-sm leading-tight">{post.title || 'Untitled'}</h4>
@@ -131,6 +142,10 @@ export function CalendarEvent({ post, compact = false, detailed = false }: Calen
         "text-xs p-2 rounded-md border cursor-pointer hover:shadow-sm transition-all duration-200 mb-1",
         status.color
       )}
+      onClick={(e) => {
+        e.stopPropagation()
+        onPostClick?.(post)
+      }}
     >
       <div className="flex items-center gap-1 mb-1">
         <StatusIcon className="h-3 w-3 shrink-0" />

@@ -132,7 +132,7 @@ export function AIContentGenerator({
 
     // Track usage
     fetch('/api/ai/content/generate', {
-      method: 'PATCH',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },

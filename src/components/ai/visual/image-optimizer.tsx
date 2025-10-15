@@ -30,6 +30,7 @@ interface OptimizationResult {
 interface ImageOptimizerProps {
   imageUrl?: string
   selectedPlatforms: string[]
+  workspaceId: string
   onOptimizationComplete?: (results: OptimizationResult[]) => void
 }
 
@@ -50,7 +51,7 @@ const PLATFORM_INFO = {
   TIKTOK: { name: 'TikTok', color: 'bg-black' }
 }
 
-export function ImageOptimizer({ imageUrl, selectedPlatforms, onOptimizationComplete }: ImageOptimizerProps) {
+export function ImageOptimizer({ imageUrl, selectedPlatforms, workspaceId, onOptimizationComplete }: ImageOptimizerProps) {
   const [results, setResults] = useState<OptimizationResult[]>([])
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,18 +59,29 @@ export function ImageOptimizer({ imageUrl, selectedPlatforms, onOptimizationComp
 
   // Helper function to upload blob URLs to get a real URL
   const uploadBlobIfNeeded = async (url: string): Promise<string> => {
+    console.log('🔧 uploadBlobIfNeeded called with:', { url, workspaceId })
+
     if (!url.startsWith('blob:')) {
       return url // Not a blob URL, return as-is
     }
 
+    if (!workspaceId) {
+      console.error('❌ WorkspaceId is missing in uploadBlobIfNeeded:', workspaceId)
+      throw new Error('Workspace ID is required for blob upload')
+    }
+
     try {
+      console.log('⬆️ Starting blob upload to /api/media/upload')
       // Fetch the blob data
       const response = await fetch(url)
       const blob = await response.blob()
-      
+
       // Create FormData for upload
       const formData = new FormData()
-      formData.append('files', blob, 'image.jpg')
+      formData.append('file', blob, 'image.jpg')
+      formData.append('workspaceId', workspaceId)
+
+      console.log('📦 FormData prepared with workspaceId:', workspaceId)
 
       // Upload to our media API
       const uploadResponse = await fetch('/api/media/upload', {
@@ -82,10 +94,10 @@ export function ImageOptimizer({ imageUrl, selectedPlatforms, onOptimizationComp
       }
 
       const uploadResult = await uploadResponse.json()
-      if (uploadResult.assets && uploadResult.assets[0]) {
-        return uploadResult.assets[0].url // Return the uploaded image URL
+      if (uploadResult.url) {
+        return uploadResult.url // Return the uploaded image URL
       }
-      
+
       throw new Error('No uploaded asset returned')
     } catch (error) {
       console.error('Error uploading blob:', error)

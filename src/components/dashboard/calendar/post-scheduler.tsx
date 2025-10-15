@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import { Calendar as CalendarIcon, Clock, X } from "lucide-react"
 import { 
@@ -17,10 +17,20 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 
+interface Post {
+  id: string
+  title: string
+  baseContent?: any  // The actual content from API
+  status: 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED'
+  scheduledAt: string | null
+  platforms: string[]
+}
+
 interface PostSchedulerProps {
   isOpen: boolean
   onClose: () => void
   initialDate?: Date
+  editPost?: Post | null  // For editing existing posts
 }
 
 const platforms = [
@@ -32,7 +42,9 @@ const platforms = [
   { id: 'TIKTOK', name: 'TikTok', color: 'bg-black' },
 ]
 
-export function PostScheduler({ isOpen, onClose, initialDate }: PostSchedulerProps) {
+export function PostScheduler({ isOpen, onClose, initialDate, editPost }: PostSchedulerProps) {
+  const isEditMode = !!editPost
+
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['TWITTER'])
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -41,6 +53,44 @@ export function PostScheduler({ isOpen, onClose, initialDate }: PostSchedulerPro
   )
   const [scheduledTime, setScheduledTime] = useState('09:00')
   const [loading, setLoading] = useState(false)
+
+  // Initialize form when editing a post or reset when creating new
+  useEffect(() => {
+    if (editPost) {
+      console.log('🔧 Editing post:', editPost)
+      setTitle(editPost.title || '')
+
+      // Handle baseContent which can be either a string or an object
+      let contentText = ''
+      if (typeof editPost.baseContent === 'string') {
+        contentText = editPost.baseContent
+      } else if (editPost.baseContent?.text) {
+        contentText = editPost.baseContent.text
+      }
+      console.log('📝 Setting content to:', contentText)
+      setContent(contentText)
+
+      setSelectedPlatforms(editPost.platforms || ['TWITTER'])
+
+      if (editPost.scheduledAt) {
+        const scheduledDateTime = new Date(editPost.scheduledAt)
+        setScheduledDate(format(scheduledDateTime, 'yyyy-MM-dd'))
+        setScheduledTime(format(scheduledDateTime, 'HH:mm'))
+      }
+    } else {
+      // Reset form for new post
+      setTitle('')
+      setContent('')
+      setSelectedPlatforms(['TWITTER'])
+      setScheduledTime('09:00')
+
+      if (initialDate) {
+        setScheduledDate(format(initialDate, 'yyyy-MM-dd'))
+      } else {
+        setScheduledDate('')
+      }
+    }
+  }, [editPost, initialDate])
 
   const togglePlatform = (platformId: string) => {
     setSelectedPlatforms(prev => 
@@ -59,24 +109,30 @@ export function PostScheduler({ isOpen, onClose, initialDate }: PostSchedulerPro
         ? new Date(`${scheduledDate}T${scheduledTime}`).toISOString()
         : null
 
-      const response = await fetch('/api/posts', {
-        method: 'POST',
+      const requestBody = {
+        title: title.trim() || undefined,
+        baseContent: content, // Send as baseContent for the API
+        content: {
+          text: content,
+          media: [],
+          hashtags: [],
+          mentions: []
+        },
+        platforms: selectedPlatforms,
+        status,
+        scheduledAt,
+        tags: []
+      }
+
+      const url = isEditMode ? `/api/posts/${editPost!.id}` : '/api/posts'
+      const method = isEditMode ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: title.trim() || undefined,
-          content: {
-            text: content,
-            media: [],
-            hashtags: [],
-            mentions: []
-          },
-          platforms: selectedPlatforms,
-          status,
-          scheduledAt,
-          tags: []
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (response.ok) {
@@ -85,16 +141,16 @@ export function PostScheduler({ isOpen, onClose, initialDate }: PostSchedulerPro
         setTitle('')
         setContent('')
         setSelectedPlatforms(['TWITTER'])
-        
-        // Refresh the page to show new post
+
+        // Refresh the page to show updated/new post
         window.location.reload()
       } else {
         const error = await response.json()
         alert(`Error: ${error.error}`)
       }
     } catch (error) {
-      console.error('Failed to create post:', error)
-      alert('Failed to create post')
+      console.error(`Failed to ${isEditMode ? 'update' : 'create'} post:`, error)
+      alert(`Failed to ${isEditMode ? 'update' : 'create'} post`)
     } finally {
       setLoading(false)
     }
@@ -106,10 +162,13 @@ export function PostScheduler({ isOpen, onClose, initialDate }: PostSchedulerPro
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarIcon className="h-5 w-5" />
-            Schedule Post
+            {isEditMode ? 'Edit Post' : 'Schedule Post'}
           </DialogTitle>
           <DialogDescription>
-            Create a new post to schedule for your social media platforms
+            {isEditMode
+              ? 'Update your post and schedule for your social media platforms'
+              : 'Create a new post to schedule for your social media platforms'
+            }
           </DialogDescription>
         </DialogHeader>
 

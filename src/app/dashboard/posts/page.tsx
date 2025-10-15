@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -69,6 +70,7 @@ const statusStyles = {
 
 export default function PostsPage() {
   const searchParams = useSearchParams()
+  const { data: session } = useSession()
   const [activeTab, setActiveTab] = useState("all")
   const [showComposer, setShowComposer] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -76,6 +78,7 @@ export default function PostsPage() {
   const [loading, setLoading] = useState(true)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [previewPost, setPreviewPost] = useState<Post | null>(null)
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
 
   // Fetch posts from API
   const fetchPosts = async () => {
@@ -101,6 +104,52 @@ export default function PostsPage() {
   useEffect(() => {
     fetchPosts()
   }, [activeTab])
+
+  // Get workspaceId from session or API when session is available
+  useEffect(() => {
+    const getWorkspaceId = async () => {
+      console.log('🔍 Session state:', {
+        hasSession: !!session,
+        userId: session?.user?.id,
+        sessionWorkspaceId: session?.user?.workspaceId
+      })
+
+      if (!session?.user?.id) {
+        console.log('❌ No session or user ID, skipping workspace fetch')
+        return
+      }
+
+      try {
+        // Try to get from session first
+        if (session.user.workspaceId) {
+          console.log('✅ Using workspaceId from session:', session.user.workspaceId)
+          setWorkspaceId(session.user.workspaceId)
+          return
+        }
+
+        // Fetch from API
+        console.log('🔄 Fetching workspaceId from API...')
+        const response = await fetch('/api/user/workspace')
+        if (response.ok) {
+          const data = await response.json()
+          console.log('✅ Received workspaceId from API:', data.workspaceId)
+          setWorkspaceId(data.workspaceId)
+        } else {
+          console.error('❌ API error:', response.status, response.statusText)
+          // Final fallback: use the demo workspace ID
+          console.log('🚧 Using final fallback demo workspace')
+          setWorkspaceId('demo-workspace')
+        }
+      } catch (error) {
+        console.error('❌ Error getting workspaceId:', error)
+        // Final fallback: use the demo workspace ID
+        console.log('🚧 Using final fallback demo workspace due to error')
+        setWorkspaceId('demo-workspace')
+      }
+    }
+
+    getWorkspaceId()
+  }, [session])
 
   // Check for compose parameter to auto-open composer
   useEffect(() => {
@@ -304,17 +353,27 @@ export default function PostsPage() {
           </p>
         </div>
 
-        <PostComposer
-          initialContent={editingPost?.baseContent || ""}
-          initialTitle={editingPost?.title || ""}
-          initialPlatforms={editingPost?.platforms || []}
-          initialMedia={editingPost?.media || []}
-          editMode={!!editingPost}
-          postId={editingPost?.id}
-          onSave={handlePostSave}
-          onSchedule={handlePostSchedule}
-          onPublish={handlePostPublish}
-        />
+        {!workspaceId ? (
+          <div className="flex items-center justify-center p-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading workspace...</p>
+            </div>
+          </div>
+        ) : (
+          <PostComposer
+            initialContent={editingPost?.baseContent || ""}
+            initialTitle={editingPost?.title || ""}
+            initialPlatforms={editingPost?.platforms || []}
+            initialMedia={editingPost?.media || []}
+            editMode={!!editingPost}
+            postId={editingPost?.id}
+            workspaceId={workspaceId}
+            onSave={handlePostSave}
+            onSchedule={handlePostSchedule}
+            onPublish={handlePostPublish}
+          />
+        )}
       </div>
     )
   }

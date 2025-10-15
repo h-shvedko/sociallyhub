@@ -14,6 +14,15 @@ import { RecurringPostTemplates } from "@/components/dashboard/calendar/recurrin
 
 type CalendarView = 'month' | 'week' | 'day'
 
+interface Post {
+  id: string
+  title: string
+  baseContent?: any  // The actual content from API
+  status: 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED'
+  scheduledAt: string | null
+  platforms: string[]
+}
+
 export default function CalendarPage() {
   const [currentView, setCurrentView] = useState<CalendarView>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -21,6 +30,23 @@ export default function CalendarPage() {
   const [showBulkScheduler, setShowBulkScheduler] = useState(false)
   const [showExportImport, setShowExportImport] = useState(false)
   const [showRecurringTemplates, setShowRecurringTemplates] = useState(false)
+  const [editingPost, setEditingPost] = useState<Post | null>(null)
+
+  const handlePostClick = (post: Post) => {
+    setEditingPost(post)
+    setShowScheduler(true)
+  }
+
+  const handleDateSelect = (date: Date) => {
+    setCurrentDate(date)
+    setEditingPost(null) // Clear any editing post
+    setShowScheduler(true)
+  }
+
+  const handleCloseScheduler = () => {
+    setShowScheduler(false)
+    setEditingPost(null)
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -33,8 +59,11 @@ export default function CalendarPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button 
-            onClick={() => setShowScheduler(true)}
+          <Button
+            onClick={() => {
+              setEditingPost(null)
+              setShowScheduler(true)
+            }}
             className="shadow-md hover:shadow-lg transition-all duration-200 active:scale-95"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -76,20 +105,19 @@ export default function CalendarPage() {
       />
 
       {/* Calendar Grid */}
-      <CalendarGrid 
+      <CalendarGrid
         view={currentView}
         currentDate={currentDate}
-        onDateSelect={(date) => {
-          setCurrentDate(date)
-          setShowScheduler(true)
-        }}
+        onDateSelect={handleDateSelect}
+        onPostClick={handlePostClick}
       />
 
       {/* Post Scheduler Modal */}
-      <PostScheduler 
+      <PostScheduler
         isOpen={showScheduler}
-        onClose={() => setShowScheduler(false)}
+        onClose={handleCloseScheduler}
         initialDate={currentDate}
+        editPost={editingPost}
       />
 
       {/* Bulk Scheduler Modal */}

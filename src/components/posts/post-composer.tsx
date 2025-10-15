@@ -110,6 +110,7 @@ interface PostComposerProps {
   initialMedia?: MediaItem[]
   editMode?: boolean
   postId?: string
+  workspaceId: string
   onSave?: (postData: any) => Promise<void>
   onSchedule?: (postData: any, scheduledTime: Date) => Promise<void>
   onPublish?: (postData: any) => Promise<void>
@@ -139,11 +140,13 @@ export default function PostComposer({
   initialMedia = [],
   editMode = false,
   postId,
+  workspaceId,
   onSave,
   onSchedule,
   onPublish,
   className
 }: PostComposerProps) {
+
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<keyof typeof SOCIAL_PLATFORMS>>(
     new Set(initialPlatforms as (keyof typeof SOCIAL_PLATFORMS)[])
   )
@@ -200,13 +203,24 @@ export default function PostComposer({
 
   // Handle media upload
   const handleMediaUpload = useCallback(async (files: FileList) => {
+    console.log('🔧 handleMediaUpload called with workspaceId:', workspaceId)
+
+    if (!workspaceId) {
+      console.error('❌ Cannot upload media: workspaceId is not available yet')
+      alert('Please wait for workspace to load before uploading files')
+      return
+    }
+
     const uploadedMedia: MediaItem[] = []
-    
+
     for (const file of Array.from(files)) {
       try {
         // Create FormData for upload
         const formData = new FormData()
-        formData.append('files', file)
+        formData.append('file', file)
+        formData.append('workspaceId', workspaceId)
+
+        console.log('📤 Uploading file with workspaceId:', workspaceId)
         
         // Upload to server
         const response = await fetch('/api/media/upload', {
@@ -215,26 +229,14 @@ export default function PostComposer({
         })
         
         if (response.ok) {
-          const result = await response.json()
-          const uploadResult = result.results[0]
-          
-          if (uploadResult.success) {
-            uploadedMedia.push({
-              id: uploadResult.id,
-              type: file.type.startsWith('video/') ? 'video' : 'image',
-              url: uploadResult.url,
-              alt: file.name
-            })
-          } else {
-            console.error('Upload failed:', uploadResult.error)
-            // Fallback to blob URL for preview
-            uploadedMedia.push({
-              id: Math.random().toString(36).substr(2, 9),
-              type: file.type.startsWith('video/') ? 'video' : 'image',
-              url: URL.createObjectURL(file),
-              file
-            })
-          }
+          const uploadResult = await response.json()
+
+          uploadedMedia.push({
+            id: uploadResult.id,
+            type: file.type.startsWith('video/') ? 'video' : 'image',
+            url: uploadResult.url,
+            alt: file.name
+          })
         } else {
           console.error('Upload request failed')
           // Fallback to blob URL for preview
@@ -261,7 +263,7 @@ export default function PostComposer({
       ...prev,
       media: [...prev.media, ...uploadedMedia]
     }))
-  }, [])
+  }, [workspaceId])
 
   // Remove media item
   const removeMedia = (id: string) => {
@@ -574,8 +576,10 @@ export default function PostComposer({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={!workspaceId}
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center gap-2"
+                title={!workspaceId ? "Loading workspace..." : "Add media files"}
               >
                 <Upload className="h-4 w-4" />
                 Add Media
@@ -794,9 +798,16 @@ export default function PostComposer({
       {/* Visual Optimization Section */}
       {showVisualOptimization && content.media.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {!workspaceId ? (
+            <div className="col-span-2 text-center p-4 text-muted-foreground">
+              Loading workspace information...
+            </div>
+          ) : (
+            <>
           <ImageAnalyzer
             imageUrl={content.media.find(item => item.type === 'image')?.url}
             selectedPlatforms={Array.from(selectedPlatforms)}
+            workspaceId={workspaceId}
             onAnalysisComplete={(analysis) => {
               console.log('Image analysis completed:', analysis)
             }}
@@ -805,10 +816,13 @@ export default function PostComposer({
           <ImageOptimizer
             imageUrl={content.media.find(item => item.type === 'image')?.url}
             selectedPlatforms={Array.from(selectedPlatforms)}
+            workspaceId={workspaceId}
             onOptimizationComplete={(results) => {
               console.log('Image optimization completed:', results)
             }}
           />
+            </>
+          )}
         </div>
       )}
 

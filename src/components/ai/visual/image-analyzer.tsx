@@ -45,10 +45,11 @@ interface ImageAnalysis {
 interface ImageAnalyzerProps {
   imageUrl?: string
   selectedPlatforms: string[]
+  workspaceId: string
   onAnalysisComplete?: (analysis: ImageAnalysis) => void
 }
 
-export function ImageAnalyzer({ imageUrl, selectedPlatforms, onAnalysisComplete }: ImageAnalyzerProps) {
+export function ImageAnalyzer({ imageUrl, selectedPlatforms, workspaceId, onAnalysisComplete }: ImageAnalyzerProps) {
   const [analysis, setAnalysis] = useState<ImageAnalysis | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,7 +68,8 @@ export function ImageAnalyzer({ imageUrl, selectedPlatforms, onAnalysisComplete 
       
       // Create FormData for upload
       const formData = new FormData()
-      formData.append('files', blob, 'image.jpg')
+      formData.append('file', blob, 'image.jpg')
+      formData.append('workspaceId', workspaceId)
 
       // Upload to our media API
       const uploadResponse = await fetch('/api/media/upload', {
@@ -80,10 +82,10 @@ export function ImageAnalyzer({ imageUrl, selectedPlatforms, onAnalysisComplete 
       }
 
       const uploadResult = await uploadResponse.json()
-      if (uploadResult.assets && uploadResult.assets[0]) {
-        return uploadResult.assets[0].url // Return the uploaded image URL
+      if (uploadResult.url) {
+        return uploadResult.url // Return the uploaded image URL
       }
-      
+
       throw new Error('No uploaded asset returned')
     } catch (error) {
       console.error('Error uploading blob:', error)

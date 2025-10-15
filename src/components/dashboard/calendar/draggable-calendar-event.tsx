@@ -7,6 +7,7 @@ import { CalendarEvent } from "./calendar-event"
 interface Post {
   id: string
   title: string
+  baseContent?: any  // The actual content from API
   status: 'DRAFT' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED'
   scheduledAt: string | null
   platforms: string[]
@@ -15,9 +16,10 @@ interface Post {
 interface DraggableCalendarEventProps {
   post: Post
   compact?: boolean
+  onPostClick?: (post: Post) => void
 }
 
-export function DraggableCalendarEvent({ post, compact = false }: DraggableCalendarEventProps) {
+export function DraggableCalendarEvent({ post, compact = false, onPostClick }: DraggableCalendarEventProps) {
   const {
     attributes,
     listeners,
@@ -43,7 +45,7 @@ export function DraggableCalendarEvent({ post, compact = false }: DraggableCalen
         cursor-grab active:cursor-grabbing
       `}
     >
-      <CalendarEvent post={post} compact={compact} />
+      <CalendarEvent post={post} compact={compact} onPostClick={onPostClick} />
     </div>
   )
 }
