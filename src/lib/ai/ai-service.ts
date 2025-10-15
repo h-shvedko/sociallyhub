@@ -2,13 +2,14 @@
 
 import { SocialProvider, AIUsageTracking, AIContentSuggestion } from '@prisma/client'
 import { OpenAIProvider } from './providers/openai-provider'
+import { MockAIProvider } from './providers/mock-provider'
 import { AICache } from './cache'
 import { ContentSafetyFilter } from './safety-filter'
 import { prisma } from '../prisma'
-import { 
-  AIProvider, 
-  AIServiceConfig, 
-  ContentGenerationOptions, 
+import {
+  AIProvider,
+  AIServiceConfig,
+  ContentGenerationOptions,
   HashtagSuggestionOptions,
   AIUsageMetrics
 } from './types'
@@ -29,15 +30,21 @@ export class AIService {
   }
 
   private initializeProviders(): void {
-    // Initialize OpenAI provider
+    // Initialize OpenAI provider if API key is available
     const openaiKey = process.env.OPENAI_API_KEY
-    if (openaiKey && (this.config.provider === 'openai' || !this.config.provider)) {
+    if (openaiKey && openaiKey !== 'your-openai-api-key-here' && (this.config.provider === 'openai' || !this.config.provider)) {
       const provider = new OpenAIProvider(
         openaiKey,
         this.config.rateLimitRPM || 60,
         this.config.rateLimitTPM || 40000
       )
       this.providers.set('openai', provider)
+      console.log('✅ OpenAI provider initialized')
+    } else {
+      // Use mock provider for development when OpenAI is not configured
+      const mockProvider = new MockAIProvider(500) // 500ms delay for realistic simulation
+      this.providers.set('openai', mockProvider)
+      console.log('🚧 Using mock AI provider (OpenAI API key not configured)')
     }
 
     // TODO: Add other providers (Anthropic, Google, Azure) as needed
@@ -46,7 +53,7 @@ export class AIService {
   private getProvider(): AIProvider {
     const provider = this.providers.get(this.config.provider || 'openai')
     if (!provider) {
-      throw new Error(`AI provider ${this.config.provider} not initialized`)
+      throw new Error(`AI provider ${this.config.provider || 'openai'} not initialized`)
     }
     return provider
   }
