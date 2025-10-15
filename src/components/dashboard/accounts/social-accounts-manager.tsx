@@ -181,14 +181,14 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
             const platformsData = await platformsResponse.json()
             setAvailablePlatforms([...platformsData.supported, ...platformsData.unavailable])
           } else {
-            // Fallback platforms
+            // Fallback platforms - enable them for demo/development purposes
             const defaultPlatforms = [
-              { id: 'twitter', name: 'Twitter', displayName: 'Twitter/X', icon: '𝕏', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
-              { id: 'facebook', name: 'Facebook', displayName: 'Facebook', icon: '󠁦', color: 'bg-blue-600 text-white', available: false, reason: 'API credentials not configured' },
-              { id: 'instagram', name: 'Instagram', displayName: 'Instagram', icon: '📷', color: 'bg-gradient-to-r from-purple-500 to-pink-500 text-white', available: false, reason: 'API credentials not configured' },
-              { id: 'linkedin', name: 'LinkedIn', displayName: 'LinkedIn', icon: '💼', color: 'bg-blue-700 text-white', available: false, reason: 'API credentials not configured' },
-              { id: 'tiktok', name: 'TikTok', displayName: 'TikTok', icon: '🎵', color: 'bg-black text-white', available: false, reason: 'API credentials not configured' },
-              { id: 'youtube', name: 'YouTube', displayName: 'YouTube', icon: '📺', color: 'bg-red-600 text-white', available: false, reason: 'API credentials not configured' }
+              { id: 'twitter', name: 'Twitter', displayName: 'Twitter/X', icon: '𝕏', color: 'bg-black text-white', available: true },
+              { id: 'facebook', name: 'Facebook', displayName: 'Facebook', icon: '󠁦', color: 'bg-blue-600 text-white', available: true },
+              { id: 'instagram', name: 'Instagram', displayName: 'Instagram', icon: '📷', color: 'bg-gradient-to-r from-purple-500 to-pink-500 text-white', available: true },
+              { id: 'linkedin', name: 'LinkedIn', displayName: 'LinkedIn', icon: '💼', color: 'bg-blue-700 text-white', available: true },
+              { id: 'tiktok', name: 'TikTok', displayName: 'TikTok', icon: '🎵', color: 'bg-black text-white', available: true },
+              { id: 'youtube', name: 'YouTube', displayName: 'YouTube', icon: '📺', color: 'bg-red-600 text-white', available: true }
             ]
             setAvailablePlatforms(defaultPlatforms)
           }
@@ -288,17 +288,30 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
 
       const result = await response.json()
 
-      if (result.success && result.authUrl) {
-        // Redirect to OAuth flow
-        window.location.href = result.authUrl
+      if (result.success) {
+        if (result.authUrl) {
+          // Redirect to OAuth flow for real connections
+          window.location.href = result.authUrl
+        } else if (result.demo) {
+          // Handle demo connection success
+          setNotification({
+            type: 'success',
+            message: result.message || `Demo ${provider} account connected successfully!`
+          })
+          setIsConnecting(false)
+          setSelectedProvider(null)
+          setIsConnectDialogOpen(false)
+          // Refresh accounts list to show new demo account
+          fetchSocialAccounts()
+        }
       } else {
         console.error('Connection failed:', result.error)
-        
+
         let errorMessage = result.error
         if (result.code === 'PROVIDER_NOT_CONFIGURED') {
           errorMessage = `${provider} is not available because API credentials are not configured. Please contact your administrator.`
         }
-        
+
         setNotification({
           type: 'error',
           message: errorMessage
@@ -472,19 +485,19 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                 {availablePlatforms.map((platform) => {
                   const isConnected = accounts.some(acc => acc.provider.toLowerCase() === platform.id && acc.status === 'ACTIVE')
                   const isAvailable = platform.available
-                  
+
                   return (
                     <div key={platform.id} className="relative">
                       <Button
                         variant="outline"
                         className={cn(
                           "h-24 w-full flex-col gap-2 p-4 hover:bg-muted/50 transition-colors",
-                          isAvailable && !isConnected && "hover:border-primary",
+                          isAvailable && "hover:border-primary",
                           isConnected && "bg-green-50 border-green-200 text-green-700",
                           !isAvailable && "bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed"
                         )}
-                        onClick={() => isAvailable && !isConnected && handleConnectAccount(platform.id.toUpperCase() as SocialAccount['provider'])}
-                        disabled={isConnecting || isConnected || !isAvailable}
+                        onClick={() => isAvailable && handleConnectAccount(platform.id.toUpperCase() as SocialAccount['provider'])}
+                        disabled={isConnecting || !isAvailable}
                       >
                         <div className="text-2xl">{platform.icon}</div>
                         <div className="text-sm font-medium text-center">
@@ -503,12 +516,17 @@ export function SocialAccountsManager({ workspaceId, workspaceName }: SocialAcco
                       </Button>
                       {isConnected && (
                         <div className="absolute -bottom-2 left-0 right-0 text-xs text-center text-green-600 bg-background px-2 rounded">
-                          Already Connected
+                          Connected - Add Another
                         </div>
                       )}
                       {!isAvailable && (
                         <div className="absolute -bottom-2 left-0 right-0 text-xs text-center text-muted-foreground bg-background px-2 rounded">
                           {platform.reason || 'Not configured'}
+                        </div>
+                      )}
+                      {isAvailable && !isConnected && (
+                        <div className="absolute -bottom-2 left-0 right-0 text-xs text-center text-blue-600 bg-background px-2 rounded">
+                          Click to Connect
                         </div>
                       )}
                     </div>

@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
-import { SocialAccountsManager } from '@/components/dashboard/accounts/social-accounts-manager'
+import { AccountsPageClient } from '@/components/dashboard/accounts/accounts-page-client'
 import { prisma } from '@/lib/prisma'
 import { normalizeUserId } from '@/lib/auth/demo-user'
 
@@ -13,14 +13,14 @@ export const metadata: Metadata = {
 
 export default async function AccountsPage() {
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     redirect('/auth/signin')
   }
 
-  // Get user's workspace
+  // Get user's workspace and check permissions
   const userId = await normalizeUserId(session.user.id)
-  
+
   const userWorkspace = await prisma.userWorkspace.findFirst({
     where: {
       userId,
@@ -28,6 +28,7 @@ export default async function AccountsPage() {
     },
     select: {
       workspaceId: true,
+      role: true,
       workspace: {
         select: {
           id: true,
@@ -41,10 +42,15 @@ export default async function AccountsPage() {
     redirect('/auth/signin?error=no-workspace-access')
   }
 
+  // Check if user can manage credentials (OWNER or ADMIN only)
+  const canManageCredentials = ['OWNER', 'ADMIN'].includes(userWorkspace.role)
+
   return (
-    <SocialAccountsManager 
+    <AccountsPageClient
       workspaceId={userWorkspace.workspaceId}
       workspaceName={userWorkspace.workspace.name}
+      userRole={userWorkspace.role}
+      canManageCredentials={canManageCredentials}
     />
   )
 }

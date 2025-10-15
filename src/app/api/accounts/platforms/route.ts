@@ -4,9 +4,43 @@ import { socialMediaManager } from '@/services/social-providers'
 // GET /api/accounts/platforms - Get list of supported platforms
 export async function GET(request: NextRequest) {
   try {
-    // Get platforms that have been properly initialized with credentials
+    // Always enable demo mode for development - check if any real credentials exist
+    const hasTwitterCredentials = !!(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET)
+    const hasFacebookCredentials = !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET)
+    const hasInstagramCredentials = !!(process.env.INSTAGRAM_CLIENT_ID && process.env.INSTAGRAM_CLIENT_SECRET)
+    const hasLinkedInCredentials = !!(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET)
+    const hasTikTokCredentials = !!(process.env.TIKTOK_CLIENT_ID && process.env.TIKTOK_CLIENT_SECRET)
+    const hasYouTubeCredentials = !!(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET)
+
+    const hasAnyCredentials = hasTwitterCredentials || hasFacebookCredentials || hasInstagramCredentials ||
+                              hasLinkedInCredentials || hasTikTokCredentials || hasYouTubeCredentials
+
+    const allPlatforms = ['twitter', 'facebook', 'instagram', 'linkedin', 'tiktok', 'youtube']
+
+    // If no real credentials are configured, enable demo mode for all platforms
+    if (!hasAnyCredentials) {
+      console.log('🚀 No social media credentials found - enabling demo mode for all platforms')
+      const demoPlatforms = allPlatforms.map(platform => ({
+        id: platform,
+        name: platform.charAt(0).toUpperCase() + platform.slice(1),
+        displayName: getPlatformDisplayName(platform.toUpperCase()),
+        icon: getPlatformIcon(platform.toUpperCase()),
+        color: getPlatformColor(platform.toUpperCase()),
+        available: true,
+        reason: 'Demo mode - simulated connections'
+      }))
+
+      return NextResponse.json({
+        supported: demoPlatforms,
+        unavailable: [],
+        total: demoPlatforms.length,
+        message: `${demoPlatforms.length} social media platforms available in demo mode.`
+      })
+    }
+
+    // If some credentials exist, use the real social media manager
     const supportedPlatforms = socialMediaManager.getSupportedPlatforms()
-    
+
     // Map platform names to display information
     const platformInfo = supportedPlatforms.map(platform => ({
       id: platform.toLowerCase(),
@@ -18,7 +52,6 @@ export async function GET(request: NextRequest) {
     }))
 
     // Add unavailable platforms with reasons
-    const allPlatforms = ['twitter', 'facebook', 'instagram', 'linkedin', 'tiktok', 'youtube']
     const unavailablePlatforms = allPlatforms
       .filter(platform => !supportedPlatforms.includes(platform as any))
       .map(platform => ({

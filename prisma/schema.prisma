@@ -94,6 +94,9 @@ model Workspace {
   clientBranding        ClientBranding? @relation("WorkspaceClientBranding")
   landingPageConfig     LandingPageConfig? @relation("WorkspaceLandingPage")
 
+  // Platform Credentials Relations
+  platformCredentials   PlatformCredentials[] @relation("WorkspacePlatformCredentials")
+
   @@map("workspaces")
 }
 
@@ -2506,4 +2509,44 @@ model LandingPageConfig {
   workspace Workspace @relation("WorkspaceLandingPage", fields: [workspaceId], references: [id], onDelete: Cascade)
   
   @@map("landing_page_config")
+}
+
+// ========================================
+// PLATFORM CREDENTIALS
+// ========================================
+
+model PlatformCredentials {
+  id          String   @id @default(cuid())
+  workspaceId String
+  platform    String   // 'TWITTER', 'FACEBOOK', 'INSTAGRAM', etc.
+
+  // Credentials stored as encrypted JSON
+  credentials Json     // Platform-specific credentials (API keys, secrets, etc.)
+
+  // Configuration
+  isActive    Boolean  @default(true)
+  environment String   @default("production") // 'production', 'sandbox', 'development'
+
+  // Validation status
+  lastValidated DateTime?
+  validationStatus String @default("pending") // 'pending', 'valid', 'invalid', 'expired'
+  validationError String?
+
+  // Usage tracking
+  lastUsed    DateTime?
+  usageCount  Int      @default(0)
+
+  // Metadata
+  configuredBy String?  // User ID who configured these credentials
+  notes       String?   // Optional notes about the configuration
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  workspace   Workspace @relation("WorkspacePlatformCredentials", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Ensure one credential set per platform per workspace
+  @@unique([workspaceId, platform])
+  @@map("platform_credentials")
 }
