@@ -20,6 +20,7 @@ import {
   Zap,
   Palette,
   Bot,
+  Shield,
 } from "lucide-react"
 
 const navigation = [
@@ -44,6 +45,7 @@ const system = [
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
   { name: "Material Showcase", href: "/dashboard/showcase", icon: Palette },
   { name: "Help", href: "/dashboard/help", icon: HelpCircle },
+  { name: "Admin", href: "/dashboard/admin", icon: Shield },
 ]
 
 interface SidebarProps {
