@@ -97,6 +97,10 @@ model Workspace {
   // Platform Credentials Relations
   platformCredentials   PlatformCredentials[] @relation("WorkspacePlatformCredentials")
 
+  // Support Chat Relations
+  supportChats          SupportChat[] @relation("SupportChatWorkspace")
+  contactForms          SupportContactForm[] @relation("ContactFormWorkspace")
+
   @@map("workspaces")
 }
 
@@ -149,6 +153,11 @@ model User {
 
   // Documentation Relations
   documentationPages   DocumentationPage[] @relation("DocumentationAuthor")
+
+  // Support Chat Relations
+  supportAgent         SupportAgent? @relation("SupportAgentUser")
+  supportChats         SupportChat[] @relation("SupportChatUser")
+  contactForms         SupportContactForm[] @relation("ContactFormUser")
 
   @@map("users")
 }
@@ -2743,4 +2752,183 @@ model DocumentationPage {
   @@index([publishedAt])
   @@index([sortOrder])
   @@map("documentation_pages")
+}
+
+// ========================================
+// LIVE CHAT SUPPORT SYSTEM
+// ========================================
+
+model SupportAgent {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  displayName     String
+  title           String?  // e.g., "Senior Support Agent", "Technical Specialist"
+  department      String   @default("support") // support, technical, sales, etc.
+  isActive        Boolean  @default(true)
+  isOnline        Boolean  @default(false)
+  maxConcurrentChats Int   @default(5)
+  currentChatCount   Int   @default(0)
+
+  // Agent settings
+  autoAssign      Boolean  @default(true)
+  skills          String[] // e.g., ["technical", "billing", "api"]
+  languages       String[] @default(["en"])
+  timezone        String?
+
+  // Status tracking
+  lastSeen        DateTime @default(now())
+  statusMessage   String?  // Custom status message
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade, name: "SupportAgentUser")
+  assignedChats   SupportChat[] @relation("AssignedAgent")
+  messages        SupportMessage[] @relation("AgentMessages")
+  contactForms    SupportContactForm[] @relation("ContactFormAgent")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([isOnline])
+  @@index([department])
+  @@index([lastSeen])
+  @@map("support_agents")
+}
+
+model SupportChat {
+  id              String   @id @default(cuid())
+  workspaceId     String?  // null for guest users
+  userId          String?  // null for guest users
+  guestEmail      String?  // for guest users
+  guestName       String?  // for guest users
+
+  // Chat metadata
+  subject         String?
+  department      String   @default("support")
+  priority        String   @default("medium") // low, medium, high, urgent
+  status          String   @default("open") // open, assigned, resolved, closed
+
+  // Assignment
+  assignedAgentId String?
+  assignedAt      DateTime?
+
+  // Chat session info
+  sessionId       String?  // Browser session ID
+  userAgent       String?
+  ipAddress       String?
+  referrerUrl     String?
+
+  // Timing
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+
+  // Satisfaction
+  rating          Int?     // 1-5 rating
+  feedback        String?  // User feedback
+
+  // Tags and categorization
+  tags            String[]
+  category        String?  // billing, technical, general, etc.
+
+  // Relations
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull, name: "SupportChatWorkspace")
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull, name: "SupportChatUser")
+  assignedAgent   SupportAgent? @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull, name: "AssignedAgent")
+  messages        SupportMessage[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([assignedAgentId])
+  @@index([status])
+  @@index([priority])
+  @@index([department])
+  @@index([createdAt])
+  @@map("support_chats")
+}
+
+model SupportMessage {
+  id              String   @id @default(cuid())
+  chatId          String
+  senderId        String?  // userId or agentId
+  senderType      String   // "user", "agent", "system"
+  senderName      String?  // Display name
+
+  // Message content
+  content         String   @db.Text
+  messageType     String   @default("text") // text, file, image, system
+
+  // File attachments
+  attachments     Json?    // Array of attachment objects
+
+  // Message metadata
+  isInternal      Boolean  @default(false) // Internal agent notes
+  isEdited        Boolean  @default(false)
+  editedAt        DateTime?
+
+  // Read status
+  readByUser      Boolean  @default(false)
+  readByAgent     Boolean  @default(false)
+  readAt          DateTime?
+
+  // Relations
+  chat            SupportChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  agent           SupportAgent? @relation(fields: [senderId], references: [id], onDelete: SetNull, name: "AgentMessages")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([chatId])
+  @@index([senderId])
+  @@index([senderType])
+  @@index([createdAt])
+  @@index([messageType])
+  @@map("support_messages")
+}
+
+model SupportContactForm {
+  id              String   @id @default(cuid())
+  workspaceId     String?
+  userId          String?
+
+  // Contact info
+  name            String
+  email           String
+  subject         String
+  message         String   @db.Text
+  department      String   @default("support")
+  priority        String   @default("medium")
+
+  // Additional context
+  userAgent       String?
+  ipAddress       String?
+  referrerUrl     String?
+
+  // Status
+  status          String   @default("open") // open, assigned, resolved, closed
+  assignedAgentId String?
+  assignedAt      DateTime?
+  respondedAt     DateTime?
+
+  // Follow-up
+  responseMessage String?  @db.Text
+  responseMethod  String?  // email, phone, chat
+
+  // Relations
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull, name: "ContactFormWorkspace")
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull, name: "ContactFormUser")
+  assignedAgent   SupportAgent? @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull, name: "ContactFormAgent")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([status])
+  @@index([department])
+  @@index([createdAt])
+  @@map("support_contact_forms")
 }

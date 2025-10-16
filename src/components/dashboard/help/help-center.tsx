@@ -41,6 +41,7 @@ import {
 import { useDictionary } from '@/hooks/use-dictionary'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AdvancedSearch } from './advanced-search'
+import { LiveChatInterface } from '@/components/support/live-chat-interface'
 
 interface HelpCategory {
   id: string
@@ -112,11 +113,18 @@ export function HelpCenter() {
   const [error, setError] = useState<string | null>(null)
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const [liveChatOpen, setLiveChatOpen] = useState(false)
+  const [supportStatus, setSupportStatus] = useState<{
+    isAvailable: boolean
+    onlineAgents: number
+    averageResponseTime: string
+  } | null>(null)
 
   // Fetch categories and authors
   useEffect(() => {
     fetchCategories()
     fetchAuthors()
+    fetchSupportStatus()
   }, [])
 
   // Fetch articles and FAQs when category changes
@@ -166,6 +174,24 @@ export function HelpCenter() {
       }
     } catch (error) {
       console.error('Failed to fetch authors:', error)
+    }
+  }
+
+  const fetchSupportStatus = async () => {
+    try {
+      const response = await fetch('/api/support/agents/status')
+      if (response.ok) {
+        const data = await response.json()
+        setSupportStatus(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch support status:', error)
+      // Set default offline status on error
+      setSupportStatus({
+        isAvailable: false,
+        onlineAgents: 0,
+        averageResponseTime: 'N/A'
+      })
     }
   }
 
@@ -360,16 +386,39 @@ export function HelpCenter() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card
+          className="hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => setLiveChatOpen(true)}
+        >
           <CardContent className="pt-6">
             <div className="text-center space-y-3">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                <MessageCircle className="h-6 w-6 text-green-600" />
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto relative ${
+                supportStatus?.isAvailable ? 'bg-green-100' : 'bg-gray-100'
+              }`}>
+                <MessageCircle className={`h-6 w-6 ${
+                  supportStatus?.isAvailable ? 'text-green-600' : 'text-gray-500'
+                }`} />
+                {supportStatus?.isAvailable && (
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                  </div>
+                )}
               </div>
               <h3 className="font-semibold">{t('help.liveChat', 'Live Chat')}</h3>
               <p className="text-sm text-muted-foreground">
-                {t('help.liveChatDescription', 'Get instant help from our support team')}
+                {supportStatus?.isAvailable
+                  ? `${supportStatus.onlineAgents} agents online • Avg. ${supportStatus.averageResponseTime}`
+                  : 'Support team is currently offline'
+                }
               </p>
+              <div className="flex justify-center">
+                <Badge
+                  variant={supportStatus?.isAvailable ? 'default' : 'secondary'}
+                  className={supportStatus?.isAvailable ? 'bg-green-500' : ''}
+                >
+                  {supportStatus?.isAvailable ? 'Available' : 'Offline'}
+                </Badge>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -659,9 +708,15 @@ export function HelpCenter() {
                       <span>Average response time: 2 hours</span>
                     </div>
                   </div>
-                  <Button className="w-full">
+                  <Button
+                    className="w-full"
+                    onClick={() => setLiveChatOpen(true)}
+                  >
                     <MessageCircle className="h-4 w-4 mr-2" />
                     Start Live Chat
+                    {supportStatus?.isAvailable && (
+                      <div className="ml-2 w-2 h-2 bg-green-400 rounded-full"></div>
+                    )}
                   </Button>
                 </div>
                 
@@ -690,6 +745,12 @@ export function HelpCenter() {
           </Card>
         </div>
       </div>
+
+      {/* Live Chat Interface */}
+      <LiveChatInterface
+        isOpen={liveChatOpen}
+        onClose={() => setLiveChatOpen(false)}
+      />
     </div>
   )
 }
