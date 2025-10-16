@@ -100,6 +100,7 @@ model Workspace {
   // Support Chat Relations
   supportChats          SupportChat[] @relation("SupportChatWorkspace")
   contactForms          SupportContactForm[] @relation("ContactFormWorkspace")
+  supportTickets        SupportTicket[] @relation("TicketWorkspace")
 
   @@map("workspaces")
 }
@@ -160,6 +161,7 @@ model User {
   supportAgent         SupportAgent? @relation("SupportAgentUser")
   supportChats         SupportChat[] @relation("SupportChatUser")
   contactForms         SupportContactForm[] @relation("ContactFormUser")
+  supportTickets       SupportTicket[] @relation("TicketUser")
 
   // Video Tutorial Relations
   videoProgress        VideoUserProgress[]
@@ -2959,6 +2961,7 @@ model SupportAgent {
   assignedChats   SupportChat[] @relation("AssignedAgent")
   messages        SupportMessage[] @relation("AgentMessages")
   contactForms    SupportContactForm[] @relation("ContactFormAgent")
+  assignedTickets SupportTicket[] @relation("TicketAgent")
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -3106,4 +3109,193 @@ model SupportContactForm {
   @@index([department])
   @@index([createdAt])
   @@map("support_contact_forms")
+}
+
+// ========================================
+// SUPPORT TICKET SYSTEM
+// ========================================
+
+model SupportTicket {
+  id              String   @id @default(cuid())
+  ticketNumber    String   @unique // e.g., "TICK-12345678"
+  workspaceId     String?
+  userId          String?
+
+  // Ticket Info
+  title           String
+  description     String   @db.Text
+  category        TicketCategory @default(GENERAL)
+  priority        TicketPriority @default(MEDIUM)
+  status          TicketStatus   @default(OPEN)
+  type            TicketType     @default(SUPPORT)
+
+  // Contact Info (for guest users)
+  guestName       String?
+  guestEmail      String?
+  guestPhone      String?
+
+  // Assignment
+  assignedAgentId String?
+  assignedAt      DateTime?
+
+  // Resolution
+  resolution      String?  @db.Text
+  resolvedAt      DateTime?
+  resolvedBy      String?  // Agent ID
+
+  // SLA Tracking
+  firstResponseAt DateTime?
+  expectedResponseBy DateTime?
+  slaBreached     Boolean  @default(false)
+
+  // Metadata
+  tags            String[]
+  customFields    Json?    // Additional flexible data
+  internalNotes   String?  @db.Text
+
+  // Relations
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull, name: "TicketWorkspace")
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull, name: "TicketUser")
+  assignedAgent   SupportAgent? @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull, name: "TicketAgent")
+  updates         TicketUpdate[]
+  attachments     TicketAttachment[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([assignedAgentId])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([type])
+  @@index([createdAt])
+  @@index([ticketNumber])
+  @@map("support_tickets")
+}
+
+model TicketUpdate {
+  id              String   @id @default(cuid())
+  ticketId        String
+
+  // Update Info
+  updateType      TicketUpdateType
+  message         String?  @db.Text
+  oldStatus       TicketStatus?
+  newStatus       TicketStatus?
+  oldPriority     TicketPriority?
+  newPriority     TicketPriority?
+  oldAssignee     String?  // Agent ID
+  newAssignee     String?  // Agent ID
+
+  // Author
+  authorId        String?  // User or Agent ID
+  authorType      String   // "user", "agent", "system"
+  authorName      String?
+
+  // Visibility
+  isPublic        Boolean  @default(true)  // false for internal notes
+  isResolution    Boolean  @default(false)
+
+  // Relations
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([authorId])
+  @@index([updateType])
+  @@index([createdAt])
+  @@map("ticket_updates")
+}
+
+model TicketAttachment {
+  id              String   @id @default(cuid())
+  ticketId        String
+
+  // File Info
+  filename        String
+  originalName    String
+  fileSize        Int      // bytes
+  mimeType        String
+  fileUrl         String
+
+  // Upload Info
+  uploadedBy      String?  // User or Agent ID
+  uploadedByType  String   // "user", "agent"
+  uploadedByName  String?
+
+  // Security
+  isScanned       Boolean  @default(false)
+  scanResult      String?  // "clean", "suspicious", "malware"
+
+  // Relations
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([uploadedBy])
+  @@index([createdAt])
+  @@map("ticket_attachments")
+}
+
+// ========================================
+// SUPPORT TICKET ENUMS
+// ========================================
+
+enum TicketCategory {
+  GENERAL
+  TECHNICAL
+  BILLING
+  FEATURE_REQUEST
+  BUG_REPORT
+  ACCOUNT
+  INTEGRATION
+  API
+  SECURITY
+  PERFORMANCE
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  PENDING_USER
+  PENDING_AGENT
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum TicketType {
+  SUPPORT
+  SALES
+  TECHNICAL
+  BILLING
+  COMPLAINT
+  COMPLIMENT
+  SUGGESTION
+}
+
+enum TicketUpdateType {
+  STATUS_CHANGE
+  PRIORITY_CHANGE
+  ASSIGNMENT_CHANGE
+  USER_REPLY
+  AGENT_REPLY
+  INTERNAL_NOTE
+  RESOLUTION
+  ESCALATION
+  SLA_BREACH
+  SYSTEM_UPDATE
 }

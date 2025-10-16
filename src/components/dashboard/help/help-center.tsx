@@ -45,6 +45,7 @@ import { LiveChatInterface } from '@/components/support/live-chat-interface'
 import { VideoTutorialLibrary } from '@/components/video-tutorials/video-tutorial-library'
 import { ArticleMetaBadges } from '@/components/help/recently-updated-badge'
 import { EnhancedFAQSection } from '@/components/help/enhanced-faq-section'
+import { CreateTicketDialog } from '@/components/support/create-ticket-dialog'
 
 interface HelpCategory {
   id: string
@@ -104,6 +105,7 @@ export function HelpCenter() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [liveChatOpen, setLiveChatOpen] = useState(false)
   const [videoLibraryOpen, setVideoLibraryOpen] = useState(false)
+  const [createTicketOpen, setCreateTicketOpen] = useState(false)
   const [supportStatus, setSupportStatus] = useState<{
     isAvailable: boolean
     onlineAgents: number
@@ -603,16 +605,26 @@ export function HelpCenter() {
                       <span>Average response time: 2 hours</span>
                     </div>
                   </div>
-                  <Button
-                    className="w-full"
-                    onClick={() => setLiveChatOpen(true)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    Start Live Chat
-                    {supportStatus?.isAvailable && (
-                      <div className="ml-2 w-2 h-2 bg-green-400 rounded-full"></div>
-                    )}
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      className="w-full"
+                      onClick={() => setLiveChatOpen(true)}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Start Live Chat
+                      {supportStatus?.isAvailable && (
+                        <div className="ml-2 w-2 h-2 bg-green-400 rounded-full"></div>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setCreateTicketOpen(true)}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Create Support Ticket
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="space-y-3">
@@ -651,6 +663,16 @@ export function HelpCenter() {
       <VideoTutorialLibrary
         isOpen={videoLibraryOpen}
         onClose={() => setVideoLibraryOpen(false)}
+      />
+
+      {/* Create Support Ticket Dialog */}
+      <CreateTicketDialog
+        isOpen={createTicketOpen}
+        onClose={() => setCreateTicketOpen(false)}
+        onTicketCreated={() => {
+          setCreateTicketOpen(false)
+          // Optionally show success message or redirect to ticket tracking
+        }}
       />
     </div>
   )
