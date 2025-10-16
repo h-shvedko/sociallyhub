@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { LiveChatWidget } from './live-chat-widget'
 import { ContactFormFallback } from './contact-form-fallback'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { VisuallyHidden } from '@/components/ui/visually-hidden'
 
 interface SupportStatus {
   isAvailable: boolean
@@ -72,6 +73,12 @@ export function LiveChatInterface({ isOpen, onClose }: LiveChatInterfaceProps) {
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md p-0 gap-0">
+        <VisuallyHidden>
+          <DialogTitle>Support Chat</DialogTitle>
+          <DialogDescription>
+            Connect with our support team for assistance
+          </DialogDescription>
+        </VisuallyHidden>
         {loading ? (
           <div className="flex items-center justify-center p-8">
             <div className="animate-pulse">

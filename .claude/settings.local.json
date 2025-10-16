@@ -110,7 +110,8 @@
       "Bash(timeout 10 docker-compose restart app)",
       "Bash(timeout 20 docker-compose logs app --tail=30)",
       "Bash(timeout 30 docker-compose exec app npx tsx src/scripts/seed-support-agents.ts)",
-      "Bash(timeout 10 docker-compose exec app curl -s http://localhost:3099/api/support/agents/status)"
+      "Bash(timeout 10 docker-compose exec app curl -s http://localhost:3099/api/support/agents/status)",
+      "Bash(timeout 10 docker-compose logs app --tail=50)"
     ],
     "deny": [],
     "ask": []
