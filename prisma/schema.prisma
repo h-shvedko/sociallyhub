@@ -102,6 +102,12 @@ model Workspace {
   contactForms          SupportContactForm[] @relation("ContactFormWorkspace")
   supportTickets        SupportTicket[] @relation("TicketWorkspace")
 
+  // Community Relations
+  forumPosts            CommunityForumPost[] @relation("ForumPostWorkspace")
+  featureRequests       FeatureRequest[] @relation("FeatureRequestWorkspace")
+  discordIntegration    DiscordIntegration? @relation("DiscordWorkspace")
+  communityActivities   CommunityActivity[] @relation("CommunityActivityWorkspace")
+
   @@map("workspaces")
 }
 
@@ -162,6 +168,15 @@ model User {
   supportChats         SupportChat[] @relation("SupportChatUser")
   contactForms         SupportContactForm[] @relation("ContactFormUser")
   supportTickets       SupportTicket[] @relation("TicketUser")
+
+  // Community Relations
+  forumPosts           CommunityForumPost[] @relation("ForumPostUser")
+  forumReplies         CommunityForumReply[] @relation("ForumReplyUser")
+  forumVotes           CommunityForumVote[] @relation("ForumVoteUser")
+  featureRequests      FeatureRequest[] @relation("FeatureRequestUser")
+  featureVotes         FeatureRequestVote[] @relation("FeatureVoteUser")
+  featureComments      FeatureRequestComment[] @relation("FeatureCommentUser")
+  communityActivities  CommunityActivity[] @relation("CommunityActivityUser")
 
   // Video Tutorial Relations
   videoProgress        VideoUserProgress[]
@@ -3298,4 +3313,350 @@ enum TicketUpdateType {
   ESCALATION
   SLA_BREACH
   SYSTEM_UPDATE
+}
+
+// ========================================
+// COMMUNITY INTEGRATION SYSTEM
+// ========================================
+
+model CommunityForumPost {
+  id              String   @id @default(cuid())
+  workspaceId     String?
+  userId          String?
+
+  // Post Info
+  title           String
+  content         String   @db.Text
+  category        ForumCategory @default(GENERAL)
+  tags            String[]
+  isPinned        Boolean  @default(false)
+  isLocked        Boolean  @default(false)
+  isResolved      Boolean  @default(false)
+
+  // Engagement
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  replies         Int      @default(0)
+  lastActivity    DateTime @default(now())
+
+  // Moderation
+  isApproved      Boolean  @default(true)
+  moderatedBy     String?
+  moderatedAt     DateTime?
+
+  // Guest posting
+  guestName       String?
+  guestEmail      String?
+
+  // Relations
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull, name: "ForumPostWorkspace")
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull, name: "ForumPostUser")
+  replies         CommunityForumReply[]
+  votes           CommunityForumVote[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([category])
+  @@index([isApproved])
+  @@index([lastActivity])
+  @@index([views])
+  @@map("community_forum_posts")
+}
+
+model CommunityForumReply {
+  id              String   @id @default(cuid())
+  postId          String
+  userId          String?
+
+  // Reply Info
+  content         String   @db.Text
+  isAccepted      Boolean  @default(false) // For marking best answer
+  likes           Int      @default(0)
+
+  // Guest reply
+  guestName       String?
+  guestEmail      String?
+
+  // Moderation
+  isApproved      Boolean  @default(true)
+  moderatedBy     String?
+  moderatedAt     DateTime?
+
+  // Relations
+  post            CommunityForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user            User?              @relation(fields: [userId], references: [id], onDelete: SetNull, name: "ForumReplyUser")
+  votes           CommunityForumVote[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([postId])
+  @@index([userId])
+  @@index([isAccepted])
+  @@index([createdAt])
+  @@map("community_forum_replies")
+}
+
+model CommunityForumVote {
+  id              String   @id @default(cuid())
+  userId          String?
+  postId          String?
+  replyId         String?
+  voteType        VoteType // UPVOTE or DOWNVOTE
+
+  // Guest voting (by IP/session)
+  guestIdentifier String?
+
+  // Relations
+  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull, name: "ForumVoteUser")
+  post            CommunityForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reply           CommunityForumReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, postId])
+  @@unique([userId, replyId])
+  @@unique([guestIdentifier, postId])
+  @@unique([guestIdentifier, replyId])
+  @@index([postId])
+  @@index([replyId])
+  @@map("community_forum_votes")
+}
+
+model FeatureRequest {
+  id              String   @id @default(cuid())
+  workspaceId     String?
+  userId          String?
+
+  // Request Info
+  title           String
+  description     String   @db.Text
+  category        FeatureCategory @default(GENERAL)
+  priority        RequestPriority @default(MEDIUM)
+  status          RequestStatus   @default(SUBMITTED)
+
+  // Implementation details
+  estimatedEffort String?  // "small", "medium", "large"
+  targetVersion   String?
+  implementedAt   DateTime?
+
+  // Engagement
+  votes           Int      @default(0)
+  views           Int      @default(0)
+  comments        Int      @default(0)
+
+  // Guest request
+  guestName       String?
+  guestEmail      String?
+
+  // Internal tracking
+  internalNotes   String?  @db.Text
+  assignedTo      String?  // Developer/team assigned
+  githubIssueUrl  String?
+
+  // Relations
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull, name: "FeatureRequestWorkspace")
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull, name: "FeatureRequestUser")
+  userVotes       FeatureRequestVote[]
+  comments        FeatureRequestComment[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([status])
+  @@index([category])
+  @@index([votes])
+  @@index([createdAt])
+  @@map("feature_requests")
+}
+
+model FeatureRequestVote {
+  id              String   @id @default(cuid())
+  requestId       String
+  userId          String?
+
+  // Guest voting
+  guestIdentifier String?
+  guestName       String?
+  guestEmail      String?
+
+  // Relations
+  request         FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user            User?          @relation(fields: [userId], references: [id], onDelete: SetNull, name: "FeatureVoteUser")
+
+  createdAt       DateTime @default(now())
+
+  @@unique([requestId, userId])
+  @@unique([requestId, guestIdentifier])
+  @@index([requestId])
+  @@index([userId])
+  @@map("feature_request_votes")
+}
+
+model FeatureRequestComment {
+  id              String   @id @default(cuid())
+  requestId       String
+  userId          String?
+
+  // Comment Info
+  content         String   @db.Text
+  isInternal      Boolean  @default(false) // Internal team comments
+
+  // Guest comment
+  guestName       String?
+  guestEmail      String?
+
+  // Relations
+  request         FeatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user            User?          @relation(fields: [userId], references: [id], onDelete: SetNull, name: "FeatureCommentUser")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([requestId])
+  @@index([userId])
+  @@index([isInternal])
+  @@map("feature_request_comments")
+}
+
+model DiscordIntegration {
+  id              String   @id @default(cuid())
+  workspaceId     String   @unique
+
+  // Discord Server Info
+  guildId         String
+  guildName       String
+  guildIcon       String?
+  inviteUrl       String
+
+  // Channel Mappings
+  channels        Json     // {general: "channel_id", support: "channel_id", announcements: "channel_id"}
+
+  // Webhook Integration
+  webhookUrl      String?
+  webhookSecret   String?
+
+  // Activity Tracking
+  memberCount     Int      @default(0)
+  onlineMembers   Int      @default(0)
+  lastActivity    DateTime @default(now())
+
+  // Settings
+  isActive        Boolean  @default(true)
+  autoAnnounce    Boolean  @default(false) // Auto-announce new features/updates
+
+  // Relations
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, name: "DiscordWorkspace")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([guildId])
+  @@map("discord_integrations")
+}
+
+model CommunityActivity {
+  id              String   @id @default(cuid())
+  workspaceId     String?
+
+  // Activity Info
+  activityType    CommunityActivityType
+  title           String
+  description     String?
+
+  // Actor Info
+  userId          String?
+  userName        String
+  userAvatar      String?
+
+  // Target Info
+  targetId        String?  // ID of post, feature request, etc.
+  targetType      String?  // "forum_post", "feature_request", etc.
+  targetTitle     String?
+
+  // Metadata
+  metadata        Json?    // Additional activity-specific data
+
+  // Relations
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull, name: "CommunityActivityWorkspace")
+  user            User?      @relation(fields: [userId], references: [id], onDelete: SetNull, name: "CommunityActivityUser")
+
+  createdAt       DateTime @default(now())
+
+  @@index([workspaceId])
+  @@index([activityType])
+  @@index([createdAt])
+  @@index([targetType])
+  @@map("community_activities")
+}
+
+// ========================================
+// COMMUNITY ENUMS
+// ========================================
+
+enum ForumCategory {
+  GENERAL
+  SUPPORT
+  FEATURE_REQUESTS
+  ANNOUNCEMENTS
+  DEVELOPMENT
+  INTEGRATIONS
+  FEEDBACK
+  SHOWCASE
+  OFF_TOPIC
+}
+
+enum VoteType {
+  UPVOTE
+  DOWNVOTE
+}
+
+enum FeatureCategory {
+  GENERAL
+  UI_UX
+  INTEGRATIONS
+  API
+  ANALYTICS
+  AUTOMATION
+  MOBILE
+  PERFORMANCE
+  SECURITY
+  ACCESSIBILITY
+}
+
+enum RequestPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RequestStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  IN_DEVELOPMENT
+  TESTING
+  COMPLETED
+  REJECTED
+  DUPLICATE
+}
+
+enum CommunityActivityType {
+  FORUM_POST_CREATED
+  FORUM_REPLY_CREATED
+  FEATURE_REQUEST_CREATED
+  FEATURE_REQUEST_VOTED
+  FEATURE_REQUEST_COMMENTED
+  DISCORD_MEMBER_JOINED
+  DISCORD_MESSAGE_POSTED
+  USER_JOINED_COMMUNITY
+  MILESTONE_REACHED
+  ANNOUNCEMENT_POSTED
 }

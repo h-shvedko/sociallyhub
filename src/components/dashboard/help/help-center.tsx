@@ -32,6 +32,7 @@ import {
   Shield,
   Cpu
 } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Accordion,
   AccordionContent,
@@ -46,6 +47,7 @@ import { VideoTutorialLibrary } from '@/components/video-tutorials/video-tutoria
 import { ArticleMetaBadges } from '@/components/help/recently-updated-badge'
 import { EnhancedFAQSection } from '@/components/help/enhanced-faq-section'
 import { CreateTicketDialog } from '@/components/support/create-ticket-dialog'
+import { CommunityIntegration } from '@/components/community/community-integration'
 
 interface HelpCategory {
   id: string
@@ -106,6 +108,7 @@ export function HelpCenter() {
   const [liveChatOpen, setLiveChatOpen] = useState(false)
   const [videoLibraryOpen, setVideoLibraryOpen] = useState(false)
   const [createTicketOpen, setCreateTicketOpen] = useState(false)
+  const [showCommunityIntegration, setShowCommunityIntegration] = useState(false)
   const [supportStatus, setSupportStatus] = useState<{
     isAvailable: boolean
     onlineAgents: number
@@ -633,19 +636,38 @@ export function HelpCenter() {
                     Join our community to get help from other users and share tips
                   </p>
                   <div className="space-y-2">
-                    <Button variant="outline" className="w-full justify-start">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => window.open('/community/forum', '_blank')}
+                    >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Community Forum
                     </Button>
-                    <Button variant="outline" className="w-full justify-start">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => window.open('https://discord.gg/sociallyhub', '_blank')}
+                    >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Discord Server
                     </Button>
-                    <Button variant="outline" className="w-full justify-start">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => window.open('/community/feature-requests', '_blank')}
+                    >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Feature Requests
                     </Button>
                   </div>
+                  <Button
+                    className="w-full mt-3"
+                    onClick={() => setShowCommunityIntegration(true)}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    View Community Dashboard
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -674,6 +696,19 @@ export function HelpCenter() {
           // Optionally show success message or redirect to ticket tracking
         }}
       />
+
+      {/* Community Integration Dialog */}
+      <Dialog open={showCommunityIntegration} onOpenChange={setShowCommunityIntegration}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Community Dashboard
+            </DialogTitle>
+          </DialogHeader>
+          <CommunityIntegration />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
