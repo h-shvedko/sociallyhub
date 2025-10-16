@@ -44,6 +44,7 @@ import { AdvancedSearch } from './advanced-search'
 import { LiveChatInterface } from '@/components/support/live-chat-interface'
 import { VideoTutorialLibrary } from '@/components/video-tutorials/video-tutorial-library'
 import { ArticleMetaBadges } from '@/components/help/recently-updated-badge'
+import { EnhancedFAQSection } from '@/components/help/enhanced-faq-section'
 
 interface HelpCategory {
   id: string
@@ -73,19 +74,6 @@ interface HelpArticle {
   }
 }
 
-interface FAQ {
-  id: string
-  question: string
-  answer: string
-  categoryId: string
-  views: number
-  helpfulVotes: number
-  isPinned: boolean
-  category?: {
-    name: string
-    slug: string
-  }
-}
 
 // Icon mapping for categories
 const iconMap: Record<string, any> = {
@@ -107,7 +95,6 @@ export function HelpCenter() {
   const [categories, setCategories] = useState<HelpCategory[]>([])
   const [authors, setAuthors] = useState<Array<{ id: string; name: string }>>([])
   const [articles, setArticles] = useState<HelpArticle[]>([])
-  const [faqs, setFaqs] = useState<FAQ[]>([])
   const [loading, setLoading] = useState(true)
   const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [searchLoading, setSearchLoading] = useState(false)
@@ -203,39 +190,20 @@ export function HelpCenter() {
     setError(null)
 
     try {
-      // Fetch articles and FAQs in parallel for better performance
+      // Fetch articles - FAQs are now handled by the EnhancedFAQSection component
       const articleParams = selectedCategory !== 'all'
         ? `?categorySlug=${selectedCategory}&limit=20`
         : '?limit=20'
 
-      const faqParams = selectedCategory !== 'all'
-        ? `?categorySlug=${selectedCategory}&limit=20`
-        : '?limit=20'
-
-      const [articleResponse, faqResponse] = await Promise.all([
-        fetch(`/api/help/articles${articleParams}`),
-        fetch(`/api/help/faqs${faqParams}`)
-      ])
-
-      let articleData = []
-      let faqData = []
+      const articleResponse = await fetch(`/api/help/articles${articleParams}`)
 
       if (articleResponse.ok) {
         const data = await articleResponse.json()
-        articleData = data.articles || []
+        setArticles(data.articles || [])
       } else {
         console.error('Failed to fetch articles:', articleResponse.status)
+        setError('Failed to load articles. Please try again.')
       }
-
-      if (faqResponse.ok) {
-        const data = await faqResponse.json()
-        faqData = data.faqs || []
-      } else {
-        console.error('Failed to fetch FAQs:', faqResponse.status)
-      }
-
-      setArticles(articleData)
-      setFaqs(faqData)
 
       // Clear search results when category changes
       if (searchResults) {
@@ -335,7 +303,6 @@ export function HelpCenter() {
 
   // Use search results if searching, otherwise use fetched content
   const displayArticles = searchResults?.results?.articles || articles
-  const displayFaqs = searchResults?.results?.faqs || faqs
 
   if (dictLoading) {
     return (
@@ -607,97 +574,11 @@ export function HelpCenter() {
             </CardContent>
           </Card>
 
-          {/* FAQs */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('help.faqs', 'Frequently Asked Questions')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i}>
-                      <Skeleton className="h-12 w-full" />
-                    </div>
-                  ))}
-                </div>
-              ) : error ? (
-                <div className="text-center py-8">
-                  <div className="text-red-600 mb-4">
-                    <HelpCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">{error}</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={fetchContent}
-                    className="mt-2"
-                  >
-                    Try Again
-                  </Button>
-                </div>
-              ) : displayFaqs.length === 0 ? (
-                <div className="text-center py-8">
-                  <div className="text-muted-foreground">
-                    <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">
-                      {searchQuery
-                        ? t('help.noFaqResults', `No FAQs found matching "${searchQuery}"`)
-                        : selectedCategory !== 'all'
-                          ? t('help.noCategoryFaqs', 'No FAQs available in this category')
-                          : t('help.noFaqs', 'No FAQs available')}
-                    </p>
-                    {searchQuery && (
-                      <Button
-                        variant="ghost"
-                        onClick={() => setSearchQuery('')}
-                        className="mt-2 text-sm"
-                      >
-                        Clear search
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <Accordion type="single" collapsible className="w-full">
-                  {displayFaqs.map((faq) => (
-                    <AccordionItem key={faq.id} value={faq.id}>
-                      <AccordionTrigger className="text-left">
-                        <div className="flex items-center gap-2">
-                          {faq.isPinned && (
-                            <Badge variant="secondary" className="mr-2">Pinned</Badge>
-                          )}
-                          <div
-                            dangerouslySetInnerHTML={{
-                              __html: (faq as any).highlightedQuestion || faq.question
-                            }}
-                          />
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-3">
-                          <div
-                            className="text-muted-foreground"
-                            dangerouslySetInnerHTML={{
-                              __html: (faq as any).highlightedAnswer || faq.answer
-                            }}
-                          />
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span>{faq.views} views</span>
-                            <span>{faq.helpfulVotes} found helpful</span>
-                            {faq.category && (
-                              <Badge variant="outline" className="text-xs">
-                                {faq.category.name}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              )}
-            </CardContent>
-          </Card>
+          {/* Enhanced FAQs Section */}
+          <EnhancedFAQSection
+            selectedCategory={selectedCategory}
+            searchQuery={searchQuery}
+          />
 
           {/* Contact Support */}
           <Card>

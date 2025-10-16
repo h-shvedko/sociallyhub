@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// GET /api/help/faqs - List FAQs with filtering
+// GET /api/help/faqs - List FAQs with filtering and enhanced sorting
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const categoryId = searchParams.get('categoryId')
     const categorySlug = searchParams.get('categorySlug')
     const search = searchParams.get('search')
+    const sortBy = searchParams.get('sortBy') || 'default'
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = parseInt(searchParams.get('offset') || '0')
     const isPinned = searchParams.get('isPinned')
@@ -42,6 +43,24 @@ export async function GET(request: NextRequest) {
       ]
     }
 
+    // Build order by clause based on sort option
+    let orderBy: any[] = [{ isPinned: 'desc' }]
+
+    switch (sortBy) {
+      case 'popularity':
+        orderBy.push({ helpfulVotes: 'desc' }, { views: 'desc' })
+        break
+      case 'recent':
+        orderBy.push({ createdAt: 'desc' })
+        break
+      case 'alphabetical':
+        orderBy.push({ question: 'asc' })
+        break
+      default:
+        orderBy.push({ sortOrder: 'asc' }, { createdAt: 'desc' })
+        break
+    }
+
     // Execute query with pagination
     const [faqs, total] = await Promise.all([
       prisma.helpFAQ.findMany({
@@ -49,19 +68,25 @@ export async function GET(request: NextRequest) {
         include: {
           category: true
         },
-        orderBy: [
-          { isPinned: 'desc' },
-          { sortOrder: 'asc' },
-          { createdAt: 'desc' }
-        ],
+        orderBy,
         take: limit,
         skip: offset
       }),
       prisma.helpFAQ.count({ where })
     ])
 
+    // Add search highlighting if search term provided
+    let processedFaqs = faqs
+    if (search) {
+      processedFaqs = faqs.map(faq => ({
+        ...faq,
+        highlightedQuestion: highlightText(faq.question, search),
+        highlightedAnswer: highlightText(faq.answer, search)
+      }))
+    }
+
     return NextResponse.json({
-      faqs,
+      faqs: processedFaqs,
       total,
       limit,
       offset,
@@ -74,6 +99,19 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+// Helper function to highlight search terms in text
+function highlightText(text: string, searchTerm: string): string {
+  if (!searchTerm || !text) return text
+
+  const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi')
+  return text.replace(regex, '<mark class="bg-yellow-200">$1</mark>')
+}
+
+// Helper function to escape special regex characters
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 // POST /api/help/faqs - Create new FAQ (Admin only)
