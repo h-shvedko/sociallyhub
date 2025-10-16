@@ -2977,6 +2977,8 @@ model SupportAgent {
   messages        SupportMessage[] @relation("AgentMessages")
   contactForms    SupportContactForm[] @relation("ContactFormAgent")
   assignedTickets SupportTicket[] @relation("TicketAgent")
+  ticketAssignments SupportTicketAssignment[] @relation(name: "AgentAssignments")
+  ticketNotes     SupportTicketNote[] @relation(name: "AgentNotes")
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -3174,6 +3176,8 @@ model SupportTicket {
   assignedAgent   SupportAgent? @relation(fields: [assignedAgentId], references: [id], onDelete: SetNull, name: "TicketAgent")
   updates         TicketUpdate[]
   attachments     TicketAttachment[]
+  assignments     SupportTicketAssignment[] @relation(name: "TicketAssignments")
+  notes           SupportTicketNote[] @relation(name: "TicketNotes")
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -3254,6 +3258,42 @@ model TicketAttachment {
   @@index([uploadedBy])
   @@index([createdAt])
   @@map("ticket_attachments")
+}
+
+model SupportTicketAssignment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  agentId   String
+  assignedAt DateTime @default(now())
+  assignedBy String?  // User ID who made the assignment
+  reason    String?  // Reason for assignment
+  isActive  Boolean  @default(true)
+
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade, name: "TicketAssignments")
+  agent     SupportAgent @relation(fields: [agentId], references: [id], onDelete: Cascade, name: "AgentAssignments")
+
+  @@index([ticketId])
+  @@index([agentId])
+  @@index([assignedAt])
+  @@map("support_ticket_assignments")
+}
+
+model SupportTicketNote {
+  id        String   @id @default(cuid())
+  ticketId  String
+  agentId   String
+  content   String   @db.Text
+  isInternal Boolean @default(true)
+  tags      String[]
+  createdAt DateTime @default(now())
+
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade, name: "TicketNotes")
+  agent     SupportAgent @relation(fields: [agentId], references: [id], onDelete: Cascade, name: "AgentNotes")
+
+  @@index([ticketId])
+  @@index([agentId])
+  @@index([createdAt])
+  @@map("support_ticket_notes")
 }
 
 // ========================================
