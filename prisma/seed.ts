@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { seedClientReports } from '../src/lib/seeders/client-reports-seeder'
+import { seedHelpContent } from '../src/lib/seeders/help-content-seeder'
 
 const prisma = new PrismaClient()
 
@@ -754,6 +755,11 @@ async function main() {
   console.log('📋 Seeding client reports...')
   await seedClientReports()
   console.log('✅ Client reports seeded')
+
+  // Seed help content
+  console.log('📚 Seeding help content...')
+  await seedHelpContent()
+  console.log('✅ Help content seeded')
 
   console.log('🎉 Comprehensive database seeding completed!')
   console.log(`

@@ -1,14 +1,14 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Search, 
-  Book, 
-  MessageCircle, 
+import {
+  Search,
+  Book,
+  MessageCircle,
   HelpCircle,
   Video,
   FileText,
@@ -23,7 +23,14 @@ import {
   Users,
   BarChart3,
   Calendar,
-  Settings
+  Settings,
+  Rocket,
+  Edit,
+  TrendingUp,
+  Link,
+  CreditCard,
+  Shield,
+  Cpu
 } from 'lucide-react'
 import {
   Accordion,
@@ -32,141 +39,216 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion'
 import { useDictionary } from '@/hooks/use-dictionary'
+import { Skeleton } from '@/components/ui/skeleton'
+
+interface HelpCategory {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  icon?: string
+  articleCount?: number
+  faqCount?: number
+}
 
 interface HelpArticle {
   id: string
   title: string
-  description: string
-  category: string
+  slug: string
+  excerpt?: string
+  categoryId: string
   views: number
-  helpful: number
-  lastUpdated: string
+  helpfulVotes: number
+  publishedAt: string
+  category?: {
+    name: string
+    slug: string
+  }
+  author?: {
+    name: string
+  }
 }
 
 interface FAQ {
+  id: string
   question: string
   answer: string
-  category: string
+  categoryId: string
+  views: number
+  helpfulVotes: number
+  isPinned: boolean
+  category?: {
+    name: string
+    slug: string
+  }
+}
+
+// Icon mapping for categories
+const iconMap: Record<string, any> = {
+  Rocket,
+  Edit,
+  TrendingUp,
+  Users,
+  Cpu,
+  Link,
+  CreditCard,
+  Shield,
+  Book
 }
 
 export function HelpCenter() {
-  const { t, isLoading } = useDictionary()
+  const { t, isLoading: dictLoading } = useDictionary()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [categories, setCategories] = useState<HelpCategory[]>([])
+  const [articles, setArticles] = useState<HelpArticle[]>([])
+  const [faqs, setFaqs] = useState<FAQ[]>([])
+  const [loading, setLoading] = useState(true)
+  const [categoriesLoading, setCategoriesLoading] = useState(true)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchResults, setSearchResults] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
 
-  const categories = [
-    { id: 'all', name: t('help.allTopics', 'All Topics'), icon: Book },
-    { id: 'getting-started', name: t('help.gettingStarted', 'Getting Started'), icon: Lightbulb },
-    { id: 'posting', name: t('help.contentPosting', 'Content & Posting'), icon: FileText },
-    { id: 'analytics', name: t('help.analytics', 'Analytics'), icon: BarChart3 },
-    { id: 'team', name: t('help.teamManagement', 'Team Management'), icon: Users },
-    { id: 'automation', name: t('help.aiAutomation', 'AI & Automation'), icon: Zap },
-    { id: 'integrations', name: t('help.integrations', 'Integrations'), icon: Settings },
-    { id: 'billing', name: t('help.billingPlans', 'Billing & Plans'), icon: CheckCircle }
-  ]
+  // Fetch categories
+  useEffect(() => {
+    fetchCategories()
+  }, [])
 
-  const helpArticles: HelpArticle[] = [
-    {
-      id: '1',
-      title: 'Getting Started with SociallyHub',
-      description: 'Learn the basics of setting up your workspace and connecting social accounts',
-      category: 'getting-started',
-      views: 1250,
-      helpful: 95,
-      lastUpdated: '2024-01-15'
-    },
-    {
-      id: '2',
-      title: 'How to Schedule Posts Across Multiple Platforms',
-      description: 'Step-by-step guide to creating and scheduling content for all your social media accounts',
-      category: 'posting',
-      views: 890,
-      helpful: 87,
-      lastUpdated: '2024-01-12'
-    },
-    {
-      id: '3',
-      title: 'Understanding Your Analytics Dashboard',
-      description: 'Make sense of your social media performance with detailed analytics insights',
-      category: 'analytics',
-      views: 670,
-      helpful: 92,
-      lastUpdated: '2024-01-10'
-    },
-    {
-      id: '4',
-      title: 'Setting Up AI-Powered Content Optimization',
-      description: 'Leverage AI to improve your content performance and engagement rates',
-      category: 'automation',
-      views: 540,
-      helpful: 88,
-      lastUpdated: '2024-01-08'
-    },
-    {
-      id: '5',
-      title: 'Managing Team Roles and Permissions',
-      description: 'Control who can access what in your workspace with role-based permissions',
-      category: 'team',
-      views: 430,
-      helpful: 94,
-      lastUpdated: '2024-01-05'
+  // Fetch articles and FAQs when category changes
+  useEffect(() => {
+    fetchContent()
+  }, [selectedCategory])
+
+  // Handle search with debouncing
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const timer = setTimeout(() => {
+        performSearch()
+      }, 500) // Increased debounce time for better UX
+      return () => clearTimeout(timer)
+    } else {
+      setSearchResults(null)
+      setSearchError(null)
+      setSearchLoading(false)
     }
-  ]
+  }, [searchQuery, selectedCategory]) // Include selectedCategory to re-search when category changes
 
-  const faqs: FAQ[] = [
-    {
-      question: 'How do I connect my social media accounts?',
-      answer: 'Go to the Accounts page in your dashboard and click "Connect Account". Choose your platform and follow the OAuth flow to authorize SociallyHub to manage your account.',
-      category: 'getting-started'
-    },
-    {
-      question: 'Can I schedule posts for different time zones?',
-      answer: 'Yes! You can set your workspace timezone in Settings, and all scheduled posts will be published according to that timezone. You can also schedule posts for specific times in different zones.',
-      category: 'posting'
-    },
-    {
-      question: 'What social platforms does SociallyHub support?',
-      answer: 'We currently support Twitter/X, Facebook, Instagram, LinkedIn, TikTok, and YouTube. We\'re constantly adding support for new platforms based on user demand.',
-      category: 'integrations'
-    },
-    {
-      question: 'How does the AI content optimization work?',
-      answer: 'Our AI analyzes your past performance, current trends, and best practices to suggest improvements to your content, optimal posting times, and hashtag strategies.',
-      category: 'automation'
-    },
-    {
-      question: 'Can I invite team members to collaborate?',
-      answer: 'Absolutely! You can invite team members with different permission levels: Viewer, Editor, Manager, or Admin. Each role has specific capabilities to maintain security and workflow.',
-      category: 'team'
-    },
-    {
-      question: 'How accurate are the analytics and performance predictions?',
-      answer: 'Our analytics are real-time and sourced directly from platform APIs. Performance predictions use machine learning with 75-85% accuracy based on historical data and trends.',
-      category: 'analytics'
+  const fetchCategories = async () => {
+    setCategoriesLoading(true)
+    setCategoryError(null)
+    try {
+      const response = await fetch('/api/help/categories?includeStats=true')
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data)
+      } else {
+        throw new Error(`Failed to fetch categories: ${response.status}`)
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error)
+      setCategoryError('Failed to load categories. Please try again.')
+    } finally {
+      setCategoriesLoading(false)
     }
+  }
+
+  const fetchContent = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Fetch articles and FAQs in parallel for better performance
+      const articleParams = selectedCategory !== 'all'
+        ? `?categorySlug=${selectedCategory}&limit=20`
+        : '?limit=20'
+
+      const faqParams = selectedCategory !== 'all'
+        ? `?categorySlug=${selectedCategory}&limit=20`
+        : '?limit=20'
+
+      const [articleResponse, faqResponse] = await Promise.all([
+        fetch(`/api/help/articles${articleParams}`),
+        fetch(`/api/help/faqs${faqParams}`)
+      ])
+
+      let articleData = []
+      let faqData = []
+
+      if (articleResponse.ok) {
+        const data = await articleResponse.json()
+        articleData = data.articles || []
+      } else {
+        console.error('Failed to fetch articles:', articleResponse.status)
+      }
+
+      if (faqResponse.ok) {
+        const data = await faqResponse.json()
+        faqData = data.faqs || []
+      } else {
+        console.error('Failed to fetch FAQs:', faqResponse.status)
+      }
+
+      setArticles(articleData)
+      setFaqs(faqData)
+
+      // Clear search results when category changes
+      if (searchResults) {
+        setSearchResults(null)
+      }
+
+    } catch (error) {
+      console.error('Failed to fetch content:', error)
+      setError('Failed to load content. Please check your connection and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const performSearch = async () => {
+    if (!searchQuery.trim()) return
+
+    setSearchLoading(true)
+    setSearchError(null)
+
+    try {
+      const params = new URLSearchParams({ q: searchQuery.trim() })
+      if (selectedCategory !== 'all') {
+        const category = categories.find(c => c.slug === selectedCategory)
+        if (category) params.append('categoryId', category.id)
+      }
+
+      const response = await fetch(`/api/help/search?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSearchResults(data)
+      } else {
+        throw new Error(`Search failed: ${response.status}`)
+      }
+    } catch (error) {
+      console.error('Search failed:', error)
+      setSearchError('Search failed. Please try again.')
+      setSearchResults(null)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  // Build display categories with icons
+  const displayCategories = [
+    { id: 'all', slug: 'all', name: t('help.allTopics', 'All Topics'), icon: Book },
+    ...categories.map(cat => ({
+      ...cat,
+      icon: iconMap[cat.icon || 'Book'] || Book
+    }))
   ]
 
-  const filteredArticles = helpArticles.filter(article => {
-    const matchesSearch = searchQuery === '' || 
-      article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      article.description.toLowerCase().includes(searchQuery.toLowerCase())
-    
-    const matchesCategory = selectedCategory === 'all' || article.category === selectedCategory
-    
-    return matchesSearch && matchesCategory
-  })
+  // Use search results if searching, otherwise use fetched content
+  const displayArticles = searchResults?.results?.articles || articles
+  const displayFaqs = searchResults?.results?.faqs || faqs
 
-  const filteredFAQs = faqs.filter(faq => {
-    const matchesSearch = searchQuery === '' || 
-      faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      faq.answer.toLowerCase().includes(searchQuery.toLowerCase())
-    
-    const matchesCategory = selectedCategory === 'all' || faq.category === selectedCategory
-    
-    return matchesSearch && matchesCategory
-  })
-
-  if (isLoading) {
+  if (dictLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -184,13 +266,28 @@ export function HelpCenter() {
         
         {/* Search */}
         <div className="max-w-2xl mx-auto relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t('help.searchPlaceholder', 'Search help articles, guides, and FAQs...')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-12 text-lg"
-          />
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={t('help.searchPlaceholder', 'Search help articles, guides, and FAQs...')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={`pl-10 pr-10 h-12 text-lg ${searchError ? 'border-red-500 focus:border-red-500' : ''}`}
+            />
+            {searchLoading && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+              </div>
+            )}
+          </div>
+          {searchError && (
+            <p className="text-sm text-red-600 mt-2 text-center">{searchError}</p>
+          )}
+          {searchResults && (
+            <p className="text-sm text-muted-foreground mt-2 text-center">
+              Found {searchResults.counts?.total || 0} results for "{searchResults.query}"
+            </p>
+          )}
         </div>
       </div>
 
@@ -247,22 +344,52 @@ export function HelpCenter() {
               <CardTitle>{t('help.categories', 'Categories')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-1">
-                {categories.map((category) => {
-                  const Icon = category.icon
-                  return (
-                    <Button
-                      key={category.id}
-                      variant={selectedCategory === category.id ? 'default' : 'ghost'}
-                      className="w-full justify-start"
-                      onClick={() => setSelectedCategory(category.id)}
-                    >
-                      <Icon className="h-4 w-4 mr-2" />
-                      {category.name}
-                    </Button>
-                  )
-                })}
-              </div>
+              {categoriesLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : categoryError ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-red-600 mb-2">{categoryError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchCategories}
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {displayCategories.map((category) => {
+                    const Icon = category.icon
+                    return (
+                      <Button
+                        key={category.slug}
+                        variant={selectedCategory === category.slug ? 'default' : 'ghost'}
+                        className="w-full justify-start"
+                        onClick={() => setSelectedCategory(category.slug)}
+                        disabled={loading}
+                      >
+                        <Icon className="h-4 w-4 mr-2" />
+                        <span className="flex-1 text-left">{category.name}</span>
+                        {category.articleCount !== undefined && category.faqCount !== undefined && (
+                          <span className="text-xs text-muted-foreground">
+                            {category.articleCount + category.faqCount}
+                          </span>
+                        )}
+                        {loading && selectedCategory === category.slug && (
+                          <div className="ml-2">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b border-current"></div>
+                          </div>
+                        )}
+                      </Button>
+                    )
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -275,22 +402,81 @@ export function HelpCenter() {
               <CardTitle>{t('help.helpArticles', 'Help Articles')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {filteredArticles.map((article) => (
-                  <div key={article.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg mb-1">{article.title}</h3>
-                      <p className="text-muted-foreground text-sm mb-2">{article.description}</p>
-                      <div className="flex items-center space-x-4 text-xs text-muted-foreground">
-                        <span>{article.views} views</span>
-                        <span>{article.helpful}% helpful</span>
-                        <span>Updated {new Date(article.lastUpdated).toLocaleDateString()}</span>
-                      </div>
+              {loading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="p-4">
+                      <Skeleton className="h-6 w-3/4 mb-2" />
+                      <Skeleton className="h-4 w-full mb-2" />
+                      <Skeleton className="h-3 w-1/2" />
                     </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  ))}
+                </div>
+              ) : error ? (
+                <div className="text-center py-8">
+                  <div className="text-red-600 mb-4">
+                    <HelpCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">{error}</p>
                   </div>
-                ))}
-              </div>
+                  <Button
+                    variant="outline"
+                    onClick={fetchContent}
+                    className="mt-2"
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              ) : displayArticles.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">
+                      {searchQuery
+                        ? t('help.noSearchResults', `No articles found matching "${searchQuery}"`)
+                        : selectedCategory !== 'all'
+                          ? t('help.noCategoryArticles', 'No articles available in this category')
+                          : t('help.noArticles', 'No articles available')}
+                    </p>
+                    {searchQuery && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => setSearchQuery('')}
+                        className="mt-2 text-sm"
+                      >
+                        Clear search
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {displayArticles.map((article) => (
+                    <div
+                      key={article.id}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => window.location.href = `/dashboard/help/article/${article.slug}`}
+                    >
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-lg mb-1">{article.title}</h3>
+                        <p className="text-muted-foreground text-sm mb-2">
+                          {article.excerpt || 'Click to read more...'}
+                        </p>
+                        <div className="flex items-center space-x-4 text-xs text-muted-foreground">
+                          <span>{article.views} views</span>
+                          <span>{article.helpfulVotes} found helpful</span>
+                          {article.publishedAt && (
+                            <span>Updated {new Date(article.publishedAt).toLocaleDateString()}</span>
+                          )}
+                          {article.category && (
+                            <Badge variant="secondary">{article.category.name}</Badge>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -300,18 +486,82 @@ export function HelpCenter() {
               <CardTitle>{t('help.faqs', 'Frequently Asked Questions')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <Accordion type="single" collapsible className="w-full">
-                {filteredFAQs.map((faq, index) => (
-                  <AccordionItem key={index} value={`item-${index}`}>
-                    <AccordionTrigger className="text-left">
-                      {faq.question}
-                    </AccordionTrigger>
-                    <AccordionContent className="text-muted-foreground">
-                      {faq.answer}
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
+              {loading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i}>
+                      <Skeleton className="h-12 w-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : error ? (
+                <div className="text-center py-8">
+                  <div className="text-red-600 mb-4">
+                    <HelpCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">{error}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={fetchContent}
+                    className="mt-2"
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              ) : displayFaqs.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-muted-foreground">
+                    <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">
+                      {searchQuery
+                        ? t('help.noFaqResults', `No FAQs found matching "${searchQuery}"`)
+                        : selectedCategory !== 'all'
+                          ? t('help.noCategoryFaqs', 'No FAQs available in this category')
+                          : t('help.noFaqs', 'No FAQs available')}
+                    </p>
+                    {searchQuery && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => setSearchQuery('')}
+                        className="mt-2 text-sm"
+                      >
+                        Clear search
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <Accordion type="single" collapsible className="w-full">
+                  {displayFaqs.map((faq) => (
+                    <AccordionItem key={faq.id} value={faq.id}>
+                      <AccordionTrigger className="text-left">
+                        <div className="flex items-center gap-2">
+                          {faq.isPinned && (
+                            <Badge variant="secondary" className="mr-2">Pinned</Badge>
+                          )}
+                          {faq.question}
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="space-y-3">
+                          <p className="text-muted-foreground">
+                            {faq.answer}
+                          </p>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <span>{faq.views} views</span>
+                            <span>{faq.helpfulVotes} found helpful</span>
+                            {faq.category && (
+                              <Badge variant="outline" className="text-xs">
+                                {faq.category.name}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              )}
             </CardContent>
           </Card>
 
