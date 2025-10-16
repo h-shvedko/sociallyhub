@@ -27,7 +27,8 @@ import {
   Bookmark,
   Flag,
   ExternalLink,
-  Printer
+  Printer,
+  X
 } from 'lucide-react'
 
 interface HelpArticle {

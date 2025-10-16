@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { marked } from 'marked'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,38 @@ interface RichContentRendererProps {
   content: string
   showTableOfContents?: boolean
   className?: string
+}
+
+// Function to detect if content is markdown and convert to HTML
+function convertMarkdownToHtml(content: string): string {
+  // Simple detection: if content contains markdown patterns, convert it
+  const markdownPatterns = [
+    /^#{1,6}\s/m,          // Headers
+    /\*\*.*?\*\*/,         // Bold
+    /\*.*?\*/,             // Italic
+    /^\- /m,               // Unordered lists
+    /^\d+\. /m,            // Ordered lists
+    /^\> /m,               // Blockquotes
+    /`.*?`/,               // Inline code
+    /```[\s\S]*?```/       // Code blocks
+  ]
+
+  const isMarkdown = markdownPatterns.some(pattern => pattern.test(content))
+
+  if (isMarkdown) {
+    // Configure marked options for better security and formatting
+    marked.setOptions({
+      gfm: true,
+      breaks: true,
+      sanitize: false, // We'll handle sanitization at the component level
+      smartypants: true
+    })
+
+    return marked(content) as string
+  }
+
+  // If it's already HTML or plain text, return as is
+  return content
 }
 
 export function RichContentRenderer({
@@ -221,7 +254,9 @@ export function RichContentRenderer({
     )
   }
 
-  const processedContent = processContent(content)
+  // Convert markdown to HTML if needed, then process the content
+  const htmlContent = convertMarkdownToHtml(content)
+  const processedContent = processContent(htmlContent)
 
   return (
     <div className={`rich-content-container ${className}`}>
