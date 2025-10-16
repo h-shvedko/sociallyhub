@@ -159,6 +159,11 @@ model User {
   helpArticles         HelpArticle[] @relation("HelpArticleAuthor")
   helpArticleComments  HelpArticleComment[] @relation("HelpArticleCommentAuthor")
   helpArticleBookmarks HelpArticleBookmark[] @relation("UserBookmarks")
+  helpArticleRevisions HelpArticleRevision[] @relation("HelpArticleRevisionAuthor")
+  helpArticleTemplates HelpArticleTemplate[] @relation("HelpArticleTemplateAuthor")
+  workflowsRequested   HelpArticleWorkflow[] @relation("WorkflowRequestedBy")
+  workflowsAssigned    HelpArticleWorkflow[] @relation("WorkflowAssignedTo")
+  workflowsReviewed    HelpArticleWorkflow[] @relation("WorkflowReviewedBy")
 
   // Documentation Relations
   documentationPages   DocumentationPage[] @relation("DocumentationAuthor")
@@ -2610,6 +2615,7 @@ model HelpCategory {
   searchQueries HelpSearchQuery[]
   videoTutorials VideoTutorial[]
   videoPlaylists VideoPlaylist[]
+  analytics     HelpCategoryAnalytics[]
 
   @@index([slug])
   @@index([isActive])
@@ -2644,6 +2650,10 @@ model HelpArticle {
   author          User?        @relation("HelpArticleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   comments        HelpArticleComment[]
   bookmarks       HelpArticleBookmark[] @relation("ArticleBookmarks")
+  revisions       HelpArticleRevision[]
+  workflows       HelpArticleWorkflow[]
+  media           HelpArticleMedia[]
+  analytics       HelpArticleAnalytics[]
 
   @@index([categoryId])
   @@index([status])
@@ -3699,4 +3709,180 @@ enum CommunityActivityType {
   USER_JOINED_COMMUNITY
   MILESTONE_REACHED
   ANNOUNCEMENT_POSTED
+}
+
+// Help Article Management System Models
+
+model HelpArticleRevision {
+  id              String      @id @default(cuid())
+  articleId       String
+  version         Int
+  title           String
+  content         String      @db.Text
+  excerpt         String?
+  categoryId      String
+  tags            String[]
+  status          String
+  seoTitle        String?
+  seoDescription  String?
+  changeSummary   String?     // Summary of changes made
+  authorId        String?
+
+  createdAt       DateTime    @default(now())
+
+  // Relations
+  article         HelpArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author          User?       @relation("HelpArticleRevisionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([articleId, version])
+  @@index([articleId])
+  @@index([createdAt])
+  @@map("help_article_revisions")
+}
+
+model HelpArticleWorkflow {
+  id              String      @id @default(cuid())
+  articleId       String
+  workflowType    String      // create, update, delete, publish, archive
+  status          String      @default("pending") // pending, approved, rejected, completed
+  requestedById   String
+  assignedToId    String?
+  reviewedById    String?
+
+  // Content being reviewed
+  proposedTitle   String?
+  proposedContent String?     @db.Text
+  proposedExcerpt String?
+  proposedCategoryId String?
+  proposedTags    String[]
+  proposedSeoTitle String?
+  proposedSeoDescription String?
+
+  // Review details
+  reviewComments  String?     @db.Text
+  reviewedAt      DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  article         HelpArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  requestedBy     User        @relation("WorkflowRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  assignedTo      User?       @relation("WorkflowAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  reviewedBy      User?       @relation("WorkflowReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([articleId])
+  @@index([status])
+  @@index([requestedById])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@map("help_article_workflows")
+}
+
+model HelpArticleMedia {
+  id              String      @id @default(cuid())
+  articleId       String
+  fileName        String
+  originalName    String
+  mimeType        String
+  fileSize        Int
+  filePath        String
+  alt             String?
+  caption         String?
+  sortOrder       Int         @default(0)
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  article         HelpArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@index([sortOrder])
+  @@map("help_article_media")
+}
+
+model HelpArticleTemplate {
+  id              String      @id @default(cuid())
+  name            String
+  description     String?
+  content         String      @db.Text
+  category        String      // tutorial, faq, api_doc, feature_guide, etc.
+  tags            String[]
+  isActive        Boolean     @default(true)
+  usageCount      Int         @default(0)
+  authorId        String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  author          User?       @relation("HelpArticleTemplateAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([category])
+  @@index([isActive])
+  @@index([authorId])
+  @@map("help_article_templates")
+}
+
+model HelpArticleAnalytics {
+  id              String      @id @default(cuid())
+  articleId       String
+  date            DateTime    @db.Date
+  views           Int         @default(0)
+  uniqueViews     Int         @default(0)
+  helpfulVotes    Int         @default(0)
+  notHelpfulVotes Int         @default(0)
+  averageReadTime Int?        // in seconds
+  bounceRate      Float?      // percentage
+  searchImpressions Int       @default(0)
+  searchClicks    Int         @default(0)
+
+  // Relations
+  article         HelpArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, date])
+  @@index([articleId])
+  @@index([date])
+  @@map("help_article_analytics")
+}
+
+model HelpCategoryAnalytics {
+  id              String      @id @default(cuid())
+  categoryId      String
+  date            DateTime    @db.Date
+  totalViews      Int         @default(0)
+  totalArticles   Int         @default(0)
+  publishedArticles Int       @default(0)
+  averageRating   Float?
+
+  // Relations
+  category        HelpCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, date])
+  @@index([categoryId])
+  @@index([date])
+  @@map("help_category_analytics")
+}
+
+// Enums for Help Article Management
+
+enum ArticleWorkflowType {
+  CREATE
+  UPDATE
+  DELETE
+  PUBLISH
+  ARCHIVE
+  REVIEW
+}
+
+enum ArticleWorkflowStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  COMPLETED
+  CANCELLED
 }

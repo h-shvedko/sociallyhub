@@ -4,7 +4,10 @@
       "Bash(timeout 30 docker-compose exec app npm list)",
       "Bash(timeout 60 docker-compose exec app npm install:*)",
       "Bash(timeout 30 docker-compose exec app npm install marked @types/marked)",
-      "Bash(timeout 30 docker-compose logs app --tail=5)"
+      "Bash(timeout 30 docker-compose logs app --tail=5)",
+      "Bash(npx prisma:*)",
+      "Bash(docker-compose:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
