@@ -2571,8 +2571,9 @@ model HelpCategory {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  articles    HelpArticle[]
-  faqs        HelpFAQ[]
+  articles      HelpArticle[]
+  faqs          HelpFAQ[]
+  searchQueries HelpSearchQuery[]
 
   @@index([slug])
   @@index([isActive])
@@ -2636,4 +2637,39 @@ model HelpFAQ {
   @@index([isActive])
   @@index([isPinned])
   @@map("help_faqs")
+}
+
+model HelpSearchQuery {
+  id              String   @id @default(cuid())
+  query           String
+  categoryId      String?
+  resultsCount    Int      @default(0)
+  clickedArticles String[] // Array of article IDs that were clicked
+  userAgent       String?
+  ipAddress       String?
+  sessionId       String?
+
+  createdAt       DateTime @default(now())
+
+  // Relations
+  category        HelpCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([query])
+  @@index([createdAt])
+  @@index([resultsCount])
+  @@map("help_search_queries")
+}
+
+model HelpSearchSuggestion {
+  id          String   @id @default(cuid())
+  query       String   @unique
+  frequency   Int      @default(1)
+  lastUsed    DateTime @default(now())
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([frequency])
+  @@index([lastUsed])
+  @@map("help_search_suggestions")
 }

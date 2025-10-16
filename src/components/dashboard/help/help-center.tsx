@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/accordion'
 import { useDictionary } from '@/hooks/use-dictionary'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AdvancedSearch } from './advanced-search'
 
 interface HelpCategory {
   id: string
@@ -101,6 +102,7 @@ export function HelpCenter() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [categories, setCategories] = useState<HelpCategory[]>([])
+  const [authors, setAuthors] = useState<Array<{ id: string; name: string }>>([])
   const [articles, setArticles] = useState<HelpArticle[]>([])
   const [faqs, setFaqs] = useState<FAQ[]>([])
   const [loading, setLoading] = useState(true)
@@ -111,9 +113,10 @@ export function HelpCenter() {
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
 
-  // Fetch categories
+  // Fetch categories and authors
   useEffect(() => {
     fetchCategories()
+    fetchAuthors()
   }, [])
 
   // Fetch articles and FAQs when category changes
@@ -151,6 +154,18 @@ export function HelpCenter() {
       setCategoryError('Failed to load categories. Please try again.')
     } finally {
       setCategoriesLoading(false)
+    }
+  }
+
+  const fetchAuthors = async () => {
+    try {
+      const response = await fetch('/api/help/authors')
+      if (response.ok) {
+        const data = await response.json()
+        setAuthors(data.authors || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch authors:', error)
     }
   }
 
@@ -235,6 +250,51 @@ export function HelpCenter() {
     }
   }
 
+  // Advanced search handler
+  const handleAdvancedSearch = async (query: string, filters: any) => {
+    setSearchLoading(true)
+    setSearchError(null)
+    setSearchQuery(query)
+
+    try {
+      const params = new URLSearchParams({ q: query.trim() })
+
+      // Apply filters
+      if (filters.type && filters.type !== 'all') {
+        params.append('type', filters.type)
+      }
+      if (filters.categoryId) {
+        params.append('categoryId', filters.categoryId)
+      }
+      if (filters.sortBy && filters.sortBy !== 'relevance') {
+        params.append('sortBy', filters.sortBy)
+      }
+      if (filters.dateFrom) {
+        params.append('dateFrom', filters.dateFrom)
+      }
+      if (filters.dateTo) {
+        params.append('dateTo', filters.dateTo)
+      }
+      if (filters.authorId) {
+        params.append('authorId', filters.authorId)
+      }
+
+      const response = await fetch(`/api/help/search?${params}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSearchResults(data)
+      } else {
+        throw new Error(`Search failed: ${response.status}`)
+      }
+    } catch (error) {
+      console.error('Advanced search failed:', error)
+      setSearchError('Search failed. Please try again.')
+      setSearchResults(null)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
   // Build display categories with icons
   const displayCategories = [
     { id: 'all', slug: 'all', name: t('help.allTopics', 'All Topics'), icon: Book },
@@ -264,27 +324,17 @@ export function HelpCenter() {
           {t('help.description', 'Get help, tutorials, and support for using SociallyHub effectively')}
         </p>
         
-        {/* Search */}
-        <div className="max-w-2xl mx-auto relative">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t('help.searchPlaceholder', 'Search help articles, guides, and FAQs...')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 pr-10 h-12 text-lg ${searchError ? 'border-red-500 focus:border-red-500' : ''}`}
-            />
-            {searchLoading && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-              </div>
-            )}
-          </div>
-          {searchError && (
-            <p className="text-sm text-red-600 mt-2 text-center">{searchError}</p>
-          )}
+        {/* Advanced Search */}
+        <div className="max-w-5xl mx-auto">
+          <AdvancedSearch
+            onSearch={handleAdvancedSearch}
+            categories={categories}
+            authors={authors}
+            loading={searchLoading}
+            searchError={searchError}
+          />
           {searchResults && (
-            <p className="text-sm text-muted-foreground mt-2 text-center">
+            <p className="text-sm text-muted-foreground mt-4 text-center">
               Found {searchResults.counts?.total || 0} results for "{searchResults.query}"
             </p>
           )}
@@ -457,10 +507,21 @@ export function HelpCenter() {
                       onClick={() => window.location.href = `/dashboard/help/article/${article.slug}`}
                     >
                       <div className="flex-1">
-                        <h3 className="font-semibold text-lg mb-1">{article.title}</h3>
-                        <p className="text-muted-foreground text-sm mb-2">
-                          {article.excerpt || 'Click to read more...'}
-                        </p>
+                        <h3
+                          className="font-semibold text-lg mb-1"
+                          dangerouslySetInnerHTML={{
+                            __html: (article as any).highlightedTitle || article.title
+                          }}
+                        />
+                        <div className="text-muted-foreground text-sm mb-2">
+                          {(article as any).snippet ? (
+                            <div dangerouslySetInnerHTML={{ __html: (article as any).snippet }} />
+                          ) : (
+                            <div dangerouslySetInnerHTML={{
+                              __html: (article as any).highlightedExcerpt || article.excerpt || 'Click to read more...'
+                            }} />
+                          )}
+                        </div>
                         <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                           <span>{article.views} views</span>
                           <span>{article.helpfulVotes} found helpful</span>
@@ -539,14 +600,21 @@ export function HelpCenter() {
                           {faq.isPinned && (
                             <Badge variant="secondary" className="mr-2">Pinned</Badge>
                           )}
-                          {faq.question}
+                          <div
+                            dangerouslySetInnerHTML={{
+                              __html: (faq as any).highlightedQuestion || faq.question
+                            }}
+                          />
                         </div>
                       </AccordionTrigger>
                       <AccordionContent>
                         <div className="space-y-3">
-                          <p className="text-muted-foreground">
-                            {faq.answer}
-                          </p>
+                          <div
+                            className="text-muted-foreground"
+                            dangerouslySetInnerHTML={{
+                              __html: (faq as any).highlightedAnswer || faq.answer
+                            }}
+                          />
                           <div className="flex items-center gap-4 text-xs text-muted-foreground">
                             <span>{faq.views} views</span>
                             <span>{faq.helpfulVotes} found helpful</span>
