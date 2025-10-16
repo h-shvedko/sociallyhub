@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { calculateReadingTime } from '../utils/reading-time'
 
 const prisma = new PrismaClient()
 
@@ -685,16 +686,21 @@ export async function seedHelpContent() {
 
       const { categorySlug, ...articleData } = article
 
+      // Calculate reading time for the article
+      const readingTime = calculateReadingTime(articleData.content)
+
       await prisma.helpArticle.upsert({
         where: { slug: articleData.slug },
         update: {
           ...articleData,
           categoryId,
+          readingTime: readingTime.minutes,
           publishedAt: new Date()
         },
         create: {
           ...articleData,
           categoryId,
+          readingTime: readingTime.minutes,
           publishedAt: new Date()
         }
       })

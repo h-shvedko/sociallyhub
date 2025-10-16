@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { seedClientReports } from '../src/lib/seeders/client-reports-seeder'
 import { seedHelpContent } from '../src/lib/seeders/help-content-seeder'
+import { seedVideoTutorials } from '../src/lib/seeders/video-tutorial-seeder'
 
 const prisma = new PrismaClient()
 
@@ -761,6 +762,11 @@ async function main() {
   await seedHelpContent()
   console.log('✅ Help content seeded')
 
+  // Seed video tutorials
+  console.log('🎥 Seeding video tutorials...')
+  const videoTutorials = await seedVideoTutorials()
+  console.log('✅ Video tutorials seeded')
+
   console.log('🎉 Comprehensive database seeding completed!')
   console.log(`
 📊 Final Statistics:
@@ -775,6 +781,7 @@ async function main() {
 - User Actions: ${actionCount}
 - Clients: ${clients.length}
 - Campaigns: ${campaigns.length}
+- Video Tutorials: ${videoTutorials.length}
 `)
 }
 

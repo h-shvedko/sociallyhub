@@ -150,6 +150,8 @@ model User {
 
   // Help Center Relations
   helpArticles         HelpArticle[] @relation("HelpArticleAuthor")
+  helpArticleComments  HelpArticleComment[] @relation("HelpArticleCommentAuthor")
+  helpArticleBookmarks HelpArticleBookmark[] @relation("UserBookmarks")
 
   // Documentation Relations
   documentationPages   DocumentationPage[] @relation("DocumentationAuthor")
@@ -158,6 +160,9 @@ model User {
   supportAgent         SupportAgent? @relation("SupportAgentUser")
   supportChats         SupportChat[] @relation("SupportChatUser")
   contactForms         SupportContactForm[] @relation("ContactFormUser")
+
+  // Video Tutorial Relations
+  videoProgress        VideoUserProgress[]
 
   @@map("users")
 }
@@ -2586,6 +2591,8 @@ model HelpCategory {
   articles      HelpArticle[]
   faqs          HelpFAQ[]
   searchQueries HelpSearchQuery[]
+  videoTutorials VideoTutorial[]
+  videoPlaylists VideoPlaylist[]
 
   @@index([slug])
   @@index([isActive])
@@ -2618,12 +2625,53 @@ model HelpArticle {
   // Relations
   category        HelpCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   author          User?        @relation("HelpArticleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  comments        HelpArticleComment[]
+  bookmarks       HelpArticleBookmark[] @relation("ArticleBookmarks")
 
   @@index([categoryId])
   @@index([status])
   @@index([publishedAt])
   @@index([slug])
   @@map("help_articles")
+}
+
+model HelpArticleComment {
+  id          String      @id @default(cuid())
+  articleId   String
+  content     String      @db.Text
+  type        String      @default("comment") // comment, feedback, question
+  authorId    String?
+  authorName  String?
+  authorEmail String?
+  isApproved  Boolean     @default(false)
+  isSpam      Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  article     HelpArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author      User?       @relation("HelpArticleCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([articleId])
+  @@index([isApproved])
+  @@map("help_article_comments")
+}
+
+model HelpArticleBookmark {
+  id        String      @id @default(cuid())
+  userId    String
+  articleId String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  user      User        @relation("UserBookmarks", fields: [userId], references: [id], onDelete: Cascade)
+  article   HelpArticle @relation("ArticleBookmarks", fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+  @@map("help_article_bookmarks")
 }
 
 model HelpFAQ {
@@ -2649,6 +2697,133 @@ model HelpFAQ {
   @@index([isActive])
   @@index([isPinned])
   @@map("help_faqs")
+}
+
+// Video Tutorial Models
+model VideoTutorial {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  description     String?  @db.Text
+  categoryId      String
+  thumbnailUrl    String?
+  videoUrl        String   // YouTube/Vimeo URL or direct video file
+  videoPlatform   String   @default("youtube") // youtube, vimeo, direct
+  videoId         String?  // Platform-specific video ID
+  duration        Int?     // Duration in seconds
+  difficulty      String   @default("beginner") // beginner, intermediate, advanced
+  tags            String[] @default([])
+  transcript      String?  @db.Text
+
+  // SEO and Analytics
+  seoTitle        String?
+  seoDescription  String?
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  dislikes        Int      @default(0)
+  completions     Int      @default(0) // How many users completed watching
+  averageRating   Float?   @default(0)
+
+  // Content Management
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  isPublished     Boolean  @default(false)
+  publishedAt     DateTime?
+
+  // Authoring
+  authorId        String?
+  authorName      String?
+  authorAvatar    String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  category        HelpCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  playlists       VideoPlaylistItem[]
+  userProgress    VideoUserProgress[]
+
+  @@index([categoryId])
+  @@index([isActive, isPublished])
+  @@index([isFeatured])
+  @@index([difficulty])
+  @@index([videoPlatform])
+  @@index([publishedAt])
+  @@map("video_tutorials")
+}
+
+model VideoPlaylist {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  description     String?  @db.Text
+  thumbnailUrl    String?
+  categoryId      String?
+
+  // Content Management
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  isPublished     Boolean  @default(false)
+
+  // Analytics
+  views           Int      @default(0)
+  totalDuration   Int      @default(0) // Total duration in seconds
+  videoCount      Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  category        HelpCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  videos          VideoPlaylistItem[]
+
+  @@index([categoryId])
+  @@index([isActive, isPublished])
+  @@index([isFeatured])
+  @@map("video_playlists")
+}
+
+model VideoPlaylistItem {
+  id          String   @id @default(cuid())
+  playlistId  String
+  videoId     String
+  sortOrder   Int      @default(0)
+
+  createdAt   DateTime @default(now())
+
+  // Relations
+  playlist    VideoPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  video       VideoTutorial @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, videoId])
+  @@index([playlistId, sortOrder])
+  @@map("video_playlist_items")
+}
+
+model VideoUserProgress {
+  id              String   @id @default(cuid())
+  userId          String
+  videoId         String
+  watchTime       Int      @default(0) // Watched time in seconds
+  lastPosition    Int      @default(0) // Last playback position in seconds
+  isCompleted     Boolean  @default(false)
+  rating          Int?     // 1-5 star rating
+  feedback        String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video           VideoTutorial @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@index([userId])
+  @@index([videoId])
+  @@index([isCompleted])
+  @@map("video_user_progress")
 }
 
 model HelpSearchQuery {

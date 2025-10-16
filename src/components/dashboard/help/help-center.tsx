@@ -42,6 +42,8 @@ import { useDictionary } from '@/hooks/use-dictionary'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AdvancedSearch } from './advanced-search'
 import { LiveChatInterface } from '@/components/support/live-chat-interface'
+import { VideoTutorialLibrary } from '@/components/video-tutorials/video-tutorial-library'
+import { ArticleMetaBadges } from '@/components/help/recently-updated-badge'
 
 interface HelpCategory {
   id: string
@@ -114,6 +116,7 @@ export function HelpCenter() {
   const [categoryError, setCategoryError] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [liveChatOpen, setLiveChatOpen] = useState(false)
+  const [videoLibraryOpen, setVideoLibraryOpen] = useState(false)
   const [supportStatus, setSupportStatus] = useState<{
     isAvailable: boolean
     onlineAgents: number
@@ -423,7 +426,10 @@ export function HelpCenter() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card
+          className="hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => setVideoLibraryOpen(true)}
+        >
           <CardContent className="pt-6">
             <div className="text-center space-y-3">
               <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto">
@@ -574,15 +580,23 @@ export function HelpCenter() {
                             }} />
                           )}
                         </div>
-                        <div className="flex items-center space-x-4 text-xs text-muted-foreground">
-                          <span>{article.views} views</span>
-                          <span>{article.helpfulVotes} found helpful</span>
-                          {article.publishedAt && (
-                            <span>Updated {new Date(article.publishedAt).toLocaleDateString()}</span>
-                          )}
-                          {article.category && (
-                            <Badge variant="secondary">{article.category.name}</Badge>
-                          )}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4 text-xs text-muted-foreground">
+                            <span>{article.views} views</span>
+                            <span>{article.helpfulVotes} found helpful</span>
+                            {article.publishedAt && (
+                              <span>Updated {new Date(article.publishedAt).toLocaleDateString()}</span>
+                            )}
+                            {article.category && (
+                              <Badge variant="secondary">{article.category.name}</Badge>
+                            )}
+                          </div>
+                          <ArticleMetaBadges
+                            article={article}
+                            showViews={false}
+                            showHelpful={false}
+                            className="ml-4"
+                          />
                         </div>
                       </div>
                       <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -750,6 +764,12 @@ export function HelpCenter() {
       <LiveChatInterface
         isOpen={liveChatOpen}
         onClose={() => setLiveChatOpen(false)}
+      />
+
+      {/* Video Tutorial Library */}
+      <VideoTutorialLibrary
+        isOpen={videoLibraryOpen}
+        onClose={() => setVideoLibraryOpen(false)}
       />
     </div>
   )
