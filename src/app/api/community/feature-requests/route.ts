@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
           targetVersion: true,
           votes: true,
           views: true,
-          comments: true,
+          commentsCount: true,
           guestName: true,
           createdAt: true,
           updatedAt: true,

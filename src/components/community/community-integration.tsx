@@ -33,7 +33,7 @@ interface CommunityStats {
     id: string
     title: string
     views: number
-    replies: number
+    repliesCount: number
     createdAt: string
   }>
   popularFeatureRequests: Array<{

@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         orderBy = [{ views: 'desc' }, { likes: 'desc' }]
         break
       case 'most_replies':
-        orderBy = [{ replies: 'desc' }, { lastActivity: 'desc' }]
+        orderBy = [{ repliesCount: 'desc' }, { lastActivity: 'desc' }]
         break
       case 'oldest':
         orderBy = { createdAt: 'asc' }
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
           isResolved: true,
           views: true,
           likes: true,
-          replies: true,
+          repliesCount: true,
           lastActivity: true,
           guestName: true,
           createdAt: true,

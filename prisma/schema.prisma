@@ -3336,7 +3336,7 @@ model CommunityForumPost {
   // Engagement
   views           Int      @default(0)
   likes           Int      @default(0)
-  replies         Int      @default(0)
+  repliesCount    Int      @default(0)
   lastActivity    DateTime @default(now())
 
   // Moderation
@@ -3446,7 +3446,7 @@ model FeatureRequest {
   // Engagement
   votes           Int      @default(0)
   views           Int      @default(0)
-  comments        Int      @default(0)
+  commentsCount   Int      @default(0)
 
   // Guest request
   guestName       String?
