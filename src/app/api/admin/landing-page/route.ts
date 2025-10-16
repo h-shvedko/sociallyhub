@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth/config'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/user-utils'
+import { normalizeUserId } from '@/lib/auth/demo-user'
 
 // Default landing page configuration
 const DEFAULT_CONFIG = {
