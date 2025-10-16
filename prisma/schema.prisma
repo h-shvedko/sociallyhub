@@ -147,6 +147,9 @@ model User {
   // Help Center Relations
   helpArticles         HelpArticle[] @relation("HelpArticleAuthor")
 
+  // Documentation Relations
+  documentationPages   DocumentationPage[] @relation("DocumentationAuthor")
+
   @@map("users")
 }
 
@@ -2672,4 +2675,72 @@ model HelpSearchSuggestion {
   @@index([frequency])
   @@index([lastUsed])
   @@map("help_search_suggestions")
+}
+
+// ========================================
+// DOCUMENTATION SYSTEM
+// ========================================
+
+model DocumentationSection {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  icon        String?  // Lucide icon name
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  // Relations
+  pages       DocumentationPage[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([slug])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@map("documentation_sections")
+}
+
+model DocumentationPage {
+  id              String              @id @default(cuid())
+  title           String
+  slug            String              @unique
+  content         String              @db.Text // Rich text content with markdown/HTML
+  excerpt         String?
+  sectionId       String
+  tags            String[]
+  status          String              @default("published") // draft, published, archived
+  views           Int                 @default(0)
+  helpfulVotes    Int                 @default(0)
+  notHelpfulVotes Int                 @default(0)
+  authorId        String?
+  featuredImage   String?
+  sortOrder       Int                 @default(0)
+  isPublic        Boolean             @default(true) // Public or workspace-specific
+
+  // SEO fields
+  seoTitle        String?
+  seoDescription  String?
+  keywords        String[]
+
+  // Content metadata
+  estimatedReadTime Int?              // in minutes
+  lastReviewed    DateTime?
+  publishedAt     DateTime?
+
+  // Relations
+  section         DocumentationSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  author          User?                @relation(fields: [authorId], references: [id], onDelete: SetNull, name: "DocumentationAuthor")
+
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([sectionId])
+  @@index([slug])
+  @@index([status])
+  @@index([isPublic])
+  @@index([publishedAt])
+  @@index([sortOrder])
+  @@map("documentation_pages")
 }

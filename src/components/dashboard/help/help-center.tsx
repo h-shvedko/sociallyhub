@@ -343,7 +343,10 @@ export function HelpCenter() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card
+          className="hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => window.location.href = '/dashboard/documentation'}
+        >
           <CardContent className="pt-6">
             <div className="text-center space-y-3">
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
