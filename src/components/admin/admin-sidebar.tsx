@@ -16,7 +16,13 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  ArrowLeft
+  ArrowLeft,
+  UserCheck,
+  Building,
+  Activity,
+  Eye,
+  UserPlus,
+  KeyRound
 } from 'lucide-react'
 
 interface AdminSidebarProps {
@@ -80,13 +86,18 @@ const navigation: NavItem[] = [
     ]
   },
   {
-    name: 'Users',
+    name: 'User Management',
     href: '/dashboard/admin/users',
     icon: Users,
     children: [
-      { name: 'Accounts', href: '/dashboard/admin/users/accounts', icon: Users },
-      { name: 'Roles', href: '/dashboard/admin/users/roles', icon: Shield },
-      { name: 'Teams', href: '/dashboard/admin/users/teams', icon: Users }
+      { name: 'User Administration', href: '/dashboard/admin/users/administration', icon: Users },
+      { name: 'Role Management', href: '/dashboard/admin/users/roles', icon: Shield },
+      { name: 'Permission Matrix', href: '/dashboard/admin/users/permissions', icon: KeyRound },
+      { name: 'Team Management', href: '/dashboard/admin/users/teams', icon: Building },
+      { name: 'Support Agents', href: '/dashboard/admin/users/support-agents', icon: UserCheck },
+      { name: 'User Analytics', href: '/dashboard/admin/users/analytics', icon: BarChart3 },
+      { name: 'Access Logs', href: '/dashboard/admin/users/access-logs', icon: Eye },
+      { name: 'Bulk Operations', href: '/dashboard/admin/users/bulk-operations', icon: UserPlus }
     ]
   },
   {
@@ -96,6 +107,7 @@ const navigation: NavItem[] = [
     children: [
       { name: 'General', href: '/dashboard/admin/settings/general', icon: Settings },
       { name: 'Integrations', href: '/dashboard/admin/settings/integrations', icon: Settings },
+      { name: 'Single Sign-On', href: '/dashboard/admin/settings/sso', icon: KeyRound },
       { name: 'Security', href: '/dashboard/admin/settings/security', icon: Shield },
       { name: 'Advanced', href: '/dashboard/admin/settings/advanced', icon: Settings }
     ]
