@@ -123,6 +123,20 @@ model Workspace {
   userActivities        UserActivity[]
   auditLogs            AuditLog[]
 
+  // Settings & Configuration Management Relations
+  systemConfigurations      SystemConfiguration[] @relation("WorkspaceSystemConfigurations")
+  emailTemplates           EmailTemplate[] @relation("WorkspaceEmailTemplates")
+  integrationSettings      IntegrationSetting[] @relation("WorkspaceIntegrationSettings")
+  brandingConfiguration    BrandingConfiguration? @relation("WorkspaceBrandingConfiguration")
+  notificationConfigurations NotificationConfiguration[] @relation("WorkspaceNotificationConfigurations")
+  securityConfigurations   SecurityConfiguration[] @relation("WorkspaceSecurityConfigurations")
+  performanceConfigurations PerformanceConfiguration[] @relation("WorkspacePerformanceConfigurations")
+  backupConfigurations     BackupConfiguration[] @relation("WorkspaceBackupConfigurations")
+  backupRecords           BackupRecord[] @relation("WorkspaceBackupRecords")
+  systemHealthMetrics     SystemHealthMetric[] @relation("WorkspaceSystemHealthMetrics")
+  featureFlags            FeatureFlag[] @relation("WorkspaceFeatureFlags")
+  featureFlagEvaluations  FeatureFlagEvaluation[] @relation("WorkspaceFeatureFlagEvaluations")
+
   @@map("workspaces")
 }
 
@@ -226,6 +240,23 @@ model User {
   auditLogs           AuditLog[]
   sentUserInvitations  UserInvitation[] @relation("SentInvitations")
   ssoAccounts         SSOAccount[]
+
+  // Settings & Configuration Management Relations
+  systemConfigUpdates       SystemConfiguration[] @relation("SystemConfigurationUpdates")
+  emailTemplatesCreated     EmailTemplate[] @relation("EmailTemplateCreator")
+  emailTemplatesUpdated     EmailTemplate[] @relation("EmailTemplateUpdater")
+  integrationSettingsCreated IntegrationSetting[] @relation("IntegrationSettingCreator")
+  integrationSettingsUpdated IntegrationSetting[] @relation("IntegrationSettingUpdater")
+  brandingConfigUpdates     BrandingConfiguration[] @relation("BrandingConfigurationUpdater")
+  notificationConfigUpdates NotificationConfiguration[] @relation("NotificationConfigurationUpdater")
+  securityConfigUpdates     SecurityConfiguration[] @relation("SecurityConfigurationUpdater")
+  performanceConfigUpdates  PerformanceConfiguration[] @relation("PerformanceConfigurationUpdater")
+  backupConfigsCreated      BackupConfiguration[] @relation("BackupConfigurationCreator")
+  backupConfigsUpdated      BackupConfiguration[] @relation("BackupConfigurationUpdater")
+  backupRecordsRestored     BackupRecord[] @relation("BackupRecordRestoredBy")
+  featureFlagsCreated       FeatureFlag[] @relation("FeatureFlagCreator")
+  featureFlagsUpdated       FeatureFlag[] @relation("FeatureFlagUpdater")
+  featureFlagEvaluations    FeatureFlagEvaluation[] @relation("UserFeatureFlagEvaluations")
 
   @@map("users")
 }
@@ -5189,4 +5220,650 @@ enum SSOType {
   SAML
   LDAP
   OIDC
+}
+
+// ========================================
+// SETTINGS & CONFIGURATION MANAGEMENT MODELS
+// ========================================
+
+model SystemConfiguration {
+  id              String   @id @default(cuid())
+  workspaceId     String?  // Null for global settings
+  category        SystemConfigCategory
+  key             String
+  value           String   @db.Text
+  dataType        ConfigDataType
+  description     String?
+  isRequired      Boolean  @default(false)
+  isSecret        Boolean  @default(false)
+  validationRules Json?    // JSON validation rules
+  defaultValue    String?
+  lastUpdatedBy   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace     Workspace? @relation("WorkspaceSystemConfigurations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedByUser User       @relation("SystemConfigurationUpdates", fields: [lastUpdatedBy], references: [id])
+
+  @@unique([workspaceId, category, key])
+  @@map("system_configurations")
+}
+
+model EmailTemplate {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  name            String
+  slug            String   // unique identifier for code reference
+  category        EmailTemplateCategory
+  subject         String
+  htmlContent     String   @db.Text
+  textContent     String?  @db.Text
+  variables       Json?    // Available template variables
+  isActive        Boolean  @default(true)
+  isSystem        Boolean  @default(false) // System templates cannot be deleted
+  previewData     Json?    // Sample data for preview
+  lastUsed        DateTime?
+  useCount        Int      @default(0)
+  createdBy       String
+  lastUpdatedBy   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace @relation("WorkspaceEmailTemplates", fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdByUser   User      @relation("EmailTemplateCreator", fields: [createdBy], references: [id])
+  updatedByUser   User      @relation("EmailTemplateUpdater", fields: [lastUpdatedBy], references: [id])
+
+  @@unique([workspaceId, slug])
+  @@map("email_templates")
+}
+
+model IntegrationSetting {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  provider        IntegrationProvider
+  name            String
+  config          Json     // Provider-specific configuration
+  credentials     Json?    // Encrypted credentials
+  isActive        Boolean  @default(true)
+  isConfigured    Boolean  @default(false)
+  lastSync        DateTime?
+  syncInterval    Int?     // Minutes between syncs
+  errorCount      Int      @default(0)
+  lastError       String?
+  features        Json?    // Enabled features for this integration
+  webhookUrl      String?
+  webhookSecret   String?
+  createdBy       String
+  lastUpdatedBy   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace @relation("WorkspaceIntegrationSettings", fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdByUser   User      @relation("IntegrationSettingCreator", fields: [createdBy], references: [id])
+  updatedByUser   User      @relation("IntegrationSettingUpdater", fields: [lastUpdatedBy], references: [id])
+
+  @@unique([workspaceId, provider, name])
+  @@map("integration_settings")
+}
+
+model BrandingConfiguration {
+  id                String   @id @default(cuid())
+  workspaceId       String   @unique
+  companyName       String?
+  logoUrl           String?
+  logoUrlDark       String?
+  faviconUrl        String?
+  primaryColor      String?  // Hex color
+  secondaryColor    String?  // Hex color
+  accentColor       String?  // Hex color
+  colorPalette      Json?    // Extended color palette
+  fontFamily        String?
+  fontScale         Float?   @default(1.0)
+  customCSS         String?  @db.Text
+  isWhiteLabel      Boolean  @default(false)
+  customDomain      String?
+  hideCredits       Boolean  @default(false)
+  footerText        String?
+  copyrightText     String?
+  socialLinks       Json?    // Social media links
+  contactInfo       Json?    // Contact information
+  features          Json?    // Enabled/disabled features
+  customFields      Json?    // Custom branding fields
+  lastUpdatedBy     String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace @relation("WorkspaceBrandingConfiguration", fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedByUser   User      @relation("BrandingConfigurationUpdater", fields: [lastUpdatedBy], references: [id])
+
+  @@map("branding_configurations")
+}
+
+model NotificationConfiguration {
+  id                    String   @id @default(cuid())
+  workspaceId           String?  // Null for global settings
+  category              NotificationCategory
+  eventType             String   // Specific event that triggers notification
+  isEnabled             Boolean  @default(true)
+  channels              NotificationChannel[] // Email, push, in-app, SMS
+  defaultRecipients     Json?    // Default recipient roles/users
+  template              String?  // Reference to email template
+  frequency             NotificationFrequency @default(INSTANT)
+  quietHours            Json?    // Time ranges for quiet hours
+  conditions            Json?    // Conditional logic for notifications
+  customMessage         String?
+  priority              NotificationPriority @default(NORMAL)
+  retryAttempts         Int      @default(3)
+  batchSize             Int?     // For batch notifications
+  lastTriggered         DateTime?
+  triggerCount          Int      @default(0)
+  lastUpdatedBy         String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace? @relation("WorkspaceNotificationConfigurations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedByUser   User       @relation("NotificationConfigurationUpdater", fields: [lastUpdatedBy], references: [id])
+
+  @@unique([workspaceId, category, eventType])
+  @@map("notification_configurations")
+}
+
+model SecurityConfiguration {
+  id                      String   @id @default(cuid())
+  workspaceId             String?  // Null for global settings
+  category                SecurityCategory
+  setting                 String
+  value                   String   @db.Text
+  isEnabled               Boolean  @default(true)
+  severity                SecuritySeverity @default(MEDIUM)
+  description             String?
+  recommendedValue        String?
+  complianceStandards     Json?    // GDPR, SOC2, etc.
+  lastAudit               DateTime?
+  auditResult             String?  // PASS, FAIL, WARNING
+  autoRemediation         Boolean  @default(false)
+  remediationScript       String?
+  alertThreshold          Int?
+  violationCount          Int      @default(0)
+  lastViolation           DateTime?
+  lastUpdatedBy           String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace? @relation("WorkspaceSecurityConfigurations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedByUser   User       @relation("SecurityConfigurationUpdater", fields: [lastUpdatedBy], references: [id])
+
+  @@unique([workspaceId, category, setting])
+  @@map("security_configurations")
+}
+
+model PerformanceConfiguration {
+  id                String   @id @default(cuid())
+  workspaceId       String?  // Null for global settings
+  category          PerformanceCategory
+  setting           String
+  value             String
+  dataType          ConfigDataType
+  unit              String?  // MB, seconds, requests/min, etc.
+  threshold         Float?   // Warning threshold
+  criticalThreshold Float?   // Critical threshold
+  isAutoTuning      Boolean  @default(false)
+  autoTuningRules   Json?    // Rules for auto-adjustment
+  impactScore       Float?   // Performance impact score (1-10)
+  lastOptimized     DateTime?
+  benchmarkValue    Float?
+  currentMetric     Float?
+  lastMeasured      DateTime?
+  recommendations   Json?    // Performance recommendations
+  dependencies      Json?    // Dependent settings
+  lastUpdatedBy     String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace? @relation("WorkspacePerformanceConfigurations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedByUser   User       @relation("PerformanceConfigurationUpdater", fields: [lastUpdatedBy], references: [id])
+
+  @@unique([workspaceId, category, setting])
+  @@map("performance_configurations")
+}
+
+model BackupConfiguration {
+  id                String   @id @default(cuid())
+  workspaceId       String?  // Null for global backups
+  name              String
+  backupType        BackupType
+  schedule          String   // Cron expression
+  isActive          Boolean  @default(true)
+  retention         Int      // Days to keep backups
+  compression       Boolean  @default(true)
+  encryption        Boolean  @default(true)
+  includeMedia      Boolean  @default(true)
+  excludePatterns   Json?    // Patterns to exclude
+  storageLocation   BackupStorageLocation
+  storageConfig     Json     // Storage-specific configuration
+  notifications     Json?    // Notification settings for backup events
+  priority          BackupPriority @default(NORMAL)
+  maxSize           BigInt?  // Maximum backup size in bytes
+  parallelJobs      Int      @default(1)
+  lastRun           DateTime?
+  nextRun           DateTime?
+  lastSuccess       DateTime?
+  lastFailure       DateTime?
+  successCount      Int      @default(0)
+  failureCount      Int      @default(0)
+  lastError         String?
+  avgDuration       Int?     // Average duration in seconds
+  createdBy         String
+  lastUpdatedBy     String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  workspace       Workspace?    @relation("WorkspaceBackupConfigurations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdByUser   User          @relation("BackupConfigurationCreator", fields: [createdBy], references: [id])
+  updatedByUser   User          @relation("BackupConfigurationUpdater", fields: [lastUpdatedBy], references: [id])
+  backupRecords   BackupRecord[] @relation("BackupConfigurationRecords")
+
+  @@unique([workspaceId, name])
+  @@map("backup_configurations")
+}
+
+model BackupRecord {
+  id                  String   @id @default(cuid())
+  configurationId     String
+  workspaceId         String?
+  filename            String
+  filePath            String
+  fileSize            BigInt
+  checksum            String
+  backupType          BackupType
+  status              BackupStatus
+  startTime           DateTime
+  endTime             DateTime?
+  duration            Int?     // Duration in seconds
+  recordCount         Int?     // Number of records backed up
+  compressionRatio    Float?
+  errorMessage        String?
+  logs                String?  @db.Text
+  metadata            Json?    // Additional backup metadata
+  isCorrupted         Boolean  @default(false)
+  lastVerified        DateTime?
+  downloadCount       Int      @default(0)
+  lastDownload        DateTime?
+  expiresAt           DateTime?
+  isRestored          Boolean  @default(false)
+  restoredAt          DateTime?
+  restoredBy          String?
+  createdAt           DateTime @default(now())
+
+  // Relations
+  configuration   BackupConfiguration @relation("BackupConfigurationRecords", fields: [configurationId], references: [id], onDelete: Cascade)
+  workspace       Workspace?          @relation("WorkspaceBackupRecords", fields: [workspaceId], references: [id], onDelete: Cascade)
+  restoredByUser  User?               @relation("BackupRecordRestoredBy", fields: [restoredBy], references: [id])
+
+  @@map("backup_records")
+}
+
+model SystemHealthMetric {
+  id              String   @id @default(cuid())
+  workspaceId     String?  // Null for global metrics
+  category        HealthMetricCategory
+  metric          String
+  value           Float
+  unit            String?  // MB, %, requests/sec, etc.
+  status          HealthStatus
+  threshold       Float?   // Warning threshold
+  criticalThreshold Float? // Critical threshold
+  trend           HealthTrendDirection?
+  previousValue   Float?
+  changePercent   Float?
+  isAnomaly       Boolean  @default(false)
+  anomalyScore    Float?
+  tags            Json?    // Additional tags for filtering
+  metadata        Json?    // Additional metric metadata
+  source          String?  // Source system/component
+  collectedAt     DateTime
+  createdAt       DateTime @default(now())
+
+  // Relations
+  workspace Workspace? @relation("WorkspaceSystemHealthMetrics", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, category, metric, collectedAt])
+  @@map("system_health_metrics")
+}
+
+model FeatureFlag {
+  id              String   @id @default(cuid())
+  workspaceId     String?  // Null for global flags
+  name            String
+  key             String   // Unique identifier for code reference
+  description     String?
+  category        FeatureFlagCategory
+  isActive        Boolean  @default(false)
+  rolloutPercent  Float    @default(0.0) // 0-100
+  userTargeting   Json?    // User targeting rules
+  groupTargeting  Json?    // Group/role targeting rules
+  geoTargeting    Json?    // Geographic targeting
+  timeTargeting   Json?    // Time-based targeting
+  conditions      Json?    // Complex conditions
+  variants        Json?    // Feature variants (A/B testing)
+  defaultVariant  String?  // Default variant for non-targeted users
+  prerequisites   Json?    // Required flags for this flag to be active
+  tags            String[] // Tags for organization
+  environment     FeatureFlagEnvironment @default(PRODUCTION)
+  lastEvaluated   DateTime?
+  evaluationCount Int      @default(0)
+  createdBy       String
+  lastUpdatedBy   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  expiresAt       DateTime?
+
+  // Relations
+  workspace       Workspace?              @relation("WorkspaceFeatureFlags", fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdByUser   User                    @relation("FeatureFlagCreator", fields: [createdBy], references: [id])
+  updatedByUser   User                    @relation("FeatureFlagUpdater", fields: [lastUpdatedBy], references: [id])
+  evaluations     FeatureFlagEvaluation[] @relation("FeatureFlagEvaluations")
+
+  @@unique([workspaceId, key])
+  @@map("feature_flags")
+}
+
+model FeatureFlagEvaluation {
+  id            String   @id @default(cuid())
+  flagId        String
+  userId        String?
+  workspaceId   String?
+  sessionId     String?
+  ipAddress     String?
+  userAgent     String?
+  evaluatedAt   DateTime @default(now())
+  result        Boolean
+  variant       String?
+  reason        FeatureFlagEvaluationReason
+  metadata      Json?    // Additional evaluation context
+  geoLocation   String?
+  userRole      String?
+  userSegment   String?
+  deviceType    String?
+  referrer      String?
+
+  // Relations
+  flag      FeatureFlag @relation("FeatureFlagEvaluations", fields: [flagId], references: [id], onDelete: Cascade)
+  user      User?       @relation("UserFeatureFlagEvaluations", fields: [userId], references: [id])
+  workspace Workspace?  @relation("WorkspaceFeatureFlagEvaluations", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([flagId, evaluatedAt])
+  @@index([userId, evaluatedAt])
+  @@map("feature_flag_evaluations")
+}
+
+// ========================================
+// SETTINGS & CONFIGURATION MANAGEMENT ENUMS
+// ========================================
+
+enum SystemConfigCategory {
+  GENERAL
+  SECURITY
+  PERFORMANCE
+  INTEGRATIONS
+  NOTIFICATIONS
+  STORAGE
+  DATABASE
+  CACHE
+  EMAIL
+  API
+  FEATURES
+  COMPLIANCE
+  MONITORING
+  BACKUP
+}
+
+enum ConfigDataType {
+  STRING
+  INTEGER
+  FLOAT
+  BOOLEAN
+  JSON
+  URL
+  EMAIL
+  PASSWORD
+  TEXT
+  ENUM
+}
+
+enum EmailTemplateCategory {
+  AUTHENTICATION
+  NOTIFICATIONS
+  MARKETING
+  TRANSACTIONAL
+  SYSTEM
+  ALERTS
+  REPORTS
+  INVITATIONS
+  WELCOME
+  ONBOARDING
+  BILLING
+  SUPPORT
+}
+
+enum IntegrationProvider {
+  DISCORD
+  SLACK
+  ZAPIER
+  GOOGLE_ANALYTICS
+  FACEBOOK_PIXEL
+  STRIPE
+  PAYPAL
+  MAILCHIMP
+  SENDGRID
+  TWILIO
+  AWS
+  AZURE
+  GCP
+  GITHUB
+  GITLAB
+  JIRA
+  ASANA
+  TRELLO
+  NOTION
+  AIRTABLE
+  HUBSPOT
+  SALESFORCE
+  ZOOM
+  TEAMS
+  CALENDLY
+  TYPEFORM
+  INTERCOM
+  ZENDESK
+  FRESHDESK
+  CUSTOM
+}
+
+enum NotificationCategory {
+  SECURITY
+  SYSTEM
+  USER_ACTIVITY
+  CONTENT
+  CAMPAIGNS
+  BILLING
+  INTEGRATIONS
+  PERFORMANCE
+  ALERTS
+  REPORTS
+  COMPLIANCE
+  BACKUP
+  MAINTENANCE
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  IN_APP
+  SMS
+  WEBHOOK
+  SLACK
+  DISCORD
+  TEAMS
+}
+
+enum NotificationFrequency {
+  INSTANT
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+  EMERGENCY
+}
+
+enum SecurityCategory {
+  AUTHENTICATION
+  AUTHORIZATION
+  ENCRYPTION
+  NETWORK
+  COMPLIANCE
+  AUDIT
+  PASSWORD_POLICY
+  SESSION_MANAGEMENT
+  API_SECURITY
+  DATA_PROTECTION
+  INCIDENT_RESPONSE
+  VULNERABILITY
+}
+
+enum SecuritySeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PerformanceCategory {
+  DATABASE
+  CACHE
+  STORAGE
+  NETWORK
+  CPU
+  MEMORY
+  DISK
+  API
+  FRONTEND
+  QUEUE
+  SEARCH
+  CDN
+}
+
+enum BackupType {
+  FULL
+  INCREMENTAL
+  DIFFERENTIAL
+  DATABASE_ONLY
+  MEDIA_ONLY
+  CONFIGURATION_ONLY
+}
+
+enum BackupStorageLocation {
+  LOCAL
+  AWS_S3
+  AZURE_BLOB
+  GCP_STORAGE
+  DROPBOX
+  GOOGLE_DRIVE
+  FTP
+  SFTP
+  CUSTOM
+}
+
+enum BackupPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum BackupStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+  CORRUPTED
+  EXPIRED
+  RESTORED
+}
+
+enum HealthMetricCategory {
+  SYSTEM
+  APPLICATION
+  DATABASE
+  SECURITY
+  PERFORMANCE
+  AVAILABILITY
+  ERRORS
+  CAPACITY
+  NETWORK
+  INTEGRATION
+  USER_EXPERIENCE
+}
+
+enum HealthStatus {
+  HEALTHY
+  WARNING
+  CRITICAL
+  UNKNOWN
+  DEGRADED
+  MAINTENANCE
+}
+
+enum HealthTrendDirection {
+  IMPROVING
+  STABLE
+  DEGRADING
+  VOLATILE
+}
+
+enum FeatureFlagCategory {
+  FEATURE
+  EXPERIMENT
+  ROLLOUT
+  KILL_SWITCH
+  PERMISSION
+  CONFIGURATION
+  UI_VARIATION
+  INTEGRATION
+  PERFORMANCE
+  SECURITY
+}
+
+enum FeatureFlagEnvironment {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+  TEST
+}
+
+enum FeatureFlagEvaluationReason {
+  TARGET_MATCH
+  RULE_MATCH
+  PERCENT_ROLLOUT
+  DEFAULT
+  OFF
+  PREREQUISITE_FAILED
+  ERROR
 }
