@@ -29,8 +29,10 @@ import {
   Tag,
   Calendar,
   Globe,
-  Search
+  Search,
+  Plus
 } from 'lucide-react'
+import RelatedArticlesSelector from './RelatedArticlesSelector'
 
 interface ArticleData {
   id?: string
@@ -78,6 +80,7 @@ export default function ArticleEditor({
   const [editorMode, setEditorMode] = useState<EditorMode>('rich')
   const [showSeoSettings, setShowSeoSettings] = useState(false)
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false)
+  const [showRelatedArticlesDialog, setShowRelatedArticlesDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -659,9 +662,25 @@ export default function ArticleEditor({
                     <label className="block text-xs font-medium text-gray-700 mb-1">
                       Related Articles
                     </label>
-                    <p className="text-xs text-gray-500">
-                      Coming soon: Select related articles
-                    </p>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowRelatedArticlesDialog(true)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left hover:bg-gray-50 transition-colors flex items-center justify-between"
+                      >
+                        <span className="text-gray-600">
+                          {formData.relatedArticles.length > 0
+                            ? `${formData.relatedArticles.length} articles selected`
+                            : 'Select related articles'}
+                        </span>
+                        <Plus className="h-4 w-4 text-gray-400" />
+                      </button>
+                      {formData.relatedArticles.length > 0 && (
+                        <p className="text-xs text-gray-500">
+                          Selected articles will be displayed as suggestions to readers
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -686,6 +705,15 @@ export default function ArticleEditor({
           </div>
         </div>
       </div>
+
+      {/* Related Articles Selector Dialog */}
+      <RelatedArticlesSelector
+        currentArticleId={formData.id}
+        selectedArticles={formData.relatedArticles}
+        onSelect={(articles) => updateFormData('relatedArticles', articles)}
+        isOpen={showRelatedArticlesDialog}
+        onClose={() => setShowRelatedArticlesDialog(false)}
+      />
     </div>
   )
 }
