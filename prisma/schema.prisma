@@ -117,6 +117,12 @@ model Workspace {
   moderationQueue       ModerationQueue[] @relation("WorkspaceModerationQueue")
   communityAnalytics    CommunityAnalytics[] @relation("WorkspaceCommunityAnalytics")
 
+  // User Role & Permission Management Relations
+  teams                 Team[]
+  userInvitations       UserInvitation[]
+  userActivities        UserActivity[]
+  auditLogs            AuditLog[]
+
   @@map("workspaces")
 }
 
@@ -175,7 +181,16 @@ model User {
   workflowsReviewed    HelpArticleWorkflow[] @relation("WorkflowReviewedBy")
 
   // Documentation Relations
-  documentationPages   DocumentationPage[] @relation("DocumentationAuthor")
+  documentationPages       DocumentationPage[] @relation("DocumentationAuthor")
+  documentationVersions    DocumentationVersion[] @relation("DocumentationVersionAuthor")
+  documentationCodeExamples DocumentationCodeExample[] @relation("DocumentationCodeExampleAuthor")
+  documentationComments    DocumentationComment[] @relation("DocumentationCommentAuthor")
+  documentationCollaborations DocumentationCollaborator[] @relation("DocumentationCollaboratorUser")
+  documentationRevisions   DocumentationRevision[] @relation("DocumentationRevisionAuthor")
+  documentationWorkflowsRequested DocumentationWorkflow[] @relation("DocumentationWorkflowRequestedBy")
+  documentationWorkflowsAssigned  DocumentationWorkflow[] @relation("DocumentationWorkflowAssignedTo")
+  documentationWorkflowsReviewed  DocumentationWorkflow[] @relation("DocumentationWorkflowReviewedBy")
+  documentationExports     DocumentationExport[] @relation("DocumentationExportCreatedBy")
 
   // Support Chat Relations
   supportAgent         SupportAgent? @relation("SupportAgentUser")
@@ -201,6 +216,16 @@ model User {
   moderationHistory    UserModerationHistory[] @relation("UserModerationHistory")
   submittedReports     ContentReport[] @relation("ReportSubmitter")
   reportedContent      ContentReport[] @relation("ReportedUser")
+
+  // User Role & Permission Management Relations
+  userRoles            UserRole[]
+  assignedRoles        UserRole[] @relation("UserRoleAssignments")
+  teamMemberships      TeamMember[]
+  userSessions         UserSession[]
+  userActivities       UserActivity[]
+  auditLogs           AuditLog[]
+  sentUserInvitations  UserInvitation[] @relation("SentInvitations")
+  ssoAccounts         SSOAccount[]
 
   @@map("users")
 }
@@ -2962,6 +2987,17 @@ model DocumentationPage {
   section         DocumentationSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   author          User?                @relation(fields: [authorId], references: [id], onDelete: SetNull, name: "DocumentationAuthor")
 
+  // Extended relations for documentation management
+  versions        DocumentationVersion[]
+  codeExamples    DocumentationCodeExample[]
+  analytics       DocumentationAnalytics[]
+  comments        DocumentationComment[]
+  crossReferences DocumentationCrossReference[] @relation("PageCrossReferences")
+  referencedBy    DocumentationCrossReference[] @relation("ReferencedPageCrossReferences")
+  collaborators   DocumentationCollaborator[]
+  revisions       DocumentationRevision[]
+  workflows       DocumentationWorkflow[]
+
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
@@ -2972,6 +3008,477 @@ model DocumentationPage {
   @@index([publishedAt])
   @@index([sortOrder])
   @@map("documentation_pages")
+}
+
+// ========================================
+// DOCUMENTATION MANAGEMENT SYSTEM
+// ========================================
+
+model DocumentationVersion {
+  id              String   @id @default(cuid())
+  pageId          String
+  versionNumber   String   // e.g., "1.0", "2.1", "3.0-beta"
+  title           String
+  content         String   @db.Text
+  changelog       String?  @db.Text
+  status          DocumentationVersionStatus @default(DRAFT)
+  isActive        Boolean  @default(false) // Only one active version per page
+  authorId        String?
+  publishedAt     DateTime?
+  deprecatedAt    DateTime?
+
+  // Version metadata
+  tags            String[]
+  apiVersion      String?  // Associated API version
+  releaseNotes    String?  @db.Text
+  breakingChanges String?  @db.Text
+
+  // Relations
+  page            DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  author          User?             @relation("DocumentationVersionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([pageId])
+  @@index([versionNumber])
+  @@index([status])
+  @@index([isActive])
+  @@index([apiVersion])
+  @@map("documentation_versions")
+}
+
+model DocumentationCodeExample {
+  id              String   @id @default(cuid())
+  pageId          String
+  title           String
+  description     String?
+  language        String   // programming language
+  code            String   @db.Text
+  output          String?  @db.Text // expected output
+
+  // Code example metadata
+  isRunnable      Boolean  @default(false)
+  testStatus      DocumentationCodeTestStatus @default(UNTESTED)
+  lastTested      DateTime?
+  testResults     Json?    // test execution results
+  dependencies    String[] // required packages/dependencies
+  framework       String?  // framework/library used
+
+  // Organization
+  category        String?  // e.g., "Getting Started", "Advanced"
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+
+  // Metadata
+  authorId        String?
+  difficulty      DocumentationDifficulty @default(BEGINNER)
+  estimatedTime   Int?     // minutes to complete
+  tags            String[]
+
+  // Relations
+  page            DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  author          User?             @relation("DocumentationCodeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([pageId])
+  @@index([language])
+  @@index([category])
+  @@index([testStatus])
+  @@index([difficulty])
+  @@map("documentation_code_examples")
+}
+
+model DocumentationAnalytics {
+  id              String   @id @default(cuid())
+  pageId          String
+
+  // View metrics
+  date            DateTime
+  views           Int      @default(0)
+  uniqueViews     Int      @default(0)
+  avgTimeOnPage   Float?   // seconds
+  bounceRate      Float?   // percentage
+
+  // Engagement metrics
+  helpfulVotes    Int      @default(0)
+  notHelpfulVotes Int      @default(0)
+  comments        Int      @default(0)
+  bookmarks       Int      @default(0)
+  shares          Int      @default(0)
+
+  // Search metrics
+  searchImpressions Int    @default(0)
+  searchClicks    Int      @default(0)
+  searchKeywords  String[] // keywords that led to this page
+
+  // Geographic data
+  country         String?
+  region          String?
+
+  // Technical metrics
+  loadTime        Float?   // page load time in seconds
+  errorRate       Float?   // percentage of errors
+
+  // User segments
+  userType        DocumentationUserType @default(VISITOR)
+  referralSource  String?  // where user came from
+  device          String?  // mobile, desktop, tablet
+
+  // Relations
+  page            DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([pageId, date])
+  @@index([pageId])
+  @@index([date])
+  @@index([userType])
+  @@map("documentation_analytics")
+}
+
+model DocumentationComment {
+  id              String   @id @default(cuid())
+  pageId          String
+  authorId        String?
+  content         String   @db.Text
+  status          DocumentationCommentStatus @default(PUBLISHED)
+
+  // Threading
+  parentId        String?
+  depth           Int      @default(0)
+
+  // Moderation
+  isModerated     Boolean  @default(false)
+  moderatedBy     String?
+  moderatedAt     DateTime?
+  moderationReason String?
+
+  // Engagement
+  upvotes         Int      @default(0)
+  downvotes       Int      @default(0)
+  isHelpful       Boolean  @default(false) // marked by author/moderator
+
+  // Metadata
+  ipAddress       String?
+  userAgent       String?
+  isResolved      Boolean  @default(false) // for questions/issues
+  resolvedBy      String?
+  resolvedAt      DateTime?
+
+  // Relations
+  page            DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  author          User?             @relation("DocumentationCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  parent          DocumentationComment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies         DocumentationComment[] @relation("CommentReplies")
+  moderator       User?             @relation("DocumentationCommentModerator", fields: [moderatedBy], references: [id], onDelete: SetNull)
+  resolver        User?             @relation("DocumentationCommentResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([pageId])
+  @@index([authorId])
+  @@index([status])
+  @@index([parentId])
+  @@index([isResolved])
+  @@map("documentation_comments")
+}
+
+model DocumentationCrossReference {
+  id              String   @id @default(cuid())
+  fromPageId      String
+  toPageId        String
+
+  // Reference metadata
+  referenceType   DocumentationReferenceType @default(RELATED)
+  anchorText      String?  // text of the link
+  context         String?  // surrounding context
+
+  // Position in content
+  position        Int?     // character position in content
+  lineNumber      Int?     // line number in content
+
+  // Status
+  isActive        Boolean  @default(true)
+  isBroken        Boolean  @default(false)
+  lastChecked     DateTime?
+
+  // Analytics
+  clickCount      Int      @default(0)
+  lastClicked     DateTime?
+
+  // Metadata
+  createdBy       String?
+  description     String?  // purpose of the reference
+
+  // Relations
+  fromPage        DocumentationPage @relation("PageCrossReferences", fields: [fromPageId], references: [id], onDelete: Cascade)
+  toPage          DocumentationPage @relation("ReferencedPageCrossReferences", fields: [toPageId], references: [id], onDelete: Cascade)
+  creator         User?             @relation("DocumentationReferenceCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([fromPageId, toPageId, referenceType])
+  @@index([fromPageId])
+  @@index([toPageId])
+  @@index([referenceType])
+  @@index([isActive])
+  @@index([isBroken])
+  @@map("documentation_cross_references")
+}
+
+model DocumentationTemplate {
+  id              String   @id @default(cuid())
+  workspaceId     String?  // null for global templates
+  name            String
+  description     String?
+  category        String   // e.g., "API", "Tutorial", "Reference"
+
+  // Template structure
+  structure       Json     // JSON schema for template structure
+  defaultContent  String   @db.Text // default markdown/HTML content
+  placeholders    String[] // list of placeholder variables
+
+  // Template metadata
+  tags            String[]
+  difficulty      DocumentationDifficulty @default(BEGINNER)
+  estimatedTime   Int?     // minutes to complete using template
+
+  // Usage
+  usageCount      Int      @default(0)
+  isActive        Boolean  @default(true)
+  isOfficial     Boolean  @default(false) // created by platform team
+
+  // Template settings
+  requiredFields  String[] // required fields that must be filled
+  optionalFields  String[] // optional fields
+  validationRules Json?    // validation rules for template fields
+
+  // Versioning
+  version         String   @default("1.0")
+  parentTemplate  String?  // ID of parent template (for versions)
+
+  // Relations
+  workspace       Workspace? @relation("WorkspaceDocumentationTemplates", fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy       String?
+  author          User?      @relation("DocumentationTemplateAuthor", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([category])
+  @@index([isActive])
+  @@index([isOfficial])
+  @@index([difficulty])
+  @@map("documentation_templates")
+}
+
+model DocumentationCollaborator {
+  id              String   @id @default(cuid())
+  pageId          String
+  userId          String
+  role            DocumentationRole @default(VIEWER)
+
+  // Permissions
+  canEdit         Boolean  @default(false)
+  canComment      Boolean  @default(true)
+  canApprove      Boolean  @default(false)
+  canPublish      Boolean  @default(false)
+  canDelete       Boolean  @default(false)
+
+  // Activity tracking
+  lastAccessed    DateTime?
+  contributionCount Int    @default(0)
+
+  // Invitation metadata
+  invitedBy       String?
+  invitedAt       DateTime?
+  acceptedAt      DateTime?
+  status          DocumentationCollaboratorStatus @default(PENDING)
+
+  // Relations
+  page            DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  user            User              @relation("DocumentationCollaborators", fields: [userId], references: [id], onDelete: Cascade)
+  inviter         User?             @relation("DocumentationInviter", fields: [invitedBy], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([pageId, userId])
+  @@index([pageId])
+  @@index([userId])
+  @@index([role])
+  @@index([status])
+  @@map("documentation_collaborators")
+}
+
+model DocumentationRevision {
+  id              String   @id @default(cuid())
+  pageId          String
+  authorId        String?
+
+  // Revision content
+  title           String
+  content         String   @db.Text
+  excerpt         String?
+  tags            String[]
+
+  // Revision metadata
+  revisionNumber  Int
+  changeType      DocumentationChangeType @default(EDIT)
+  changeSummary   String?  // brief description of changes
+  changeDetails   String?  @db.Text // detailed changelog
+
+  // Diff tracking
+  contentDiff     Json?    // structured diff of content changes
+  wordCount       Int?
+  charactersAdded Int      @default(0)
+  charactersRemoved Int    @default(0)
+
+  // Status
+  status          DocumentationRevisionStatus @default(SAVED)
+  isPublished     Boolean  @default(false)
+  publishedAt     DateTime?
+
+  // Review process
+  needsReview     Boolean  @default(false)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewStatus    DocumentationReviewStatus?
+  reviewComments  String?  @db.Text
+
+  // Relations
+  page            DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  author          User?             @relation("DocumentationRevisionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewer        User?             @relation("DocumentationRevisionReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([pageId])
+  @@index([authorId])
+  @@index([revisionNumber])
+  @@index([status])
+  @@index([isPublished])
+  @@index([needsReview])
+  @@map("documentation_revisions")
+}
+
+model DocumentationWorkflow {
+  id              String   @id @default(cuid())
+  pageId          String
+  workflowType    DocumentationWorkflowType
+  status          DocumentationWorkflowStatus @default(PENDING)
+
+  // Workflow participants
+  requestedBy     String?
+  assignedTo      String?
+  reviewers       String[] // array of user IDs
+
+  // Workflow details
+  title           String
+  description     String?  @db.Text
+  priority        DocumentationWorkflowPriority @default(MEDIUM)
+  dueDate         DateTime?
+
+  // Progress tracking
+  startedAt       DateTime?
+  completedAt     DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+
+  // Workflow data
+  workflowData    Json?    // additional workflow-specific data
+  comments        Json?    // workflow comments/notes
+  attachments     String[] // file attachments
+
+  // Automation
+  isAutomated     Boolean  @default(false)
+  automationRule  String?  // ID of automation rule
+
+  // Escalation
+  escalatedAt     DateTime?
+  escalatedTo     String?
+  escalationReason String?
+
+  // Relations
+  page            DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  requester       User?             @relation("DocumentationWorkflowRequester", fields: [requestedBy], references: [id], onDelete: SetNull)
+  assignee        User?             @relation("DocumentationWorkflowAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  escalatedUser   User?             @relation("DocumentationWorkflowEscalated", fields: [escalatedTo], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([pageId])
+  @@index([workflowType])
+  @@index([status])
+  @@index([assignedTo])
+  @@index([priority])
+  @@index([dueDate])
+  @@map("documentation_workflows")
+}
+
+model DocumentationExport {
+  id              String   @id @default(cuid())
+  workspaceId     String?
+  requestedBy     String
+
+  // Export configuration
+  exportType      DocumentationExportType
+  format          DocumentationExportFormat
+  scope           DocumentationExportScope @default(SINGLE_PAGE)
+
+  // Content selection
+  pageIds         String[] // specific pages to export
+  sectionIds      String[] // specific sections to export
+  includeAnalytics Boolean @default(false)
+  includeComments Boolean  @default(false)
+  includeHistory  Boolean  @default(false)
+
+  // Export settings
+  title           String?
+  description     String?
+  includeTableOfContents Boolean @default(true)
+  includeCoverPage Boolean @default(true)
+  customStyling   Json?    // custom CSS/styling options
+
+  // Status and results
+  status          DocumentationExportStatus @default(PENDING)
+  progress        Int      @default(0) // percentage complete
+  fileUrl         String?  // URL to generated file
+  fileName        String?
+  fileSize        Int?     // file size in bytes
+  downloadCount   Int      @default(0)
+
+  // Processing metadata
+  startedAt       DateTime?
+  completedAt     DateTime?
+  errorMessage    String?
+  processingTime  Int?     // seconds
+
+  // Expiration
+  expiresAt       DateTime? // when download link expires
+  isExpired       Boolean  @default(false)
+
+  // Relations
+  workspace       Workspace? @relation("WorkspaceDocumentationExports", fields: [workspaceId], references: [id], onDelete: Cascade)
+  requester       User       @relation("DocumentationExportRequester", fields: [requestedBy], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([requestedBy])
+  @@index([status])
+  @@index([exportType])
+  @@index([createdAt])
+  @@map("documentation_exports")
 }
 
 // ========================================
@@ -4365,4 +4872,321 @@ enum QueueStatus {
   ON_HOLD
   COMPLETED
   CANCELLED
+}
+
+// ========================================
+// DOCUMENTATION MANAGEMENT ENUMS
+// ========================================
+
+enum DocumentationStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum DocumentationVisibility {
+  PUBLIC
+  INTERNAL
+  PRIVATE
+}
+
+enum DocumentationCodeLanguage {
+  JAVASCRIPT
+  TYPESCRIPT
+  PYTHON
+  JAVA
+  CSHARP
+  CPP
+  PHP
+  RUBY
+  GO
+  RUST
+  KOTLIN
+  SWIFT
+  SHELL
+  SQL
+  HTML
+  CSS
+  JSON
+  YAML
+  MARKDOWN
+  OTHER
+}
+
+enum DocumentationCommentType {
+  GENERAL
+  SUGGESTION
+  CORRECTION
+  QUESTION
+  APPROVAL
+}
+
+enum DocumentationExportFormat {
+  PDF
+  HTML
+  MARKDOWN
+  CONFLUENCE
+  NOTION
+  DOCX
+}
+
+enum DocumentationWorkflowType {
+  CREATE
+  UPDATE
+  DELETE
+  PUBLISH
+  ARCHIVE
+  REVIEW
+}
+
+enum DocumentationWorkflowStatus {
+  PENDING
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+// ========================================
+// USER ROLE & PERMISSION MANAGEMENT MODELS
+// ========================================
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String
+  description String?
+  permissions String[] // Array of permission strings
+  isSystem    Boolean  @default(false) // Cannot be deleted if true
+  isActive    Boolean  @default(true)
+  color       String?  // For UI display
+  priority    Int      @default(0) // Higher priority overrides lower
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userWorkspaces UserWorkspace[]
+  userRoles      UserRole[]
+  auditLogs      AuditLog[]       @relation("RoleAuditLogs")
+
+  @@map("roles")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  assignedAt DateTime @default(now())
+  assignedBy String
+  expiresAt DateTime?
+  isActive  Boolean  @default(true)
+
+  // Relations
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedByUser User @relation("UserRoleAssignments", fields: [assignedBy], references: [id])
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  displayName String
+  description String?
+  category    String  // e.g., "users", "posts", "analytics"
+  resource    String  // e.g., "user", "post", "campaign"
+  action      String  // e.g., "create", "read", "update", "delete"
+  conditions  Json?   // Additional conditions for the permission
+
+  @@map("permissions")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  color       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members     TeamMember[]
+  auditLogs   AuditLog[]   @relation("TeamAuditLogs")
+
+  @@unique([workspaceId, name])
+  @@map("teams")
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  userId   String
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  // Relations
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model UserSession {
+  id            String    @id @default(cuid())
+  userId        String
+  sessionToken  String    @unique
+  ipAddress     String?
+  userAgent     String?
+  location      Json?     // Country, city, etc.
+  deviceInfo    Json?     // Device type, OS, browser
+  startedAt     DateTime  @default(now())
+  lastActiveAt  DateTime  @default(now())
+  endedAt       DateTime?
+  isActive      Boolean   @default(true)
+
+  // Relations
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activities UserActivity[]
+
+  @@map("user_sessions")
+}
+
+model UserActivity {
+  id          String    @id @default(cuid())
+  userId      String
+  sessionId   String?
+  workspaceId String?
+  action      String    // e.g., "login", "create_post", "view_analytics"
+  resource    String?   // e.g., "post", "campaign", "user"
+  resourceId  String?   // ID of the resource
+  metadata    Json?     // Additional context data
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime  @default(now())
+
+  // Relations
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session   UserSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  workspace Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, timestamp])
+  @@index([workspaceId, timestamp])
+  @@index([action, timestamp])
+  @@map("user_activities")
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  userId      String?
+  workspaceId String?
+  teamId      String?
+  roleId      String?
+  action      String    // e.g., "user_created", "role_assigned", "permission_changed"
+  resource    String    // e.g., "user", "role", "workspace"
+  resourceId  String?
+  oldValues   Json?     // Previous state
+  newValues   Json?     // New state
+  changes     Json?     // Specific changes made
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime  @default(now())
+
+  // Relations
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  team      Team?      @relation("TeamAuditLogs", fields: [teamId], references: [id], onDelete: SetNull)
+  role      Role?      @relation("RoleAuditLogs", fields: [roleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, timestamp])
+  @@index([workspaceId, timestamp])
+  @@index([action, timestamp])
+  @@map("audit_logs")
+}
+
+model UserInvitation {
+  id          String           @id @default(cuid())
+  email       String
+  workspaceId String?
+  teamId      String?
+  roleIds     String[]         // Array of role IDs to assign
+  invitedBy   String
+  message     String?
+  token       String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  // Relations
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  team        Team?      @relation("TeamInvitations", fields: [teamId], references: [id], onDelete: SetNull)
+  invitedByUser User     @relation("SentInvitations", fields: [invitedBy], references: [id])
+
+  @@map("user_invitations")
+}
+
+model SSOProvider {
+  id           String  @id @default(cuid())
+  name         String  @unique
+  displayName  String
+  type         SSOType
+  clientId     String
+  clientSecret String  // Encrypted
+  issuerUrl    String?
+  metadataUrl  String?
+  config       Json?   // Provider-specific configuration
+  isActive     Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  accounts SSOAccount[]
+
+  @@map("sso_providers")
+}
+
+model SSOAccount {
+  id           String  @id @default(cuid())
+  userId       String
+  providerId   String
+  providerUserId String
+  email        String?
+  name         String?
+  avatarUrl    String?
+  accessToken  String? // Encrypted
+  refreshToken String? // Encrypted
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider SSOProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, providerUserId])
+  @@map("sso_accounts")
+}
+
+// ========================================
+// USER ROLE & PERMISSION MANAGEMENT ENUMS
+// ========================================
+
+enum TeamRole {
+  LEADER
+  MEMBER
+  VIEWER
+}
+
+enum SSOType {
+  OAUTH2
+  SAML
+  LDAP
+  OIDC
 }
