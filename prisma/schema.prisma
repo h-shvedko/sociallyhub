@@ -108,6 +108,15 @@ model Workspace {
   discordIntegration    DiscordIntegration? @relation("DiscordWorkspace")
   communityActivities   CommunityActivity[] @relation("CommunityActivityWorkspace")
 
+  // Moderation Relations
+  moderationActions     ModerationAction[] @relation("WorkspaceModerationActions")
+  userModerationHistory UserModerationHistory[] @relation("WorkspaceUserModerationHistory")
+  contentReports        ContentReport[] @relation("WorkspaceContentReports")
+  autoModerationRules   AutoModerationRule[] @relation("WorkspaceAutoModerationRules")
+  spamDetections        SpamDetection[] @relation("WorkspaceSpamDetections")
+  moderationQueue       ModerationQueue[] @relation("WorkspaceModerationQueue")
+  communityAnalytics    CommunityAnalytics[] @relation("WorkspaceCommunityAnalytics")
+
   @@map("workspaces")
 }
 
@@ -185,6 +194,13 @@ model User {
 
   // Video Tutorial Relations
   videoProgress        VideoUserProgress[]
+
+  // Moderation Relations
+  moderatorActions     ModerationAction[] @relation("ModeratorActions")
+  reviewerActions      ModerationAction[] @relation("ReviewerActions")
+  moderationHistory    UserModerationHistory[] @relation("UserModerationHistory")
+  submittedReports     ContentReport[] @relation("ReportSubmitter")
+  reportedContent      ContentReport[] @relation("ReportedUser")
 
   @@map("users")
 }
@@ -3906,6 +3922,447 @@ enum ArticleWorkflowStatus {
   IN_REVIEW
   APPROVED
   REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+// ========================================
+// COMMUNITY MODERATION SYSTEM
+// ========================================
+
+model ModerationAction {
+  id              String              @id @default(cuid())
+  workspaceId     String
+  moderatorId     String?
+
+  // Action Details
+  actionType      ModerationActionType
+  targetType      ModerationTargetType
+  targetId        String
+  reason          String?
+  description     String?             @db.Text
+
+  // Action Data
+  previousData    Json?               // Original state before action
+  newData         Json?               // State after action
+
+  // Automatic vs Manual
+  isAutomatic     Boolean             @default(false)
+  ruleId          String?             // Reference to auto-moderation rule
+
+  // Status
+  status          ModerationStatus    @default(PENDING)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNotes     String?
+
+  // Metadata
+  ipAddress       String?
+  userAgent       String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceModerationActions", fields: [workspaceId], references: [id], onDelete: Cascade)
+  moderator       User?               @relation("ModeratorActions", fields: [moderatorId], references: [id], onDelete: SetNull)
+  reviewer        User?               @relation("ReviewerActions", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  rule            AutoModerationRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([targetType, targetId])
+  @@index([actionType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("moderation_actions")
+}
+
+model UserModerationHistory {
+  id              String              @id @default(cuid())
+  workspaceId     String
+  userId          String
+  moderatorId     String?
+
+  // Moderation Details
+  actionType      UserModerationAction
+  reason          String
+  description     String?             @db.Text
+
+  // Duration and Restrictions
+  startDate       DateTime            @default(now())
+  endDate         DateTime?
+  isActive        Boolean             @default(true)
+
+  // Appeals
+  canAppeal       Boolean             @default(true)
+  appealedAt      DateTime?
+  appealReason    String?             @db.Text
+  appealStatus    AppealStatus        @default(NONE)
+  appealResolvedBy String?
+  appealResolvedAt DateTime?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceUserModerations", fields: [workspaceId], references: [id], onDelete: Cascade)
+  user            User                @relation("UserModerations", fields: [userId], references: [id], onDelete: Cascade)
+  moderator       User?               @relation("ModeratorUserActions", fields: [moderatorId], references: [id], onDelete: SetNull)
+  appealResolver  User?               @relation("AppealResolvers", fields: [appealResolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([actionType])
+  @@index([isActive])
+  @@index([endDate])
+  @@map("user_moderation_history")
+}
+
+model ContentReport {
+  id              String              @id @default(cuid())
+  workspaceId     String
+  reporterId      String?
+
+  // Reported Content
+  contentType     ModerationTargetType
+  contentId       String
+  contentUrl      String?
+
+  // Report Details
+  reportReason    ReportReason
+  customReason    String?
+  description     String?             @db.Text
+  evidence        Json?               // Screenshots, links, etc.
+
+  // Guest Reporter Info
+  guestName       String?
+  guestEmail      String?
+  guestIp         String?
+
+  // Processing
+  status          ReportStatus        @default(PENDING)
+  priority        ReportPriority      @default(MEDIUM)
+  assignedTo      String?
+  resolution      String?             @db.Text
+  resolvedAt      DateTime?
+
+  // Auto-Processing
+  autoProcessed   Boolean             @default(false)
+  confidenceScore Float?              // 0-1 confidence in report validity
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceContentReports", fields: [workspaceId], references: [id], onDelete: Cascade)
+  reporter        User?               @relation("UserReports", fields: [reporterId], references: [id], onDelete: SetNull)
+  assignedModerator User?             @relation("AssignedReports", fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([contentType, contentId])
+  @@index([status])
+  @@index([priority])
+  @@index([reportReason])
+  @@index([createdAt])
+  @@map("content_reports")
+}
+
+model AutoModerationRule {
+  id              String              @id @default(cuid())
+  workspaceId     String
+
+  // Rule Configuration
+  name            String
+  description     String?
+  isActive        Boolean             @default(true)
+
+  // Trigger Conditions
+  triggerType     AutoModerationTrigger
+  conditions      Json                // Flexible condition configuration
+
+  // Content Types
+  targetTypes     ModerationTargetType[]
+
+  // Actions
+  actions         Json                // Array of actions to take
+
+  // Thresholds
+  confidenceThreshold Float           @default(0.8)
+
+  // Settings
+  requiresReview  Boolean             @default(false)
+  notifyModerators Boolean            @default(true)
+  escalateAfter   Int?                // Minutes before escalation
+
+  // Statistics
+  triggeredCount  Int                 @default(0)
+  falsePositives  Int                 @default(0)
+  lastTriggered   DateTime?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  createdBy       String
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceAutoModerationRules", fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator         User                @relation("CreatedModerationRules", fields: [createdBy], references: [id], onDelete: Cascade)
+  actions         ModerationAction[]
+
+  @@index([workspaceId])
+  @@index([isActive])
+  @@index([triggerType])
+  @@map("auto_moderation_rules")
+}
+
+model SpamDetection {
+  id              String              @id @default(cuid())
+  workspaceId     String
+
+  // Content Details
+  contentType     ModerationTargetType
+  contentId       String
+  content         String              @db.Text
+
+  // Detection Results
+  isSpam          Boolean
+  confidenceScore Float               // 0-1 confidence level
+  spamType        SpamType
+
+  // Detection Factors
+  detectionFactors Json               // Detailed analysis factors
+
+  // Pattern Matching
+  matchedPatterns String[]
+  suspiciousWords String[]
+
+  // Behavioral Analysis
+  authorId        String?
+  authorReputation Float?
+  postFrequency   Int?                // Posts per hour
+
+  // Action Taken
+  actionTaken     String?
+  reviewRequired  Boolean             @default(false)
+
+  createdAt       DateTime            @default(now())
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceSpamDetections", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([contentType, contentId])
+  @@index([isSpam])
+  @@index([confidenceScore])
+  @@index([spamType])
+  @@map("spam_detections")
+}
+
+model ModerationQueue {
+  id              String              @id @default(cuid())
+  workspaceId     String
+
+  // Queue Item Details
+  itemType        ModerationTargetType
+  itemId          String
+  priority        QueuePriority       @default(MEDIUM)
+
+  // Assignment
+  assignedTo      String?
+  assignedAt      DateTime?
+
+  // Processing
+  status          QueueStatus         @default(PENDING)
+  dueDate         DateTime?
+  estimatedTime   Int?                // Minutes
+
+  // Context
+  source          String              // "auto_detection", "user_report", "manual_review"
+  context         Json?               // Additional context data
+
+  // Escalation
+  escalationLevel Int                 @default(0)
+  escalatedAt     DateTime?
+  escalatedBy     String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceModerationQueue", fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedModerator User?             @relation("AssignedQueueItems", fields: [assignedTo], references: [id], onDelete: SetNull)
+  escalator       User?               @relation("QueueEscalators", fields: [escalatedBy], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([assignedTo])
+  @@map("moderation_queue")
+}
+
+model CommunityAnalytics {
+  id              String              @id @default(cuid())
+  workspaceId     String
+  date            DateTime            @db.Date
+
+  // Content Metrics
+  totalPosts      Int                 @default(0)
+  totalReplies    Int                 @default(0)
+  totalReports    Int                 @default(0)
+  totalModerations Int               @default(0)
+
+  // User Metrics
+  activeUsers     Int                 @default(0)
+  newUsers        Int                 @default(0)
+  bannedUsers     Int                 @default(0)
+
+  // Engagement Metrics
+  totalViews      Int                 @default(0)
+  totalVotes      Int                 @default(0)
+  avgResponseTime Float?              // Hours
+
+  // Health Scores
+  communityHealth Float               @default(50) // 0-100
+  moderationLoad  Float               @default(0)  // Percentage
+  userSatisfaction Float?             // 0-100
+
+  // Spam & Content Quality
+  spamDetected    Int                 @default(0)
+  falsePositives  Int                 @default(0)
+  contentQuality  Float               @default(50) // 0-100
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  workspace       Workspace           @relation("WorkspaceCommunityAnalytics", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, date])
+  @@index([workspaceId])
+  @@index([date])
+  @@map("community_analytics")
+}
+
+// ========================================
+// MODERATION ENUMS
+// ========================================
+
+enum ModerationActionType {
+  APPROVE
+  REJECT
+  DELETE
+  EDIT
+  PIN
+  UNPIN
+  LOCK
+  UNLOCK
+  FEATURE
+  UNFEATURE
+  MERGE
+  SPLIT
+  MOVE
+  HIDE
+  RESTORE
+  FLAG
+  UNFLAG
+}
+
+enum ModerationTargetType {
+  FORUM_POST
+  FORUM_REPLY
+  FEATURE_REQUEST
+  FEATURE_COMMENT
+  USER_PROFILE
+  COMMENT
+  MESSAGE
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ESCALATED
+  COMPLETED
+}
+
+enum UserModerationAction {
+  WARNING
+  TEMPORARY_BAN
+  PERMANENT_BAN
+  MUTE
+  RESTRICT_POSTING
+  REMOVE_PRIVILEGES
+  PROMOTE
+  DEMOTE
+}
+
+enum AppealStatus {
+  NONE
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  INAPPROPRIATE_CONTENT
+  COPYRIGHT_VIOLATION
+  MISINFORMATION
+  OFFENSIVE_LANGUAGE
+  OFF_TOPIC
+  DUPLICATE
+  TECHNICAL_ISSUE
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  IN_REVIEW
+  RESOLVED
+  DISMISSED
+  ESCALATED
+}
+
+enum ReportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AutoModerationTrigger {
+  KEYWORD_MATCH
+  SPAM_DETECTION
+  TOXICITY_DETECTION
+  DUPLICATE_CONTENT
+  RATE_LIMITING
+  REPUTATION_BASED
+  PATTERN_MATCHING
+  AI_CLASSIFICATION
+}
+
+enum SpamType {
+  PROMOTIONAL
+  REPETITIVE
+  MALICIOUS_LINKS
+  FAKE_ENGAGEMENT
+  IRRELEVANT_CONTENT
+  AUTOMATED_POSTING
+}
+
+enum QueuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum QueueStatus {
+  PENDING
+  IN_PROGRESS
+  ON_HOLD
   COMPLETED
   CANCELLED
 }
