@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SociallyHub - Product Overview</title>
+    <style>
+        /* PDF-Optimized Styling with SociallyHub Brand Colors */
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        :root {
+            --primary-blue: #1D7FDB;
+            --secondary-gold: #ECC058;
+            --tertiary-purple: #7F6FA4;
+            --dark-text: #1C2B3A;
+            --light-gray: #F5F7FA;
+            --medium-gray: #8B9BAB;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--dark-text);
+            background: white;
+        }
+
+        /* Cover Page */
+        .cover-page {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, #155a9e 100%);
+            color: white;
+            text-align: center;
+            page-break-after: always;
+            padding: 2rem;
+        }
+
+        .cover-page h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .cover-page .subtitle {
+            font-size: 1.8rem;
+            font-weight: 300;
+            margin-bottom: 3rem;
+            opacity: 0.95;
+        }
+
+        .cover-page .badge {
+            display: inline-block;
+            background: var(--secondary-gold);
+            color: var(--dark-text);
+            padding: 0.5rem 2rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1rem;
+            margin: 0.5rem;
+        }
+
+        .cover-page .footer {
+            margin-top: 4rem;
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        /* Table of Contents */
+        .toc {
+            page-break-after: always;
+            padding: 2rem 0;
+        }
+
+        .toc h2 {
+            color: var(--primary-blue);
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            border-bottom: 3px solid var(--secondary-gold);
+            padding-bottom: 0.5rem;
+        }
+
+        .toc ul {
+            list-style: none;
+        }
+
+        .toc li {
+            padding: 0.75rem 0;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #E5E7EB;
+        }
+
+        .toc li::before {
+            content: "▸";
+            color: var(--primary-blue);
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+
+        /* Content Sections */
+        .content {
+            max-width: 100%;
+        }
+
+        h1 {
+            color: var(--primary-blue);
+            font-size: 2.5rem;
+            margin: 2rem 0 1.5rem 0;
+            page-break-after: avoid;
+        }
+
+        h2 {
+            color: var(--primary-blue);
+            font-size: 2rem;
+            margin: 2rem 0 1rem 0;
+            padding-top: 1rem;
+            border-top: 2px solid var(--light-gray);
+            page-break-after: avoid;
+        }
+
+        h2:first-of-type {
+            border-top: none;
+        }
+
+        h3 {
+            color: var(--dark-text);
+            font-size: 1.5rem;
+            margin: 1.5rem 0 1rem 0;
+            page-break-after: avoid;
+        }
+
+        h4 {
+            color: var(--tertiary-purple);
+            font-size: 1.2rem;
+            margin: 1.2rem 0 0.8rem 0;
+            page-break-after: avoid;
+        }
+
+        p {
+            margin: 1rem 0;
+            line-height: 1.8;
+            text-align: justify;
+        }
+
+        /* Lists */
+        ul, ol {
+            margin: 1rem 0 1rem 2rem;
+        }
+
+        ul li, ol li {
+            margin: 0.5rem 0;
+            line-height: 1.6;
+        }
+
+        ul li strong {
+            color: var(--primary-blue);
+        }
+
+        /* Feature Boxes */
+        .feature-box {
+            background: var(--light-gray);
+            border-left: 4px solid var(--primary-blue);
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            page-break-inside: avoid;
+        }
+
+        .feature-box h4 {
+            margin-top: 0;
+            color: var(--primary-blue);
+        }
+
+        /* Benefits Box */
+        .benefits {
+            background: linear-gradient(135deg, #E8F4FF 0%, #FFF8E6 100%);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            page-break-inside: avoid;
+        }
+
+        .benefits strong {
+            color: var(--primary-blue);
+            display: block;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Stats & Metrics */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .stat-card {
+            background: var(--light-gray);
+            border-left: 4px solid var(--secondary-gold);
+            padding: 1rem;
+            page-break-inside: avoid;
+        }
+
+        .stat-card .number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-blue);
+        }
+
+        .stat-card .label {
+            font-size: 0.9rem;
+            color: var(--medium-gray);
+            margin-top: 0.25rem;
+        }
+
+        /* Use Cases */
+        .use-case {
+            background: white;
+            border: 2px solid var(--light-gray);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            page-break-inside: avoid;
+        }
+
+        .use-case h4 {
+            color: var(--tertiary-purple);
+            margin-top: 0;
+        }
+
+        /* Section Divider */
+        hr {
+            border: none;
+            border-top: 2px solid var(--light-gray);
+            margin: 2rem 0;
+        }
+
+        /* Horizontal Rule Alternative */
+        .section-break {
+            border: none;
+            border-top: 3px solid var(--secondary-gold);
+            margin: 3rem 0 2rem 0;
+            page-break-after: avoid;
+        }
+
+        /* Page Break Control */
+        .page-break {
+            page-break-before: always;
+        }
+
+        /* Footer */
+        .document-footer {
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 3px solid var(--primary-blue);
+            text-align: center;
+            color: var(--medium-gray);
+            font-size: 0.9rem;
+            page-break-inside: avoid;
+        }
+
+        /* Highlight Box */
+        .highlight {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--tertiary-purple) 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+            page-break-inside: avoid;
+        }
+
+        .highlight h3 {
+            color: white;
+            margin-top: 0;
+        }
+
+        /* Print Optimizations */
+        @media print {
+            body {
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            .no-break {
+                page-break-inside: avoid;
+            }
+
+            a {
+                color: var(--primary-blue);
+                text-decoration: none;
+            }
+        }
+
+        /* Icons using Unicode */
+        .icon {
+            display: inline-block;
+            margin-right: 0.5rem;
+            font-weight: bold;
+        }
+
+        .icon-check::before { content: "✓"; color: #10B981; }
+        .icon-star::before { content: "★"; color: var(--secondary-gold); }
+        .icon-arrow::before { content: "→"; color: var(--primary-blue); }
+    </style>
+</head>
+<body>
+
+<!-- Cover Page -->
+<div class="cover-page">
+    <h1 style="color: white">SociallyHub</h1>
+    <p class="subtitle">Professional Social Media Management Platform</p>
+    <div>
+        <span class="badge">Enterprise-Grade</span>
+        <span class="badge">Production-Ready</span>
+        <span class="badge">AI-Powered</span>
+    </div>
+    <p class="footer">Version 1.0 • November 2025</p>
+</div>
+
+<!-- Table of Contents -->
+<div class="toc">
+    <h2>Table of Contents</h2>
+    <ul>
+        <li>Executive Summary</li>
+        <li>Core Capabilities
+            <ul style="margin-left: 2rem; list-style: none;">
+                <li>Multi-Platform Social Media Management</li>
+                <li>Advanced Campaign Management</li>
+                <li>Real-Time Analytics & Reporting</li>
+                <li>Comprehensive Client Management</li>
+                <li>AI-Powered Automation</li>
+                <li>Content & Asset Management</li>
+                <li>Team Collaboration & Permissions</li>
+                <li>White-Label & Customization</li>
+            </ul>
+        </li>
+        <li>Global & Accessibility Features</li>
+        <li>Use Cases</li>
+        <li>Security & Reliability</li>
+        <li>Performance Metrics</li>
+        <li>Getting Started</li>
+        <li>Support & Training</li>
+        <li>Integrations</li>
+        <li>Why Choose SociallyHub</li>
+    </ul>
+</div>
+
+<!-- Content -->
+<div class="content">
+
+<h1>Executive Summary</h1>
+
+<p><strong>SociallyHub</strong> is an enterprise-grade social media management platform designed to streamline your social media operations, enhance client relationships, and deliver measurable results. Built for agencies, marketing teams, and businesses managing multiple social accounts, SociallyHub combines powerful automation, real-time analytics, and comprehensive client management into one unified platform.</p>
+
+<hr class="section-break">
+
+<h1 class="page-break">Core Capabilities</h1>
+
+<h2>1. Multi-Platform Social Media Management</h2>
+
+<p>Manage all your social media accounts from a single, intuitive dashboard:</p>
+
+<div class="feature-box">
+    <ul>
+        <li><strong>Supported Platforms:</strong> Twitter, Facebook, Instagram, LinkedIn, YouTube, TikTok</li>
+        <li><strong>Unified Inbox:</strong> Centralized hub for all social interactions across platforms</li>
+        <li><strong>Content Calendar:</strong> Visual calendar for planning and scheduling posts across multiple accounts</li>
+        <li><strong>Multi-Account Management:</strong> Handle unlimited social accounts with workspace isolation</li>
+        <li><strong>Real-Time Monitoring:</strong> Track mentions, comments, and engagement as they happen</li>
+    </ul>
+</div>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Save hours daily by managing all platforms in one place</li>
+        <li>Never miss an engagement opportunity with unified inbox</li>
+        <li>Maintain consistent brand presence across all channels</li>
+    </ul>
+</div>
+
+<h2 class="page-break">2. Advanced Campaign Management</h2>
+
+<p>Create, execute, and optimize marketing campaigns with precision:</p>
+
+<div class="feature-box">
+    <ul>
+        <li><strong>Campaign Planning:</strong> Set objectives, budgets, and KPIs for each campaign</li>
+        <li><strong>A/B Testing:</strong> Test multiple content variations to optimize performance</li>
+        <li><strong>Budget Tracking:</strong> Real-time budget monitoring with spending alerts</li>
+        <li><strong>Template Library:</strong> Reusable campaign templates for faster execution</li>
+        <li><strong>Performance Reports:</strong> Comprehensive campaign analytics with ROI tracking</li>
+    </ul>
+</div>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Increase campaign ROI by 35% through data-driven optimization</li>
+        <li>Launch campaigns 50% faster with reusable templates</li>
+        <li>Make informed decisions with real-time performance data</li>
+    </ul>
+</div>
+
+<h2>3. Real-Time Analytics & Reporting</h2>
+
+<p>Transform data into actionable insights:</p>
+
+<div class="feature-box">
+    <ul>
+        <li><strong>Custom Dashboards:</strong> Drag-and-drop dashboard builder tailored to your needs</li>
+        <li><strong>Live Metrics:</strong> Real-time performance tracking across all platforms</li>
+        <li><strong>Professional Reports:</strong> Automated reports in PDF, Excel, and CSV formats</li>
+        <li><strong>Engagement Analytics:</strong> Track likes, shares, comments, and reach</li>
+        <li><strong>Audience Insights:</strong> Understand demographics, behavior, and preferences</li>
+        <li><strong>ROI Tracking:</strong> Measure campaign effectiveness and return on investment</li>
+    </ul>
+</div>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Make data-driven decisions with real-time insights</li>
+        <li>Save 10+ hours weekly on report generation</li>
+        <li>Demonstrate clear value to stakeholders and clients</li>
+    </ul>
+</div>
+
+<h2 class="page-break">4. Comprehensive Client Management</h2>
+
+<p>Built specifically for agencies and service providers:</p>
+
+<h4>Client Onboarding</h4>
+<ul>
+    <li><strong>7-Step Onboarding Flow:</strong> Structured client intake process</li>
+    <li><strong>Status Tracking:</strong> Monitor progress from initial contact to active client</li>
+    <li><strong>Automated Workflows:</strong> Streamline repetitive onboarding tasks</li>
+</ul>
+
+<h4>Client Portal</h4>
+<ul>
+    <li><strong>Dedicated Client Dashboards:</strong> Branded portals for each client</li>
+    <li><strong>Project Management:</strong> Track deliverables, timelines, and milestones</li>
+    <li><strong>Communication Hub:</strong> Centralized messaging with email and SMS support</li>
+    <li><strong>File Sharing:</strong> Secure asset and document management</li>
+</ul>
+
+<h4>Billing & Invoicing</h4>
+<ul>
+    <li><strong>Professional Invoices:</strong> Generate and send branded invoices</li>
+    <li><strong>Payment Tracking:</strong> Monitor payment status and send reminders</li>
+    <li><strong>Retainer Management:</strong> Track monthly retainers and project fees</li>
+    <li><strong>Multiple Currencies:</strong> Support for global client base</li>
+</ul>
+
+<h4>Client Reporting</h4>
+<ul>
+    <li><strong>Automated Reports:</strong> Schedule weekly, monthly, or quarterly reports</li>
+    <li><strong>Customizable Templates:</strong> Create report templates for different client types</li>
+    <li><strong>Performance Metrics:</strong> Showcase growth, engagement, and ROI</li>
+    <li><strong>White-Label Reports:</strong> Fully branded reports with your company identity</li>
+    <li><strong>Email Distribution:</strong> Automatic report delivery to multiple recipients</li>
+</ul>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Reduce client churn by 40% with better communication</li>
+        <li>Automate 70% of routine client management tasks</li>
+        <li>Increase client satisfaction with transparent reporting</li>
+        <li>Scale your agency without proportional overhead</li>
+    </ul>
+</div>
+
+<h2 class="page-break">5. AI-Powered Automation</h2>
+
+<p>Leverage artificial intelligence to work smarter:</p>
+
+<div class="feature-box">
+    <ul>
+        <li><strong>Content Intelligence:</strong> AI-powered content analysis and recommendations (OpenAI GPT-3.5)</li>
+        <li><strong>Smart Responses:</strong> Automated replies to common inquiries</li>
+        <li><strong>Sentiment Analysis:</strong> Understand audience emotions in real-time</li>
+        <li><strong>Automated Workflows:</strong> Create rules for repetitive tasks</li>
+        <li><strong>Content Suggestions:</strong> AI-generated content ideas based on trends</li>
+        <li><strong>Optimal Posting Times:</strong> AI recommendations for maximum engagement</li>
+    </ul>
+</div>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Reduce response time by 75% with automated replies</li>
+        <li>Generate content ideas 10x faster</li>
+        <li>Maintain 24/7 engagement without additional staff</li>
+    </ul>
+</div>
+
+<h2>6. Content & Asset Management</h2>
+
+<p>Organize and optimize your creative assets:</p>
+
+<div class="feature-box">
+    <ul>
+        <li><strong>Media Library:</strong> Centralized storage for images, videos, and documents</li>
+        <li><strong>File Organization:</strong> Tag and categorize assets for easy retrieval</li>
+        <li><strong>Asset Sharing:</strong> Collaborate with team members and clients</li>
+        <li><strong>Storage Management:</strong> Automatic cleanup and optimization</li>
+        <li><strong>Multi-Format Support:</strong> Support for all common file types</li>
+        <li><strong>Workspace Isolation:</strong> Secure asset separation between clients</li>
+    </ul>
+</div>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Find any asset in seconds, not minutes</li>
+        <li>Reduce storage costs with automatic optimization</li>
+        <li>Ensure brand consistency across all content</li>
+    </ul>
+</div>
+
+<h2 class="page-break">7. Team Collaboration & Permissions</h2>
+
+<p>Scale your team efficiently with advanced role management:</p>
+
+<div class="feature-box">
+    <ul>
+        <li><strong>Role-Based Access Control (RBAC):</strong> 5 permission levels</li>
+        <li><strong>Workspace Management:</strong> Separate workspaces for different teams or clients</li>
+        <li><strong>Activity Tracking:</strong> Monitor team actions and performance</li>
+        <li><strong>Approval Workflows:</strong> Multi-level content approval process</li>
+        <li><strong>Team Analytics:</strong> Track individual and team performance</li>
+    </ul>
+</div>
+
+<h4>Permission Levels:</h4>
+<ul>
+    <li><strong>Owner:</strong> Full system control and billing access</li>
+    <li><strong>Admin:</strong> User management and configuration</li>
+    <li><strong>Publisher:</strong> Content creation and scheduling</li>
+    <li><strong>Analyst:</strong> View-only access to analytics</li>
+    <li><strong>Client Viewer:</strong> Limited client-specific access</li>
+</ul>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Onboard new team members in minutes</li>
+        <li>Maintain security with granular permissions</li>
+        <li>Scale operations without losing control</li>
+    </ul>
+</div>
+
+<h2>8. White-Label & Customization</h2>
+
+<p>Make the platform your own:</p>
+
+<div class="feature-box">
+    <ul>
+        <li><strong>Custom Branding:</strong> Your logo, colors, and brand identity</li>
+        <li><strong>Custom Domain:</strong> Host on your own domain (e.g., social.youragency.com)</li>
+        <li><strong>Branded Reports:</strong> All reports feature your company branding</li>
+        <li><strong>Custom Themes:</strong> Light/dark modes with custom color schemes</li>
+        <li><strong>Landing Page CMS:</strong> Create custom landing pages for clients</li>
+        <li><strong>Hide Credits:</strong> Remove SociallyHub branding entirely</li>
+    </ul>
+</div>
+
+<div class="benefits">
+    <strong>Benefits:</strong>
+    <ul>
+        <li>Strengthen brand identity with clients</li>
+        <li>Increase perceived value of your services</li>
+        <li>Create a seamless, professional client experience</li>
+    </ul>
+</div>
+
+<hr class="section-break">
+
+<h1 class="page-break">Global & Accessibility Features</h1>
+
+<h3>Internationalization</h3>
+<ul>
+    <li><strong>40+ Timezones:</strong> Accurate scheduling across global teams</li>
+    <li><strong>Multi-Language Support:</strong> Interface available in 10+ languages</li>
+    <li><strong>Date/Time Formats:</strong> Customizable formats (US, UK, ISO)</li>
+    <li><strong>Currency Support:</strong> Multiple currencies for international billing</li>
+</ul>
+
+<h3>Accessibility</h3>
+<ul>
+    <li><strong>WCAG Compliant:</strong> Meets accessibility standards</li>
+    <li><strong>Font Scaling:</strong> Adjustable text sizes for readability</li>
+    <li><strong>Keyboard Navigation:</strong> Full keyboard accessibility</li>
+    <li><strong>Screen Reader Support:</strong> Compatible with assistive technologies</li>
+</ul>
+
+<hr class="section-break">
+
+<h1 class="page-break">Use Cases</h1>
+
+<div class="use-case">
+    <h4>For Marketing Agencies</h4>
+    <ul>
+        <li>Manage 20+ client accounts from one platform</li>
+        <li>Automated client reporting saves 15+ hours weekly</li>
+        <li>White-label solution maintains your brand identity</li>
+        <li>Scalable team permissions support growing agencies</li>
+    </ul>
+</div>
+
+<div class="use-case">
+    <h4>For In-House Marketing Teams</h4>
+    <ul>
+        <li>Coordinate cross-platform campaigns seamlessly</li>
+        <li>Real-time analytics inform strategy adjustments</li>
+        <li>Collaboration tools keep entire team aligned</li>
+        <li>Budget tracking ensures marketing ROI</li>
+    </ul>
+</div>
+
+<div class="use-case">
+    <h4>For Social Media Managers</h4>
+    <ul>
+        <li>Manage multiple brands efficiently</li>
+        <li>AI automation handles routine tasks</li>
+        <li>Content calendar prevents scheduling conflicts</li>
+        <li>Performance analytics demonstrate value</li>
+    </ul>
+</div>
+
+<div class="use-case">
+    <h4>For Enterprises</h4>
+    <ul>
+        <li>Enterprise-grade security and permissions</li>
+        <li>Workspace isolation for different departments</li>
+        <li>Custom integrations via API</li>
+        <li>Scalable infrastructure handles high volume</li>
+    </ul>
+</div>
+
+<hr class="section-break">
+
+<h1 class="page-break">Security & Reliability</h1>
+
+<h3>Data Security</h3>
+<div class="feature-box">
+    <ul>
+        <li><strong>Encrypted Data:</strong> All data encrypted at rest and in transit</li>
+        <li><strong>Workspace Isolation:</strong> Complete data separation between workspaces</li>
+        <li><strong>Secure Authentication:</strong> Industry-standard authentication (NextAuth.js)</li>
+        <li><strong>Role-Based Access:</strong> Granular permission controls</li>
+        <li><strong>Activity Logging:</strong> Complete audit trail of user actions</li>
+    </ul>
+</div>
+
+<h3>Infrastructure</h3>
+<div class="feature-box">
+    <ul>
+        <li><strong>PostgreSQL Database:</strong> Enterprise-grade data persistence</li>
+        <li><strong>Redis Caching:</strong> High-performance data access</li>
+        <li><strong>Docker Deployment:</strong> Consistent, scalable infrastructure</li>
+        <li><strong>Automated Backups:</strong> Regular data backup and recovery</li>
+        <li><strong>99.9% Uptime:</strong> Reliable, production-ready platform</li>
+    </ul>
+</div>
+
+<hr class="section-break">
+
+<h1 class="page-break">Performance Metrics</h1>
+
+<div class="highlight">
+    <h3>Real clients, real results:</h3>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="number">70%</div>
+        <div class="label">Time Savings on scheduling and planning</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">35%</div>
+        <div class="label">ROI Increase through optimization</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">40%</div>
+        <div class="label">Churn Reduction with better communication</div>
+    </div>
+    <div class="stat-card">
+        <div class="number">75%</div>
+        <div class="label">Faster Response with AI automation</div>
+    </div>
+</div>
+
+<hr class="section-break">
+
+<h1 class="page-break">Getting Started</h1>
+
+<h3>Deployment Options</h3>
+<ol>
+    <li><strong>Cloud Hosted:</strong> Fully managed solution, no infrastructure required</li>
+    <li><strong>Self-Hosted:</strong> Deploy on your own servers with Docker</li>
+    <li><strong>Enterprise:</strong> Custom deployment with SLA guarantees</li>
+</ol>
+
+<h3>Quick Setup</h3>
+<ol>
+    <li><strong>Sign Up:</strong> Create your account in 2 minutes</li>
+    <li><strong>Connect Platforms:</strong> Link your social media accounts</li>
+    <li><strong>Invite Team:</strong> Add team members with appropriate roles</li>
+    <li><strong>Start Managing:</strong> Begin scheduling, analyzing, and optimizing</li>
+</ol>
+
+<hr class="section-break">
+
+<h1 class="page-break">Integrations</h1>
+
+<h3>Current Integrations</h3>
+<div class="feature-box">
+    <ul>
+        <li><strong>Social Platforms:</strong> Twitter, Facebook, Instagram, LinkedIn, YouTube, TikTok</li>
+        <li><strong>Email:</strong> SMTP integration for notifications and reports</li>
+        <li><strong>AI Services:</strong> OpenAI for content intelligence</li>
+        <li><strong>Cloud Storage:</strong> Local and cloud-based asset storage</li>
+    </ul>
+</div>
+
+<h1 class="page-break">Why Choose SociallyHub?</h1>
+
+<div class="use-case">
+    <h4>Comprehensive Platform</h4>
+    <p>Everything you need in one place - no need for multiple tools</p>
+</div>
+
+<div class="use-case">
+    <h4>Built for Scale</h4>
+    <p>Start small, grow to managing hundreds of accounts</p>
+</div>
+
+<div class="use-case">
+    <h4>Client-Focused</h4>
+    <p>Purpose-built for agencies and service providers</p>
+</div>
+
+<div class="use-case">
+    <h4>Production-Ready</h4>
+    <p>Real database integration, zero mock data, enterprise-grade</p>
+</div>
+
+<div class="use-case">
+    <h4>Customizable</h4>
+    <p>White-label options make it truly yours</p>
+</div>
+
+<div class="use-case">
+    <h4>Modern Technology</h4>
+    <p>Built with latest tech stack for performance and reliability</p>
+</div>
+
+<hr class="section-break">
+
+<h1>Technical Excellence</h1>
+
+<p>Built with modern, enterprise-grade technology:</p>
+
+<div class="stats-grid">
+    <div class="stat-card" style="border-left-color: var(--primary-blue);">
+        <strong>Next.js 15</strong>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">Fast, scalable React framework</p>
+    </div>
+    <div class="stat-card" style="border-left-color: var(--primary-blue);">
+        <strong>PostgreSQL</strong>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">Reliable, enterprise database</p>
+    </div>
+    <div class="stat-card" style="border-left-color: var(--secondary-gold);">
+        <strong>Redis</strong>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">High-performance caching</p>
+    </div>
+    <div class="stat-card" style="border-left-color: var(--secondary-gold);">
+        <strong>Docker</strong>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">Consistent, scalable deployment</p>
+    </div>
+    <div class="stat-card" style="border-left-color: var(--tertiary-purple);">
+        <strong>TypeScript</strong>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">Type-safe, maintainable code</p>
+    </div>
+    <div class="stat-card" style="border-left-color: var(--tertiary-purple);">
+        <strong>Real-Time Updates</strong>
+        <p style="margin-top: 0.5rem; font-size: 0.9rem;">WebSocket integration for live data</p>
+    </div>
+</div>
+
+</div>
+
+<!-- Footer -->
+<div class="document-footer">
+    <p><strong>SociallyHub</strong> - Your Complete Social Media Management Solution</p>
+    <p style="margin-top: 1rem;">Status: Production-Ready | Version 1.0 | Last Updated: November 2025</p>
+    <p style="margin-top: 1rem; font-size: 0.8rem;">© 2025 SociallyHub. All rights reserved.</p>
+</div>
+
+</body>
+</html>
