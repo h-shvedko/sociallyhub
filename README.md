@@ -264,7 +264,7 @@ docker-compose logs <service> # View logs
 - **Port 3099 in use**: Kill process with `wmic process where processid=<PID> delete`
 - **Database connection**: Ensure PostgreSQL container is healthy
 - **Authentication slow**: Verify database is connected, not falling back to demo mode
-- **Migration errors**: Check schema conflicts and run `prisma db push` if needed
+- **Migration errors**: Run `npm run db:check` to diagnose schema/migration drift, then `npx prisma migrate dev` to create/apply migrations (never `prisma db push` — it is banned by the ADR-0002 migration-first rule)
 
 ### Useful Commands
 ```bash

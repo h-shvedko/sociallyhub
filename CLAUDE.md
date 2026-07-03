@@ -1,4 +1,71 @@
-# SociallyHub - Production-Ready Platform
+# SociallyHub
+
+## 📋 Current State — Verified Code Audit (July 2026)
+
+> **Read this section first.** Everything below it (from "Key Implementations" down) is a historical, append-only changelog. Many of its claims ("Production Ready", "Zero Mock Data", "COMPLETED") describe intent, not verified behavior — this section is the ground truth as of a full-code audit on 2026-07-02.
+
+> **Remediation plan:** the `ADR/` directory contains 25 Architecture Decision Records (drafted 2026-07-02) that turn every finding below into a decided, sequenced fix plan — see `ADR/README.md` for the index and implementation order. Owner decisions: self-hosted Docker deployment, repair Support + Admin RBAC now, defer Community/Documentation/Discord behind flags, Stripe billing in scope.
+
+### Scale
+- **146 Prisma models** in `prisma/schema.prisma` (~5,900 lines), **299 API route files** under `src/app/api/`, ~40 dashboard pages.
+- Subsystems: core social management (posts/calendar/inbox/campaigns/clients/analytics/AI/automation), Help Center, Documentation Management, Support (tickets/chat/agents), Community (forum/feature requests/Discord/moderation), Admin RBAC dashboard, System Settings & Configuration.
+
+### 🔴 Critical Blockers (must fix before the newer subsystems can run)
+1. ✅ **RESOLVED 2026-07-02 (ADR-0002 implemented)** — ~~`prisma/schema.prisma` fails `npx prisma validate`~~. The schema now validates with 0 errors (137 models after the ADR-0004/0012 RBAC cut), the client is regenerated (all Support/Community/Documentation/Settings accessors exist), a catch-up migration `20260702195923_0002_schema_remediation` baselines the DB — 80 CREATE TABLE plus new columns, but NOT purely additive: it intentionally drops `user_workspaces.permissions` and adds `clients.email` as `NOT NULL DEFAULT ''` (made safe for populated DBs, 2026-07-03); data-bearing environments must baseline via `npx prisma migrate resolve --applied <migration>` after review instead of replaying it (see ADR-0002) — and the workflow is migration-first: `db push` removed from `dev-local.sh`/`docker/start-dev.sh`/`package.json`, `npm run db:check` added and run as the first step of CI's `database-validation` job (needs `SHADOW_DATABASE_URL` → empty throwaway Postgres DB). **Note:** models/tables now exist, but the newer subsystems' *routes* still have the schema divergences and broken imports below — see `ADR/ADR-0002-fallout-inventory.md` (2,382 type errors across 348 files, classified per owning ADR) for the repair entry criteria.
+2. ✅ **RESOLVED 2026-07-03 (ADR-0003 implemented)** — ~~nonexistent auth import paths / unawaited async calls~~. All defect classes at zero: 64 broken-import files fixed, 352 unawaited `normalizeUserId` calls awaited, 25 no-arg `getServerSession()` replaced, 12 prisma default-imports fixed, 40 legacy sync-params routes migrated to Next 15 async params. All auth imports resolve through the canonical `@/lib/auth` barrel. The canonical helpers are CREATED (`getAuthenticatedUser()`, `requireSession()`, `requireAdmin()`, `ApiError` in `src/lib/auth/session.ts`; `jsonError`/`handleApiError` in `src/lib/api/respond.ts`) but adoption is partial by design: at ADR-0003 delivery only ~9 routes had adopted `getAuthenticatedUser()`; admin routes were collapsed onto `requireAdmin()` in the 2026-07-03 remediation; the remaining ~175 routes still call `getServerSession(authOptions)` + `normalizeUserId` directly, pending ADR-0011/0012 (`requireSession`/`jsonError`/`handleApiError` adoption is likewise ADR-0011/0012 scope). Conventions in `docs/api-conventions.md`, enforced by ESLint `no-restricted-imports` + type-aware `no-floating-promises` on `src/app/api`. The 26 previously-dead admin-settings/FAQ routes now authenticate for real (200 with session, 401 without). **Note:** `prisma.videoChapter` and other schema-divergence bugs remain (ADR-0011..0014 scope); `requireAdmin()` intentionally keeps the coarse any-workspace semantics until ADR-0004.
+3. **Publishing never happens**: a complete BullMQ stack exists (`src/lib/jobs/`: queue-manager, job-scheduler, post-scheduling/analytics-collection/notification-dispatch processors) but **nothing ever starts it** (no `instrumentation.ts`, no worker entrypoint/npm script; `job-scheduler` has zero imports). `/api/posts` marks posts PUBLISHED/SCHEDULED but only writes a log line. `SocialMediaManager` resolves accounts from an in-process Map filled only during OAuth callback — never from the DB.
+4. **`src/lib/encryption.ts` is broken crypto**: uses deprecated `crypto.createCipher` with `aes-256-gcm` (unsupported combination — throws on modern Node), generates an IV it never uses, falls back to hardcoded key `'sociallyhub-default-key-32bytes!!'`. This guards platform credentials in `/api/platform-credentials`.
+5. **User settings UI is disconnected**: `SettingsProvider` (`src/contexts/settings-context.tsx`) is fully implemented but **mounted nowhere**; `/dashboard/settings` is pure local `useState` with no API calls and dead Save/2FA/Export/Delete buttons. The server APIs (`/api/user/settings`, `/api/user/notification-preferences`) are real and DB-backed.
+
+### Subsystem reality check
+| Subsystem | APIs | UI | Actually runnable? |
+|---|---|---|---|
+| Core social (posts, calendar, inbox, campaigns, clients, invoices, client-reports, templates, media, analytics, custom dashboards) | Real Prisma CRUD, workspace-isolated | Wired up | ✅ Yes (models are in the generated client) — but outbound publishing/replies to real platforms don't work (see blockers 3; `provider.reply()` unimplemented; no webhook ingestion for inbox) |
+| AI features (`/api/ai/**`, `/api/automation/**`, `/api/audience/**`) | Real, DB-backed; OpenAI when `OPENAI_API_KEY` set, silent `MockAIProvider`/heuristic fallback otherwise | **Orphaned** — `src/components/ai/*` and `src/components/audience/*` have zero page imports | ✅ APIs yes / UI unreachable |
+| Help Center public (`/api/help/**`, `/dashboard/help`) | Real (articles, FAQs, search w/ ILIKE + JS scoring, bookmarks, votes) | Wired (713-line help-center.tsx) | ✅ Yes — but write endpoints have `TODO: Add authentication` |
+| Help admin CMS (`/api/admin/help/**`) | Real workflows (revisions, approval, bulk ops, import/export) | ArticleEditor exists | ⚠️ Blocked by un-awaited `normalizeUserId` (blocker 2) |
+| Documentation management (`/api/documentation/**`) | Written against a **divergent schema** (wrong field names throughout) + nonexistent import + 'published' vs 'PUBLISHED' casing split | 931-line editor targets broken APIs | ❌ No |
+| Support tickets/chat, Community forum/moderation/feature requests | Genuinely implemented query logic | Only admin ticket pages + chat/ticket widgets; admin sidebar links to 4 nonexistent `/dashboard/admin/community` pages; no forum-reply/vote endpoints at all | ❌ Models missing from generated client (blocker 1) + per-route schema mismatches |
+| Discord integration | `console.log` stubs, `Math.random` analytics, hardcoded demo server — **no HTTP call to discord.com anywhere** | — | ❌ Mock end-to-end |
+| Admin RBAC (`/api/admin/users|roles|permissions|teams|sso/**`) | Route code disagrees with schema in many places; Role/Permission tables managed but **never consulted for authorization** (only `UserWorkspace.role` gates anything — OWNER/ADMIN of *any* workspace = global admin) | Root admin page fully hardcoded; user/role modals are stubs; permission-matrix save only console.logs; bulk-ops fabricates user IDs | ❌ Models missing from client (blocker 1) |
+| System Settings & Config (`/api/admin/settings/**`, 19 handlers) | Real CRUD + genuinely implemented feature-flag evaluation; but backup execution, integration tests, security audit, perf optimize, health uptime are **simulations** (`Math.random`, `setTimeout`) | Hub page has 10 hardcoded cards — **9 of 10 link to pages that don't exist (404)** | ❌ Models missing from client (blocker 1) |
+| Billing (`/dashboard/billing`) | None — no Stripe in package.json, no subscription API | Hardcoded plans, mockInvoices, fake VISA •••• 4242 | ❌ Static mock |
+| Notifications | `/api/notifications` serves a **hardcoded mock array** despite a real `Notification` model; DB-backed prefs live at `/api/user/notification-preferences` only | NotificationCenter + use-notifications never mounted; header Bell is decorative | ❌ Mock |
+| Realtime/WebSocket | `websocket-manager` is a socket.io-**client** → `ws://localhost:3099`; **no socket.io server exists in the repo** (fastify + @fastify/cors are unused deps) | — | ❌ Can never connect |
+
+### 🔒 Security issues found (fix before any real deployment)
+- Unauthenticated access holes: `/api/support/tickets/[ticketId]` GET/PUT/updates/attachments allow anyone with a ticket ID to read/modify/upload; global-scope (`workspaceId=null`) system configurations readable/creatable by **any authenticated user** (no platform-admin concept); `/api/admin/settings/feature-flags/evaluate` requires no session; help/docs/video write endpoints unauthenticated (`TODO` comments).
+- `next.config.js` applies `Cache-Control: public, s-maxage=60` to **ALL `/api/*` responses** — data-leak hazard behind a CDN.
+- `SocialAccount` access/refresh tokens stored plaintext (schema comments claim "Encrypted"); OAuth `state` is unsigned JSON; `IntegrationSetting.credentials` stored unencrypted (masked on read only).
+- `public/uploads/**` is world-readable once a URL is known (two parallel upload paths with inconsistent access control: `/api/upload` + `/api/media/upload` vs authenticated `/api/uploads/[...path]`).
+- k8s/secrets.yaml has checked-in placeholder secrets; `/dashboard/setup` hardcodes demo credentials into the UI.
+
+### Dev environment (verified facts)
+- Docker compose: postgres:15 (sociallyhub / sociallyhub_dev_password), redis:7, Mailhog (SMTP 1025, UI 8025), app at **:3099**; optional prisma-studio (:5555, "tools" profile).
+- `./dev-local.sh` flags: **`--force-update` / `-f`** (there is no `--clean` flag; for a full reset use `docker-compose down -v && ./dev-local.sh`).
+- Demo login (seeded + printed by scripts): **demo@sociallyhub.com / demo123456**, OWNER of workspace id `demo-workspace`. All 50 generated mock users share password `password123`.
+- `prisma/seed.ts` (799 lines, tsx) seeds ~30k rows for core models + help content + video tutorials + client reports. **Zero seed data** for: documentation pages, support/community, RBAC, admin settings models. `prisma/seed.js` is stale/unused.
+- Two Next configs coexist: **`next.config.js` wins**; `next.config.ts` (Docker hot-reload polling) is silently ignored. Active config still sets removed Next-15 options (`swcMinify`, `experimental.turbo`).
+- No `src/middleware.ts` — all auth is per-route `getServerSession`. `src/middleware/api-versioning.ts` is used only by mock demo routes `/api/posts/v1|v2` and `/api/version`.
+- Jest: `jest.config.js` uses invalid option name `moduleNameMapping` (should be `moduleNameMapper`) so the `@/` alias never applies; only ~7 test files exist, so the enforced 70% coverage gate is unattainable. Playwright CI jobs have **no web server** (webServer disabled when `CI=true`, and no workflow step starts the app). CI uses deprecated `upload-artifact@v3`; `deploy.yml` references nonexistent `test:e2e:production` script and calls `ci.yml` via `uses:` without a `workflow_call` trigger.
+- SMTP env inconsistency: compose sets `SMTP_PASSWORD` but 4 of 5 API routes read `SMTP_PASS`.
+- Deployment story is contradictory: GitHub Actions → Vercel, while docker-compose.prod.yml/k8s/scripts target self-hosted (and prod compose mounts `./docker/nginx/*`, `./docker/monitoring/grafana/*` which don't exist in the repo).
+
+### Documentation map (which file to trust for what)
+- `TODO.md` — master roadmap; 7/16 items marked complete. Stale: "Custom Dashboards" and "Help Center" are listed pending but actually built; "Billing System" (no Stripe) and "Client Portal" are genuinely unbuilt.
+- `TODO_HELP_DASHBOARD.md` — help/admin roadmap, internally inconsistent (early checklists contradict later ✅ summaries); genuinely pending: Phase 3 admin analytics/monitoring/backup/integrations, mobile & accessibility, performance & SEO.
+- `AI_MOCK_DATA.md` — **honest audit doc**; its Priority-1 fix was never applied (`/api/ai/performance/predict` and `/api/ai/tone/analyze` still import `simpleAIService`, bypassing the mock-fallback layer). All six social providers still return `generateMockAnalytics()` regardless of API keys.
+- `STRUCTURE.md` (60KB, detailed page-by-page map) is current-ish; the stale Sep-2025 duplicate `STRUCTURES.md` was deleted 2026-07-03 (ADR-0024).
+- `SOCIAL_INTEGRATION_GUIDE.md` — describes intended real OAuth setup; production security checklist entirely unchecked.
+- `PRODUCT_OVERVIEW.md/.html` — marketing doc; `PRODUCT_OVERVIEW.pdf` was never generated.
+- `README.md` (2,722 lines) — mega-doc; its AI-implementation TODO section is stale (those APIs exist) and it self-contradicts on performance work.
+
+### Dead/orphaned code inventory (candidates for cleanup)
+`src/components/ai/*` + `src/components/audience/*` (unmounted UI layers), NotificationCenter + use-notifications, entire `src/lib/jobs` runtime, websocket-manager, fastify/@fastify/cors deps, `BrandingConfiguration` model (zero references — overlaps `ClientBranding`), `lib/monitoring/alerts`, `lib/analytics/user-analytics`, `lib/lazy-components`, `lib/image-optimization`, duplicate `src/components/posts/post-composer.tsx`, `page.tsx.backup`, `simple.tsx`, `/test` page, `/api/debug/session`, `/dashboard/customers` (wholesale duplicate of `/dashboard/clients`), `/dashboard/showcase`, `prisma/seed.js`, committed `logs/` directory, i18n declares 11 locales but only `en.json` exists.
+
+---
+
+# Historical Changelog (claims below are unverified/superseded — see Current State above)
 
 ## 🚀 Status: Complete Database Integration, Zero Mock Data
 
@@ -74,8 +141,8 @@
 
 ### Docker Setup
 ```bash
-./dev-local.sh          # Normal start
-./dev-local.sh --clean  # Clean rebuild
+./dev-local.sh                 # Normal start
+./dev-local.sh --force-update  # Force schema update (migrate deploy) & restart
 ```
 - Node.js 20 (fixed from 18)
 - Named volumes for node_modules
@@ -241,20 +308,26 @@ const safeNumber = (val: any): number =>
 ```
 
 ## Docker Commands
+
+> **Migration-first rule (ADR-0002):** every schema change must ship as a committed migration created with `npx prisma migrate dev --name <change>`; `prisma db push` is banned from all scripts, docs, and CI — the CI schema gate fails any schema/migrations mismatch. See `ADR/ADR-0002-prisma-schema-remediation.md`.
+
 ```bash
 # Development
 docker-compose up -d
 docker-compose logs -f app
 docker-compose down
 
-# Database
-npx prisma db push
+# Database (migration-first — never `prisma db push`)
+npx prisma migrate dev --name <change>  # create + apply a new migration (dev)
+npx prisma migrate deploy               # apply committed migrations (CI/existing envs)
 npx prisma generate
 npx prisma studio
+npm run db:check                        # validate schema + migration drift check
+                                        # (needs SHADOW_DATABASE_URL → empty throwaway Postgres DB)
 
 # Clean restart
 docker-compose down -v
-./dev-local.sh --clean
+./dev-local.sh
 ```
 
 ---
