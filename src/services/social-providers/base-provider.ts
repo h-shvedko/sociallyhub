@@ -1,14 +1,16 @@
-import { 
-  SocialMediaProvider, 
-  Platform, 
-  APIResponse, 
-  SocialAccount, 
+import crypto from 'crypto'
+import {
+  SocialMediaProvider,
+  Platform,
+  APIResponse,
+  SocialAccount,
   PostOptions,
   RateLimitInfo,
   SocialMediaError,
   RateLimitError,
-  AuthenticationError 
+  AuthenticationError
 } from './types'
+import { signState } from '@/lib/security/oauth-state'
 
 export abstract class BaseSocialMediaProvider implements SocialMediaProvider {
   abstract platform: Platform
@@ -310,9 +312,24 @@ export abstract class BaseSocialMediaProvider implements SocialMediaProvider {
   }
   
   // Utility methods
-  protected generateState(): string {
-    return Math.random().toString(36).substring(2, 15) + 
-           Math.random().toString(36).substring(2, 15)
+  //
+  // OAuth state generation (ADR-0005 item 4). PREFER a signed, session-bound
+  // state: when the initiating user id is known, delegate to `signState`, which
+  // produces an HMAC-signed, expiring token bound to (userId, provider) that the
+  // connect callback verifies before any token exchange.
+  //
+  // The existing provider `getAuthUrl()` callers run without session context and
+  // therefore call this with no `userId`. That path CANNOT bind identity here, so
+  // it falls back to a cryptographically random (no longer `Math.random`) but
+  // UNBOUND nonce. Identity binding for the real flow is supplied by the connect
+  // route (`/api/social/connect` GET), which mints a signed state via `signState`
+  // and stamps it into the authorization URL — see that route for the seam.
+  protected generateState(userId?: string): string {
+    if (userId) {
+      return signState({ userId, provider: this.platform })
+    }
+    // Unbound fallback: secure randomness, but not verifiable on callback.
+    return crypto.randomBytes(24).toString('hex')
   }
   
   protected buildQueryParams(params: Record<string, any>): string {

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 
 // GET /api/video-tutorials - List video tutorials with filtering
 export async function GET(request: NextRequest) {
@@ -96,6 +98,9 @@ export async function GET(request: NextRequest) {
 // POST /api/video-tutorials - Create a new video tutorial (admin only)
 export async function POST(request: NextRequest) {
   try {
+    // ADR-0005: content writes require platform admin (fail closed).
+    await requirePlatformAdmin()
+
     const body = await request.json()
     const {
       title,
@@ -171,10 +176,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(tutorial, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create video tutorial:', error)
-    return NextResponse.json(
-      { error: 'Failed to create video tutorial' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

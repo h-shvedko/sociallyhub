@@ -37,6 +37,14 @@ jobs:
       - name: Check TypeScript
         run: npx tsc --noEmit
 
+      # ADR-0005: publish the API route-auth coverage baseline on every build.
+      # WARN mode — the script always exits 0; continue-on-error is belt-and-
+      # suspenders so a scanner error can never block the build. Flips to a
+      # hard gate in ADR-0005 Phase 4 (remove continue-on-error then).
+      - name: Route auth coverage (ADR-0005, warn mode)
+        continue-on-error: true
+        run: npx tsx scripts/check-route-auth.ts
+
   # Database Schema and Mock Data Validation
   database-validation:
     name: Database Schema & Mock Data Validation

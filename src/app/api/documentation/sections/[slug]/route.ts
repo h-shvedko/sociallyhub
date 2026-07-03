@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 
 interface RouteParams {
   params: Promise<{ slug: string }>
@@ -61,6 +63,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PUT /api/documentation/sections/[slug] - Update section
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
+    // ADR-0005: documentation writes require platform admin (fail closed).
+    // FUTURE (ADR-0014): also gate the docs-management surface behind its
+    // feature flag once implemented; platformAdmin here fails closed today.
+    await requirePlatformAdmin()
+
     const { slug } = await params
     const body = await request.json()
     const { title, description, icon, sortOrder, isActive } = body
@@ -78,17 +85,18 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(section)
   } catch (error) {
-    console.error('Failed to update documentation section:', error)
-    return NextResponse.json(
-      { error: 'Failed to update documentation section' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // DELETE /api/documentation/sections/[slug] - Delete section
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
+    // ADR-0005: documentation writes require platform admin (fail closed).
+    // FUTURE (ADR-0014): also gate the docs-management surface behind its
+    // feature flag once implemented; platformAdmin here fails closed today.
+    await requirePlatformAdmin()
+
     const { slug } = await params
 
     // Check if section has pages
@@ -109,10 +117,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Failed to delete documentation section:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete documentation section' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

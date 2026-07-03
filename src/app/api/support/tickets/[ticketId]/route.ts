@@ -1,40 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { NextResponse } from 'next/server'
+
 import { prisma } from '@/lib/prisma'
-interface RouteParams {
-  params: Promise<{
-    ticketId: string
-  }>
+import { withApiAuth } from '@/lib/api/with-api-auth'
+import { jsonError } from '@/lib/api/respond'
+
+type TicketRouteParams = { ticketId: string }
+
+// Access-scoped ticket lookup (ADR-0005, fail closed).
+//
+// The caller must already be authenticated (withApiAuth `session` gate runs
+// BEFORE this). A ticket is visible only when it is the caller's own ticket
+// (`userId`) OR belongs to a workspace the caller is a member of. A ticket
+// outside that scope produces no match, so the handler returns 404 with no
+// existence leak. There is no unauthenticated fallthrough: the old
+// `const where: any = { id: ticketId }` with scoping only inside
+// `if (session?.user?.id)` is gone.
+async function scopedTicketWhere(userId: string, ticketId: string) {
+  const memberships = await prisma.userWorkspace.findMany({
+    where: { userId },
+    select: { workspaceId: true },
+  })
+  const workspaceIds = memberships.map((m) => m.workspaceId)
+  return {
+    id: ticketId,
+    OR: [{ userId }, { workspaceId: { in: workspaceIds } }],
+  }
 }
 
 // GET /api/support/tickets/[ticketId] - Get specific ticket details
-export async function GET(request: NextRequest, props: RouteParams) {
-  const params = await props.params;
-  try {
-    const session = await getServerSession(authOptions)
+export const GET = withApiAuth<TicketRouteParams>(
+  async (_request, { user, params }) => {
     const { ticketId } = params
-
-    // Build where clause for access control
-    const where: any = { id: ticketId }
-
-    // If user is logged in, verify access
-    if (session?.user?.id) {
-      const userId = await normalizeUserId(session.user.id)
-
-      // Get user's workspaces
-      const userWorkspaces = await prisma.userWorkspace.findMany({
-        where: { userId },
-        select: { workspaceId: true }
-      })
-
-      const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-      where.OR = [
-        { userId }, // User's own ticket
-        { workspaceId: { in: workspaceIds } } // Workspace ticket
-      ]
-    }
+    const where = await scopedTicketWhere(user!.id, ticketId)
 
     const ticket = await prisma.supportTicket.findFirst({
       where,
@@ -44,8 +41,8 @@ export async function GET(request: NextRequest, props: RouteParams) {
             id: true,
             name: true,
             email: true,
-            image: true
-          }
+            image: true,
+          },
         },
         assignedAgent: {
           select: {
@@ -53,56 +50,45 @@ export async function GET(request: NextRequest, props: RouteParams) {
             displayName: true,
             title: true,
             department: true,
-            isOnline: true
-          }
+            isOnline: true,
+          },
         },
         workspace: {
           select: {
             id: true,
-            name: true
-          }
+            name: true,
+          },
         },
         updates: {
           where: {
-            isPublic: true // Only show public updates to users
+            isPublic: true, // Only show public updates to users
           },
           orderBy: {
-            createdAt: 'asc'
-          }
+            createdAt: 'asc',
+          },
         },
         attachments: {
           orderBy: {
-            createdAt: 'asc'
-          }
-        }
-      }
+            createdAt: 'asc',
+          },
+        },
+      },
     })
 
     if (!ticket) {
-      return NextResponse.json(
-        { error: 'Ticket not found' },
-        { status: 404 }
-      )
+      return jsonError(404, 'Ticket not found')
     }
 
     return NextResponse.json({ ticket })
-
-  } catch (error) {
-    console.error('Failed to fetch ticket:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch ticket' },
-      { status: 500 }
-    )
-  }
-}
+  },
+  { access: 'session' }
+)
 
 // PUT /api/support/tickets/[ticketId] - Update ticket
-export async function PUT(request: NextRequest, props: RouteParams) {
-  const params = await props.params;
-  try {
-    const session = await getServerSession(authOptions)
-    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
+export const PUT = withApiAuth<TicketRouteParams>(
+  async (request, { user, params }) => {
     const { ticketId } = params
+    const userId = user!.id
     const body = await request.json()
 
     const {
@@ -112,38 +98,15 @@ export async function PUT(request: NextRequest, props: RouteParams) {
       assignedAgentId,
       resolution,
       tags,
-      internalNotes
+      internalNotes,
     } = body
 
-    // Verify ticket exists and user has access
-    const where: any = { id: ticketId }
-
-    if (session?.user?.id) {
-      const userId = normalizedUserId
-
-      // Get user's workspaces
-      const userWorkspaces = await prisma.userWorkspace.findMany({
-        where: { userId },
-        select: { workspaceId: true }
-      })
-
-      const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-      where.OR = [
-        { userId }, // User's own ticket
-        { workspaceId: { in: workspaceIds } } // Workspace ticket
-      ]
-    }
-
-    const existingTicket = await prisma.supportTicket.findFirst({
-      where
-    })
+    // Verify ticket exists and the caller has access (owner or workspace member)
+    const where = await scopedTicketWhere(userId, ticketId)
+    const existingTicket = await prisma.supportTicket.findFirst({ where })
 
     if (!existingTicket) {
-      return NextResponse.json(
-        { error: 'Ticket not found' },
-        { status: 404 }
-      )
+      return jsonError(404, 'Ticket not found')
     }
 
     // Build update data
@@ -158,16 +121,16 @@ export async function PUT(request: NextRequest, props: RouteParams) {
         message: `Status changed from ${existingTicket.status} to ${status}`,
         oldStatus: existingTicket.status,
         newStatus: status,
-        authorId: session?.user?.id ? normalizedUserId : null,
-        authorType: session?.user?.id ? 'user' : 'system',
-        authorName: session?.user?.name || 'System',
-        isPublic: true
+        authorId: userId,
+        authorType: 'user',
+        authorName: user!.name || 'System',
+        isPublic: true,
       })
 
       // Set resolution timestamp if resolving
       if (status === 'RESOLVED' || status === 'CLOSED') {
         updateData.resolvedAt = new Date()
-        updateData.resolvedBy = session?.user?.id ? normalizedUserId : existingTicket.assignedAgentId
+        updateData.resolvedBy = userId
       }
     }
 
@@ -179,10 +142,10 @@ export async function PUT(request: NextRequest, props: RouteParams) {
         message: `Priority changed from ${existingTicket.priority} to ${priority}`,
         oldPriority: existingTicket.priority,
         newPriority: priority,
-        authorId: session?.user?.id ? normalizedUserId : null,
-        authorType: session?.user?.id ? 'user' : 'system',
-        authorName: session?.user?.name || 'System',
-        isPublic: true
+        authorId: userId,
+        authorType: 'user',
+        authorName: user!.name || 'System',
+        isPublic: true,
       })
     }
 
@@ -197,7 +160,7 @@ export async function PUT(request: NextRequest, props: RouteParams) {
       if (assignedAgentId) {
         const agent = await prisma.supportAgent.findUnique({
           where: { id: assignedAgentId },
-          select: { displayName: true }
+          select: { displayName: true },
         })
 
         updates.push({
@@ -206,10 +169,10 @@ export async function PUT(request: NextRequest, props: RouteParams) {
           message: `Ticket assigned to ${agent?.displayName || 'Unknown Agent'}`,
           oldAssignee: existingTicket.assignedAgentId,
           newAssignee: assignedAgentId,
-          authorId: session?.user?.id ? normalizedUserId : null,
-          authorType: session?.user?.id ? 'user' : 'system',
-          authorName: session?.user?.name || 'System',
-          isPublic: true
+          authorId: userId,
+          authorType: 'user',
+          authorName: user!.name || 'System',
+          isPublic: true,
         })
       }
     }
@@ -221,11 +184,11 @@ export async function PUT(request: NextRequest, props: RouteParams) {
           ticketId,
           updateType: 'RESOLUTION',
           message: resolution,
-          authorId: session?.user?.id ? normalizedUserId : null,
-          authorType: session?.user?.id ? 'user' : 'agent',
-          authorName: session?.user?.name || 'Support Agent',
+          authorId: userId,
+          authorType: 'user',
+          authorName: user!.name || 'Support Agent',
           isPublic: true,
-          isResolution: true
+          isResolution: true,
         })
       }
     }
@@ -249,8 +212,8 @@ export async function PUT(request: NextRequest, props: RouteParams) {
               id: true,
               name: true,
               email: true,
-              image: true
-            }
+              image: true,
+            },
           },
           assignedAgent: {
             select: {
@@ -258,51 +221,35 @@ export async function PUT(request: NextRequest, props: RouteParams) {
               displayName: true,
               title: true,
               department: true,
-              isOnline: true
-            }
+              isOnline: true,
+            },
           },
           workspace: {
             select: {
               id: true,
-              name: true
-            }
-          }
-        }
+              name: true,
+            },
+          },
+        },
       }),
       // Create update records
-      ...updates.map(update =>
+      ...updates.map((update) =>
         prisma.ticketUpdate.create({ data: update })
-      )
+      ),
     ])
 
     return NextResponse.json({ ticket: updatedTicket })
+  },
+  { access: 'session' }
+)
 
-  } catch (error) {
-    console.error('Failed to update ticket:', error)
-    return NextResponse.json(
-      { error: 'Failed to update ticket' },
-      { status: 500 }
-    )
-  }
-}
-
-// DELETE /api/support/tickets/[ticketId] - Delete ticket (admin only)
-export async function DELETE(request: NextRequest, props: RouteParams) {
-  const params = await props.params;
-  try {
-    const session = await getServerSession(authOptions)
+// DELETE /api/support/tickets/[ticketId] - Delete ticket (owner or workspace OWNER/ADMIN)
+export const DELETE = withApiAuth<TicketRouteParams>(
+  async (_request, { user, params }) => {
     const { ticketId } = params
+    const userId = user!.id
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-
-    // Verify user is admin or owner of the ticket
+    // Verify user is the owner of the ticket, or an OWNER/ADMIN of its workspace
     const ticket = await prisma.supportTicket.findFirst({
       where: {
         id: ticketId,
@@ -313,34 +260,25 @@ export async function DELETE(request: NextRequest, props: RouteParams) {
               userWorkspaces: {
                 some: {
                   userId,
-                  role: { in: ['OWNER', 'ADMIN'] }
-                }
-              }
-            }
-          }
-        ]
-      }
+                  role: { in: ['OWNER', 'ADMIN'] },
+                },
+              },
+            },
+          },
+        ],
+      },
     })
 
     if (!ticket) {
-      return NextResponse.json(
-        { error: 'Ticket not found or insufficient permissions' },
-        { status: 404 }
-      )
+      return jsonError(404, 'Ticket not found or insufficient permissions')
     }
 
     // Delete ticket and related records (cascading)
     await prisma.supportTicket.delete({
-      where: { id: ticketId }
+      where: { id: ticketId },
     })
 
     return NextResponse.json({ message: 'Ticket deleted successfully' })
-
-  } catch (error) {
-    console.error('Failed to delete ticket:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete ticket' },
-      { status: 500 }
-    )
-  }
-}
+  },
+  { access: 'session' }
+)

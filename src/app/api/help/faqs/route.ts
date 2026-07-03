@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 
 // GET /api/help/faqs - List FAQs with filtering and enhanced sorting
 export async function GET(request: NextRequest) {
@@ -117,13 +119,10 @@ function escapeRegExp(string: string): string {
 // POST /api/help/faqs - Create new FAQ (Admin only)
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json()
+    // ADR-0005: content writes require platform admin (fail closed).
+    await requirePlatformAdmin()
 
-    // TODO: Add authentication and admin check here
-    // const session = await getServerSession()
-    // if (!session?.user || !isAdmin(session.user)) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    // }
+    const data = await request.json()
 
     const {
       question,
@@ -161,10 +160,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(faq, { status: 201 })
   } catch (error) {
-    console.error('Failed to create help FAQ:', error)
-    return NextResponse.json(
-      { error: 'Failed to create help FAQ' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

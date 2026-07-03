@@ -17,15 +17,7 @@ const nextConfig = {
       'lucide-react',
       'recharts'
     ],
-    webpackBuildWorker: true,
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js'
-        }
-      }
-    }
+    webpackBuildWorker: true
   },
   
   // Image optimization
@@ -82,11 +74,21 @@ const nextConfig = {
         ]
       },
       {
+        // Interim default for all API routes (ADR-0005 Phase 0).
+        // Never publicly cache API responses — session-scoped payloads must
+        // not be shared across users behind a CDN. The withApiAuth wrapper
+        // (ADR-0005 Phase 1) also sets `no-store` per-route; this is defense
+        // in depth for routes not yet migrated. `X-Robots-Tag: noindex` keeps
+        // API responses out of search indexes.
         source: '/api/(.*)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, s-maxage=60, stale-while-revalidate=300'
+            value: 'no-store'
+          },
+          {
+            key: 'X-Robots-Tag',
+            value: 'noindex'
           }
         ]
       },
@@ -175,10 +177,7 @@ const nextConfig = {
   
   // React strict mode
   reactStrictMode: true,
-  
-  // SWC minify
-  swcMinify: true,
-  
+
   // Disable x-powered-by
   generateEtags: false
 }

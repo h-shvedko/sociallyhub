@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 
 // GET /api/help/categories - List all categories
 export async function GET(request: NextRequest) {
@@ -62,13 +64,10 @@ export async function GET(request: NextRequest) {
 // POST /api/help/categories - Create new category (Admin only)
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json()
+    // ADR-0005: content writes require platform admin (fail closed).
+    await requirePlatformAdmin()
 
-    // TODO: Add authentication and admin check here
-    // const session = await getServerSession()
-    // if (!session?.user || !isAdmin(session.user)) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    // }
+    const data = await request.json()
 
     const {
       name,
@@ -113,10 +112,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(category, { status: 201 })
   } catch (error) {
-    console.error('Failed to create help category:', error)
-    return NextResponse.json(
-      { error: 'Failed to create help category' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

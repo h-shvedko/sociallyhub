@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { NextResponse } from 'next/server'
+
 import { prisma } from '@/lib/prisma'
+import { withApiAuth } from '@/lib/api/with-api-auth'
+import { jsonError } from '@/lib/api/respond'
+
 // Generate unique ticket number
 function generateTicketNumber(): string {
   const timestamp = Date.now().toString().slice(-8)
@@ -10,9 +12,15 @@ function generateTicketNumber(): string {
 }
 
 // GET /api/support/tickets - List support tickets
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
+//
+// ADR-0005 fail-closed: previously `const where: any = {}` was scoped only
+// inside `if (session?.user?.id)`, so an unauthenticated caller fell through
+// to an UNSCOPED query that returned EVERY ticket across all workspaces. The
+// route now requires a session and always scopes to the caller's own tickets
+// plus tickets in workspaces they belong to.
+export const GET = withApiAuth(
+  async (request, { user }) => {
+    const userId = user!.id
     const { searchParams } = new URL(request.url)
 
     const status = searchParams.get('status')
@@ -22,25 +30,18 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Build where clause
-    const where: any = {}
+    // Scope to the caller's own tickets and workspaces they have access to.
+    const userWorkspaces = await prisma.userWorkspace.findMany({
+      where: { userId },
+      select: { workspaceId: true },
+    })
+    const workspaceIds = userWorkspaces.map((uw) => uw.workspaceId)
 
-    // If user is logged in, show their tickets and workspace tickets they have access to
-    if (session?.user?.id) {
-      const userId = await normalizeUserId(session.user.id)
-
-      // Get user's workspaces
-      const userWorkspaces = await prisma.userWorkspace.findMany({
-        where: { userId },
-        select: { workspaceId: true }
-      })
-
-      const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-      where.OR = [
+    const where: any = {
+      OR: [
         { userId }, // User's own tickets
-        { workspaceId: { in: workspaceIds } } // Workspace tickets
-      ]
+        { workspaceId: { in: workspaceIds } }, // Workspace tickets
+      ],
     }
 
     // Apply filters
@@ -78,8 +79,8 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               email: true,
-              image: true
-            }
+              image: true,
+            },
           },
           assignedAgent: {
             select: {
@@ -87,30 +88,30 @@ export async function GET(request: NextRequest) {
               displayName: true,
               title: true,
               department: true,
-              isOnline: true
-            }
+              isOnline: true,
+            },
           },
           workspace: {
             select: {
               id: true,
-              name: true
-            }
+              name: true,
+            },
           },
           _count: {
             select: {
               updates: true,
-              attachments: true
-            }
-          }
+              attachments: true,
+            },
+          },
         },
         orderBy: [
           { priority: 'desc' },
-          { createdAt: 'desc' }
+          { createdAt: 'desc' },
         ],
         take: limit,
-        skip: offset
+        skip: offset,
       }),
-      prisma.supportTicket.count({ where })
+      prisma.supportTicket.count({ where }),
     ])
 
     return NextResponse.json({
@@ -119,24 +120,22 @@ export async function GET(request: NextRequest) {
         total: totalCount,
         limit,
         offset,
-        hasMore: offset + tickets.length < totalCount
-      }
+        hasMore: offset + tickets.length < totalCount,
+      },
     })
-
-  } catch (error) {
-    console.error('Failed to fetch support tickets:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch support tickets' },
-      { status: 500 }
-    )
-  }
-}
+  },
+  { access: 'session' }
+)
 
 // POST /api/support/tickets - Create a new support ticket
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
+//
+// Intentionally `public` (ADR-0005 reviewed allow-list): guest support ticket
+// creation is a designed feature (guestName/guestEmail/guestPhone). withApiAuth
+// still resolves the session opportunistically, so an authenticated caller's
+// ticket is bound to their (normalized) user id and validated workspace. This
+// replaces the previous unawaited `normalizeUserId(session.user.id)` usage.
+export const POST = withApiAuth(
+  async (request, { user }) => {
     const body = await request.json()
 
     const {
@@ -149,23 +148,17 @@ export async function POST(request: NextRequest) {
       guestName,
       guestEmail,
       guestPhone,
-      workspaceId
+      workspaceId,
     } = body
 
     // Validation
     if (!title || !description) {
-      return NextResponse.json(
-        { error: 'Title and description are required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Title and description are required')
     }
 
     // For guest users, require contact info
-    if (!session?.user?.id && (!guestName || !guestEmail)) {
-      return NextResponse.json(
-        { error: 'Guest name and email are required for non-logged-in users' },
-        { status: 400 }
-      )
+    if (!user && (!guestName || !guestEmail)) {
+      return jsonError(400, 'Guest name and email are required for non-logged-in users')
     }
 
     // Calculate expected response time based on priority
@@ -195,12 +188,12 @@ export async function POST(request: NextRequest) {
         isActive: true,
         isOnline: true,
         currentChatCount: {
-          lt: prisma.supportAgent.fields.maxConcurrentChats
-        }
+          lt: prisma.supportAgent.fields.maxConcurrentChats,
+        },
       },
       orderBy: {
-        currentChatCount: 'asc' // Assign to agent with least workload
-      }
+        currentChatCount: 'asc', // Assign to agent with least workload
+      },
     })
 
     const ticketData: any = {
@@ -214,21 +207,21 @@ export async function POST(request: NextRequest) {
       expectedResponseBy,
       guestName: guestName?.trim(),
       guestEmail: guestEmail?.trim(),
-      guestPhone: guestPhone?.trim()
+      guestPhone: guestPhone?.trim(),
     }
 
     // Add user/workspace if authenticated
-    if (session?.user?.id) {
-      ticketData.userId = normalizedUserId
+    if (user) {
+      ticketData.userId = user.id
       if (workspaceId) {
         // Verify user has access to workspace
         const userWorkspace = await prisma.userWorkspace.findUnique({
           where: {
             userId_workspaceId: {
-              userId: normalizedUserId,
-              workspaceId
-            }
-          }
+              userId: user.id,
+              workspaceId,
+            },
+          },
         })
         if (userWorkspace) {
           ticketData.workspaceId = workspaceId
@@ -251,8 +244,8 @@ export async function POST(request: NextRequest) {
             id: true,
             name: true,
             email: true,
-            image: true
-          }
+            image: true,
+          },
         },
         assignedAgent: {
           select: {
@@ -260,16 +253,16 @@ export async function POST(request: NextRequest) {
             displayName: true,
             title: true,
             department: true,
-            isOnline: true
-          }
+            isOnline: true,
+          },
         },
         workspace: {
           select: {
             id: true,
-            name: true
-          }
-        }
-      }
+            name: true,
+          },
+        },
+      },
     })
 
     // Create initial system update
@@ -279,17 +272,11 @@ export async function POST(request: NextRequest) {
         updateType: 'SYSTEM_UPDATE',
         message: `Ticket created${availableAgent ? ` and assigned to ${availableAgent.displayName}` : ''}`,
         authorType: 'system',
-        isPublic: true
-      }
+        isPublic: true,
+      },
     })
 
     return NextResponse.json(ticket, { status: 201 })
-
-  } catch (error) {
-    console.error('Failed to create support ticket:', error)
-    return NextResponse.json(
-      { error: 'Failed to create support ticket' },
-      { status: 500 }
-    )
-  }
-}
+  },
+  { access: 'public' }
+)

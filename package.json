@@ -93,7 +93,6 @@
     "nodemailer": "^6.10.1",
     "openai": "^5.16.0",
     "prisma": "^6.15.0",
-    "ratelimiter": "^3.4.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-grid-layout": "^1.5.2",

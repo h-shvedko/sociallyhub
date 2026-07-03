@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 
 // GET /api/documentation/pages - Get documentation pages
 export async function GET(request: NextRequest) {
@@ -91,6 +93,11 @@ export async function GET(request: NextRequest) {
 // POST /api/documentation/pages - Create new documentation page
 export async function POST(request: NextRequest) {
   try {
+    // ADR-0005: documentation writes require platform admin (fail closed).
+    // FUTURE (ADR-0014): also gate the docs-management surface behind its
+    // feature flag once implemented; platformAdmin here fails closed today.
+    await requirePlatformAdmin()
+
     const body = await request.json()
     const {
       title,
@@ -176,10 +183,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(page, { status: 201 })
   } catch (error) {
-    console.error('Failed to create documentation page:', error)
-    return NextResponse.json(
-      { error: 'Failed to create documentation page' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

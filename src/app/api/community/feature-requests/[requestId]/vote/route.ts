@@ -1,17 +1,52 @@
+// @api-auth: public
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { rateLimit } from '@/lib/utils/rate-limit'
+
 interface RouteParams {
   params: Promise<{
     requestId: string
   }>
 }
 
+// First x-forwarded-for hop (falling back to x-real-ip) for rate-limit keying.
+function rateLimitIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for')
+  if (forwarded) return forwarded.split(',')[0]!.trim()
+  return request.headers.get('x-real-ip')?.trim() || 'unknown'
+}
+
+// Enforce a per-IP sliding-window limit; returns a 429 response when exceeded,
+// or null when the request may proceed. Fails open on Redis errors.
+async function enforceIpRateLimit(
+  request: NextRequest,
+  scope: string,
+  points: number
+): Promise<NextResponse | null> {
+  const result = await rateLimit(`ip:${rateLimitIp(request)}:feature-vote:${scope}`, {
+    points,
+    windowSec: 60,
+  })
+  if (result.ok) return null
+  const res = NextResponse.json(
+    { error: 'Too many requests', code: 'RATE_LIMITED' },
+    { status: 429 }
+  )
+  if (result.retryAfterSec !== undefined) {
+    res.headers.set('Retry-After', String(result.retryAfterSec))
+  }
+  return res
+}
+
 // POST /api/community/feature-requests/[requestId]/vote - Vote on a feature request
 export async function POST(request: NextRequest, props: RouteParams) {
   const params = await props.params;
   try {
+    const limited = await enforceIpRateLimit(request, 'POST', 30)
+    if (limited) return limited
+
     const session = await getServerSession(authOptions)
     const { requestId } = params
     const body = await request.json()
@@ -55,16 +90,30 @@ export async function POST(request: NextRequest, props: RouteParams) {
       )
     }
 
-    // Create vote
-    const vote = await prisma.featureRequestVote.create({
-      data: {
-        requestId,
-        userId,
-        guestIdentifier: userId ? null : finalGuestIdentifier,
-        guestName: guestName?.trim(),
-        guestEmail: guestEmail?.trim()
+    // Create vote. The unique constraints @@unique([requestId, userId]) and
+    // @@unique([requestId, guestIdentifier]) guard against a concurrent
+    // double-vote that slips past the findFirst check above — catch the P2002
+    // and report "already voted" instead of crashing with a 500.
+    let vote
+    try {
+      vote = await prisma.featureRequestVote.create({
+        data: {
+          requestId,
+          userId,
+          guestIdentifier: userId ? null : finalGuestIdentifier,
+          guestName: guestName?.trim(),
+          guestEmail: guestEmail?.trim()
+        }
+      })
+    } catch (err) {
+      if (typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002') {
+        return NextResponse.json(
+          { error: 'You have already voted on this feature request' },
+          { status: 409 }
+        )
       }
-    })
+      throw err
+    }
 
     // Update vote count on feature request
     await prisma.featureRequest.update({
@@ -113,6 +162,9 @@ export async function POST(request: NextRequest, props: RouteParams) {
 export async function DELETE(request: NextRequest, props: RouteParams) {
   const params = await props.params;
   try {
+    const limited = await enforceIpRateLimit(request, 'DELETE', 30)
+    if (limited) return limited
+
     const session = await getServerSession(authOptions)
     const { requestId } = params
 
@@ -174,6 +226,9 @@ export async function DELETE(request: NextRequest, props: RouteParams) {
 export async function GET(request: NextRequest, props: RouteParams) {
   const params = await props.params;
   try {
+    const limited = await enforceIpRateLimit(request, 'GET', 60)
+    if (limited) return limited
+
     const session = await getServerSession(authOptions)
     const { requestId } = params
 

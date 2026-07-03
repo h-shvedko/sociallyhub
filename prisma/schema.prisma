@@ -5798,3 +5798,21 @@ enum FeatureFlagEvaluationReason {
   PREREQUISITE_FAILED
   ERROR
 }
+
+// ========================================
+// ENGAGEMENT EVENTS (ADR-0005 counter dedup)
+// ========================================
+
+model EngagementEvent {
+  id         String   @id @default(cuid())
+  eventType  String   // e.g. 'article_feedback', 'faq_view', 'faq_feedback'
+  targetType String
+  targetId   String
+  dedupKey   String   // salted hash of userId OR ip+ua+day
+  value      String?  // e.g. 'helpful' / 'not_helpful' for feedback
+  createdAt  DateTime @default(now())
+
+  @@unique([eventType, targetId, dedupKey])
+  @@index([targetType, targetId])
+  @@map("engagement_events")
+}

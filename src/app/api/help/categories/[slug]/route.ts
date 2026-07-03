@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 
 // GET /api/help/categories/[slug] - Get specific category with content
 export async function GET(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
@@ -74,14 +76,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ slug:
 export async function PUT(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
   try {
+    // ADR-0005: content writes require platform admin (fail closed).
+    await requirePlatformAdmin()
+
     const { slug } = params
     const data = await request.json()
-
-    // TODO: Add authentication and admin check here
-    // const session = await getServerSession()
-    // if (!session?.user || !isAdmin(session.user)) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    // }
 
     const category = await prisma.helpCategory.findUnique({
       where: { slug }
@@ -102,11 +101,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ slug:
 
     return NextResponse.json(updatedCategory)
   } catch (error) {
-    console.error('Failed to update help category:', error)
-    return NextResponse.json(
-      { error: 'Failed to update help category' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -114,13 +109,10 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ slug:
 export async function DELETE(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
   try {
-    const { slug } = params
+    // ADR-0005: content writes require platform admin (fail closed).
+    await requirePlatformAdmin()
 
-    // TODO: Add authentication and admin check here
-    // const session = await getServerSession()
-    // if (!session?.user || !isAdmin(session.user)) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    // }
+    const { slug } = params
 
     const category = await prisma.helpCategory.findUnique({
       where: { slug }
@@ -156,10 +148,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ sl
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Failed to delete help category:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete help category' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

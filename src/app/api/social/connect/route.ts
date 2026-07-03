@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { socialMediaManager } from '@/services/social-providers'
 import { withLogging } from '@/lib/middleware/logging'
 import { SecurityLogger, ErrorLogger } from '@/lib/middleware/logging'
+import { signState, verifyState } from '@/lib/security/oauth-state'
 
 async function handleConnect(request: NextRequest) {
   try {
@@ -44,17 +45,39 @@ async function handleConnect(request: NextRequest) {
 
     try {
       const authUrl = await socialMediaManager.getAuthUrl(
-        platform as any, 
+        platform as any,
         redirectUri,
         getDefaultScopes(platform)
       )
 
+      // ADR-0005 item 4: bind the OAuth `state` to this session + platform with
+      // an HMAC-signed, expiring token, and stamp it into the authorization URL
+      // (overwriting the provider's unbound placeholder state) so the provider
+      // echoes the signed value back to the callback, where we verify it.
+      const signedState = signState({
+        userId: session.user.id,
+        provider: platform,
+      })
+
+      let signedAuthUrl = authUrl
+      try {
+        const parsed = new URL(authUrl)
+        parsed.searchParams.set('state', signedState)
+        signedAuthUrl = parsed.toString()
+      } catch {
+        // If the provider returned a non-absolute URL we cannot rewrite it;
+        // the client must still send back `state` below for verification.
+      }
+
       return NextResponse.json({
         success: true,
         data: {
-          authUrl,
+          authUrl: signedAuthUrl,
           platform,
-          redirectUri
+          redirectUri,
+          // Also returned explicitly for clients that track state themselves;
+          // this is the value the callback POST must return.
+          state: signedState
         }
       })
     } catch (error) {
@@ -108,6 +131,28 @@ async function handleCallback(request: NextRequest) {
     if (!platform || !code || !redirectUri) {
       return NextResponse.json(
         { error: 'Platform, code, and redirectUri are required' },
+        { status: 400 }
+      )
+    }
+
+    // ADR-0005 item 4: verify the signed OAuth `state` — bound to this session
+    // user + platform — BEFORE any token exchange. Fail closed on any invalid,
+    // tampered, expired, or mismatched-identity state (OAuth CSRF defense).
+    const stateCheck = verifyState(state, {
+      userId: session.user.id,
+      provider: platform,
+    })
+    if (!stateCheck.valid) {
+      SecurityLogger.logUnauthorizedAccess(
+        session.user.id,
+        '/api/social/connect',
+        request.headers.get('x-forwarded-for') || undefined
+      )
+
+      // Never leak the specific failure reason (missing/expired/mismatch) —
+      // it aids CSRF probing. A single opaque code is returned.
+      return NextResponse.json(
+        { error: 'Invalid OAuth state', code: 'INVALID_STATE' },
         { status: 400 }
       )
     }

@@ -1,128 +1,85 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { NextResponse } from 'next/server'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
-interface RouteParams {
-  params: Promise<{
-    ticketId: string
-  }>
+import { prisma } from '@/lib/prisma'
+import { withApiAuth } from '@/lib/api/with-api-auth'
+import { jsonError } from '@/lib/api/respond'
+
+type TicketRouteParams = { ticketId: string }
+
+// Access-scoped ticket lookup (ADR-0005, fail closed). The caller is already
+// authenticated (withApiAuth `session` gate). A ticket is reachable only when
+// it is the caller's own ticket OR belongs to a workspace the caller is a
+// member of; anything else yields no match → 404 (no existence leak). The old
+// unauthenticated fallthrough (`where: any = { id: ticketId }` scoped only
+// inside `if (session?.user?.id)`) is gone.
+//
+// NOTE: attachment bytes are still written under `public/uploads/tickets`,
+// leaving them world-readable by URL. Relocating attachment storage out of the
+// public web root is owned by ADR-0007 and intentionally left unchanged here.
+async function scopedTicketWhere(userId: string, ticketId: string) {
+  const memberships = await prisma.userWorkspace.findMany({
+    where: { userId },
+    select: { workspaceId: true },
+  })
+  const workspaceIds = memberships.map((m) => m.workspaceId)
+  return {
+    id: ticketId,
+    OR: [{ userId }, { workspaceId: { in: workspaceIds } }],
+  }
 }
 
 // GET /api/support/tickets/[ticketId]/attachments - Get ticket attachments
-export async function GET(request: NextRequest, props: RouteParams) {
-  const params = await props.params;
-  try {
-    const session = await getServerSession(authOptions)
+export const GET = withApiAuth<TicketRouteParams>(
+  async (_request, { user, params }) => {
     const { ticketId } = params
 
-    // Verify ticket access
-    const where: any = { id: ticketId }
-
-    if (session?.user?.id) {
-      const userId = await normalizeUserId(session.user.id)
-
-      // Get user's workspaces
-      const userWorkspaces = await prisma.userWorkspace.findMany({
-        where: { userId },
-        select: { workspaceId: true }
-      })
-
-      const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-      where.OR = [
-        { userId }, // User's own ticket
-        { workspaceId: { in: workspaceIds } } // Workspace ticket
-      ]
-    }
-
     const ticket = await prisma.supportTicket.findFirst({
-      where,
-      select: { id: true }
+      where: await scopedTicketWhere(user!.id, ticketId),
+      select: { id: true },
     })
 
     if (!ticket) {
-      return NextResponse.json(
-        { error: 'Ticket not found' },
-        { status: 404 }
-      )
+      return jsonError(404, 'Ticket not found')
     }
 
     const attachments = await prisma.ticketAttachment.findMany({
       where: { ticketId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     })
 
     return NextResponse.json({ attachments })
-
-  } catch (error) {
-    console.error('Failed to fetch ticket attachments:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch ticket attachments' },
-      { status: 500 }
-    )
-  }
-}
+  },
+  { access: 'session' }
+)
 
 // POST /api/support/tickets/[ticketId]/attachments - Upload ticket attachment
-export async function POST(request: NextRequest, props: RouteParams) {
-  const params = await props.params;
-  try {
-    const session = await getServerSession(authOptions)
-    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
+export const POST = withApiAuth<TicketRouteParams>(
+  async (request, { user, params }) => {
     const { ticketId } = params
-
-    // Verify ticket access
-    const where: any = { id: ticketId }
-
-    if (session?.user?.id) {
-      const userId = normalizedUserId
-
-      // Get user's workspaces
-      const userWorkspaces = await prisma.userWorkspace.findMany({
-        where: { userId },
-        select: { workspaceId: true }
-      })
-
-      const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-      where.OR = [
-        { userId }, // User's own ticket
-        { workspaceId: { in: workspaceIds } } // Workspace ticket
-      ]
-    }
+    const userId = user!.id
 
     const ticket = await prisma.supportTicket.findFirst({
-      where
+      where: await scopedTicketWhere(userId, ticketId),
     })
 
     if (!ticket) {
-      return NextResponse.json(
-        { error: 'Ticket not found' },
-        { status: 404 }
-      )
+      return jsonError(404, 'Ticket not found')
     }
 
     const formData = await request.formData()
     const file = formData.get('file') as File
 
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file provided' },
-        { status: 400 }
-      )
+      return jsonError(400, 'No file provided')
     }
 
     // Validate file size (10MB limit)
     const maxSize = 10 * 1024 * 1024 // 10MB
     if (file.size > maxSize) {
-      return NextResponse.json(
-        { error: 'File size exceeds 10MB limit' },
-        { status: 400 }
-      )
+      return jsonError(400, 'File size exceeds 10MB limit')
     }
 
     // Validate file type (security)
@@ -135,19 +92,17 @@ export async function POST(request: NextRequest, props: RouteParams) {
       'text/plain',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/zip'
+      'application/zip',
     ]
 
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json(
-        { error: 'File type not allowed' },
-        { status: 400 }
-      )
+      return jsonError(400, 'File type not allowed')
     }
 
     // Generate unique filename
     const fileExtension = file.name.split('.').pop()
     const filename = `${uuidv4()}.${fileExtension}`
+    // NOTE (ADR-0007): still under the public web root — see module header.
     const uploadDir = join(process.cwd(), 'public', 'uploads', 'tickets')
     const filePath = join(uploadDir, filename)
 
@@ -172,12 +127,12 @@ export async function POST(request: NextRequest, props: RouteParams) {
         fileSize: file.size,
         mimeType: file.type,
         fileUrl: `/uploads/tickets/${filename}`,
-        uploadedBy: session?.user?.id ? normalizedUserId : null,
-        uploadedByType: session?.user?.id ? 'user' : 'guest',
-        uploadedByName: session?.user?.name || ticket.guestName || 'Guest User',
+        uploadedBy: userId,
+        uploadedByType: 'user',
+        uploadedByName: user!.name || ticket.guestName || 'Guest User',
         isScanned: false,
-        scanResult: 'pending'
-      }
+        scanResult: 'pending',
+      },
     })
 
     // Create ticket update for attachment
@@ -186,85 +141,49 @@ export async function POST(request: NextRequest, props: RouteParams) {
         ticketId,
         updateType: 'SYSTEM_UPDATE',
         message: `File uploaded: ${file.name}`,
-        authorId: session?.user?.id ? normalizedUserId : null,
-        authorType: session?.user?.id ? 'user' : 'guest',
-        authorName: session?.user?.name || ticket.guestName || 'Guest User',
-        isPublic: true
-      }
+        authorId: userId,
+        authorType: 'user',
+        authorName: user!.name || ticket.guestName || 'Guest User',
+        isPublic: true,
+      },
     })
 
     return NextResponse.json({ attachment }, { status: 201 })
+  },
+  { access: 'session' }
+)
 
-  } catch (error) {
-    console.error('Failed to upload attachment:', error)
-    return NextResponse.json(
-      { error: 'Failed to upload attachment' },
-      { status: 500 }
-    )
-  }
-}
-
-// DELETE /api/support/tickets/[ticketId]/attachments/[attachmentId] - Delete attachment
-export async function DELETE(request: NextRequest, props: RouteParams) {
-  const params = await props.params;
-  try {
-    const session = await getServerSession(authOptions)
+// DELETE /api/support/tickets/[ticketId]/attachments?attachmentId=... - Delete attachment
+export const DELETE = withApiAuth<TicketRouteParams>(
+  async (request, { user, params }) => {
     const { ticketId } = params
     const { searchParams } = new URL(request.url)
     const attachmentId = searchParams.get('attachmentId')
 
     if (!attachmentId) {
-      return NextResponse.json(
-        { error: 'Attachment ID is required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Attachment ID is required')
     }
 
     // Verify ticket access
-    const where: any = { id: ticketId }
-
-    if (session?.user?.id) {
-      const userId = await normalizeUserId(session.user.id)
-
-      // Get user's workspaces
-      const userWorkspaces = await prisma.userWorkspace.findMany({
-        where: { userId },
-        select: { workspaceId: true }
-      })
-
-      const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-      where.OR = [
-        { userId }, // User's own ticket
-        { workspaceId: { in: workspaceIds } } // Workspace ticket
-      ]
-    }
-
     const ticket = await prisma.supportTicket.findFirst({
-      where,
-      select: { id: true }
+      where: await scopedTicketWhere(user!.id, ticketId),
+      select: { id: true },
     })
 
     if (!ticket) {
-      return NextResponse.json(
-        { error: 'Ticket not found' },
-        { status: 404 }
-      )
+      return jsonError(404, 'Ticket not found')
     }
 
     // Find and delete attachment
     const attachment = await prisma.ticketAttachment.findFirst({
       where: {
         id: attachmentId,
-        ticketId
-      }
+        ticketId,
+      },
     })
 
     if (!attachment) {
-      return NextResponse.json(
-        { error: 'Attachment not found' },
-        { status: 404 }
-      )
+      return jsonError(404, 'Attachment not found')
     }
 
     // Delete file from filesystem
@@ -278,16 +197,10 @@ export async function DELETE(request: NextRequest, props: RouteParams) {
 
     // Delete from database
     await prisma.ticketAttachment.delete({
-      where: { id: attachmentId }
+      where: { id: attachmentId },
     })
 
     return NextResponse.json({ message: 'Attachment deleted successfully' })
-
-  } catch (error) {
-    console.error('Failed to delete attachment:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete attachment' },
-      { status: 500 }
-    )
-  }
-}
+  },
+  { access: 'session' }
+)
