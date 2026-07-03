@@ -43,6 +43,53 @@ services:
       retries: 3
       start_period: 30s
 
+  # Background job worker (ADR-0008) — dedicated container from the SAME image as
+  # `app` (built once, run with a different command). The web tier only enqueues;
+  # this process owns BullMQ workers, repeatable schedules, and graceful shutdown.
+  worker:
+    image: sociallyhub:latest
+    container_name: sociallyhub-worker
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD}@postgres:5432/sociallyhub
+      # Redis requires a password (see redis service --requirepass); the worker
+      # must authenticate. buildRedisConnectionOptions() parses REDIS_URL first.
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      # ENCRYPTION_KEY (ADR-0006): REQUIRED — the worker decrypts SocialAccount
+      # tokens at publish time. Provide a real 64-hex key via the env/secret.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      # Local media storage (ADR-0007), shared with `app` via the uploads volume.
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-local}
+      - STORAGE_LOCAL_ROOT=/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sociallyhub-network
+    volumes:
+      - uploads:/app/uploads
+      - logs:/app/logs
+    labels:
+      - "com.sociallyhub.service=worker"
+      - "com.sociallyhub.version=1.0.0"
+    healthcheck:
+      # Liveness = the worker's Redis heartbeat key exists (refreshed every ~20s,
+      # EX 60). ioredis is present in the traced standalone node_modules.
+      test: ["CMD-SHELL", "node -e \"const R=require('ioredis');const r=new R(process.env.REDIS_URL);r.get('worker:heartbeat').then(v=>{r.quit();process.exit(v?0:1)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine

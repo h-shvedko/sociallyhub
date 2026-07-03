@@ -32,7 +32,12 @@ export type {
   UserProfile,
   AnalyticsData,
   APIResponse,
-  MediaItem,
+  MediaItem
+} from './types'
+
+// Error classes are runtime values (used with `instanceof`), so they must be
+// re-exported as values, not via `export type` (which would trip TS1362).
+export {
   SocialMediaError,
   RateLimitError,
   AuthenticationError,

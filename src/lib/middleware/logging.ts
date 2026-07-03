@@ -238,6 +238,41 @@ export class BusinessLogger {
       timestamp: new Date().toISOString()
     })
   }
+
+  /**
+   * Generic system/lifecycle event (queues, workers, jobs, schedulers, etc.).
+   *
+   * NOTE (ADR-0008, added while wiring the worker entrypoint): ~58 call sites
+   * across `src/lib/jobs/**` and the background processors already invoke
+   * `BusinessLogger.logSystemEvent(event, data)`, but the method never existed —
+   * a latent `TypeError` that only surfaces once the job/queue code actually
+   * runs (it was dead in the web process). This additive definition unblocks the
+   * worker; the signature matches every existing call site.
+   */
+  static logSystemEvent(event: string, data?: any) {
+    AppLogger.info(`System event: ${event}`, {
+      type: 'system_event',
+      event,
+      ...(data && typeof data === 'object' ? data : { data }),
+      timestamp: new Date().toISOString()
+    })
+  }
+
+  /**
+   * Notification lifecycle event. Same story as `logSystemEvent`: ~27 call sites
+   * (notification services, dispatch processors, notification API routes) already
+   * call `logNotificationEvent(event, userId, data)` against a method that did
+   * not exist. Additive; signature matches existing usage.
+   */
+  static logNotificationEvent(event: string, userId: string, data?: any) {
+    AppLogger.info(`Notification event: ${event}`, {
+      type: 'notification_event',
+      event,
+      userId,
+      ...(data && typeof data === 'object' ? data : { data }),
+      timestamp: new Date().toISOString()
+    })
+  }
 }
 
 /**
@@ -281,7 +316,13 @@ export class PerformanceLogger {
         const duration = Date.now() - startTime
         this.logPerformance(operation, duration, 'api', details)
         return duration
-      }
+      },
+      // Elapsed ms without emitting a performance log. Added with ADR-0008: the
+      // job wrapper in `queue-manager.ts` (and the processors) already call
+      // `timer.getDuration()` on the success path, but the method was never on
+      // the returned object — a latent `TypeError` on every completed job.
+      // Additive; nothing depended on its absence.
+      getDuration: () => Date.now() - startTime
     }
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, normalizeUserId } from '@/lib/auth'
 import { PrismaClient } from '@prisma/client'
+import { upsertClientReportScheduler } from '@/lib/jobs/client-reports-queue'
 const prisma = new PrismaClient()
 
 // GET /api/client-reports/schedules - List scheduled reports
@@ -218,6 +219,17 @@ export async function POST(request: NextRequest) {
     })
 
     console.log(`📅 Created report schedule ${schedule.id}: ${schedule.name}`)
+
+    // Register the BullMQ repeatable that drives generation (ADR-0008 Phase 4).
+    // Best-effort: if the queue backend is unreachable the row is still valid and
+    // the worker's boot-time full resync (syncClientReportSchedules) reconciles.
+    if (schedule.isActive) {
+      try {
+        await upsertClientReportScheduler(schedule)
+      } catch (queueError) {
+        console.error(`Failed to register repeatable for schedule ${schedule.id}:`, queueError)
+      }
+    }
 
     return NextResponse.json({ success: true, schedule })
   } catch (error) {

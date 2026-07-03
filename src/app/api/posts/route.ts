@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { withLogging, BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 import { AppLogger } from '@/lib/logger'
+import { enqueuePublishJob } from '@/lib/jobs/publish-queue'
 // Schema for post creation/update
 const postSchema = z.object({
   title: z.string().optional(),
@@ -313,16 +314,51 @@ async function postHandler(request: NextRequest) {
     // Log business event
     BusinessLogger.logPostCreated(result.id, userId, validatedData)
 
-    // If status is PUBLISHED or SCHEDULED, trigger background job
-    if (validatedData.status === 'PUBLISHED') {
-      BusinessLogger.logWorkspaceAction('publish_post', userWorkspace.workspaceId, userId, {
-        postId: result.id
-      })
-    } else if (validatedData.status === 'SCHEDULED' && validatedData.scheduledAt) {
-      BusinessLogger.logWorkspaceAction('schedule_post', userWorkspace.workspaceId, userId, {
-        postId: result.id,
-        scheduledAt: validatedData.scheduledAt
-      })
+    // Enqueue the publish job AFTER the transaction has committed (ADR-0008).
+    // PUBLISHED -> immediate job; SCHEDULED -> delayed job. The deterministic
+    // jobId (publish:{postId}) keeps it idempotent and reschedulable. If the
+    // enqueue fails, roll the post back to DRAFT so it never lies as
+    // SCHEDULED/PUBLISHED with no backing job, and surface the failure.
+    if (validatedData.status === 'PUBLISHED' || validatedData.status === 'SCHEDULED') {
+      try {
+        await enqueuePublishJob({
+          postId: result.id,
+          workspaceId: userWorkspace.workspaceId,
+          userId,
+          scheduledAt: validatedData.status === 'SCHEDULED' ? result.scheduledAt : null,
+        })
+
+        BusinessLogger.logWorkspaceAction(
+          validatedData.status === 'PUBLISHED' ? 'publish_post' : 'schedule_post',
+          userWorkspace.workspaceId,
+          userId,
+          {
+            postId: result.id,
+            ...(result.scheduledAt ? { scheduledAt: result.scheduledAt.toISOString() } : {}),
+          }
+        )
+      } catch (enqueueError) {
+        // Roll the optimistic status back so state stays honest.
+        await prisma.post
+          .update({ where: { id: result.id }, data: { status: 'DRAFT' } })
+          .catch(() => {})
+
+        ErrorLogger.logUnexpectedError(enqueueError as Error, {
+          operation: 'enqueue_publish_job',
+          postId: result.id,
+          userId,
+        })
+
+        timer.end({ postId: result.id, status: 'DRAFT', enqueueFailed: true })
+
+        return NextResponse.json(
+          {
+            error:
+              'Post saved as a draft, but it could not be queued for publishing. Please try again.',
+          },
+          { status: 503 }
+        )
+      }
     }
 
     timer.end({ postId: result.id, status: validatedData.status })

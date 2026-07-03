@@ -23,7 +23,15 @@ RUN npm ci --only=production --frozen-lockfile && npm cache clean --force
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+
+# Full install INCLUDING devDependencies. The `deps` stage above is prod-only
+# (it feeds the runtime), but the build needs dev tooling: typescript/tailwind
+# for `next build` and esbuild for the worker bundle (ADR-0008). Installed
+# before NODE_ENV=production so npm does not omit devDependencies. Copying only
+# the manifests first keeps this layer cached across source-only changes.
+COPY package.json package-lock.json* ./
+RUN npm ci --include=dev
+
 COPY . .
 
 # Build-time environment variables
@@ -36,6 +44,11 @@ RUN npx prisma generate
 
 # Build application
 RUN npm run build
+
+# Bundle the background worker (ADR-0008) → dist/worker.js. Single esbuild bundle
+# so the runtime needs no dev tooling; @prisma/client (+ generated .prisma) and
+# native deps are kept external and resolved from node_modules at runtime.
+RUN npm run build:worker
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -60,6 +73,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Copy the built application
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Copy the bundled background worker (ADR-0008). Run in a separate container from
+# the same image via `node dist/worker.js` (see docker-compose.prod.yml worker
+# service). @prisma/client resolves from the standalone node_modules + the
+# .prisma client copied below.
+COPY --from=builder --chown=nextjs:nodejs /app/dist/worker.js ./dist/worker.js
 
 # Copy Prisma files
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma

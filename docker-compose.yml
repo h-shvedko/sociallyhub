@@ -87,6 +87,55 @@ services:
         condition: service_healthy
     command: npm run dev:docker
 
+  # Background job worker (ADR-0008) — dedicated process, SAME image as `app`.
+  # This is the only thing that starts BullMQ workers; the web app only enqueues.
+  # Runs the worker via tsx (dev) and shares the `node_modules` named volume with
+  # `app`, so hot edits under ./src are picked up on restart.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: sociallyhub-worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://sociallyhub:sociallyhub_dev_password@postgres:5432/sociallyhub
+      - REDIS_URL=redis://redis:6379
+      # ENCRYPTION_KEY (ADR-0006): the worker decrypts SocialAccount tokens at
+      # publish time — same DEV-ONLY key as `app` so both decrypt the same rows.
+      - ENCRYPTION_KEY=b29945a36f9850725969747a03f57cb7bb83d7655844f8c12d853e16e5a132c2
+      # SMTP for notification-dispatch jobs (Mailhog)
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_USER=
+      - SMTP_PASSWORD=
+      - SMTP_FROM=noreply@sociallyhub.dev
+      - SMTP_SECURE=false
+      # Local media storage (ADR-0007) for jobs that read attached media
+      - STORAGE_DRIVER=local
+      - STORAGE_LOCAL_ROOT=/app/uploads
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./.env.local:/app/.env.local
+      # Share node_modules with `app` (populated from the image on first mount).
+      - node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run worker
+    healthcheck:
+      # Liveness = the worker's Redis heartbeat key exists (refreshed every ~20s,
+      # EX 60). node + ioredis are in the shared node_modules volume.
+      test: ["CMD-SHELL", "node -e \"const R=require('ioredis');const r=new R(process.env.REDIS_URL);r.get('worker:heartbeat').then(v=>{r.quit();process.exit(v?0:1)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
   # Mailhog for local email testing
   mailhog:
     image: mailhog/mailhog:latest

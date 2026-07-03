@@ -19,6 +19,8 @@
 
 # production
 /build
+# worker bundle (esbuild output of `npm run build:worker`, ADR-0008)
+/dist
 
 # misc
 .DS_Store

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions, normalizeUserId } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers'
+import { enqueuePublishJob } from '@/lib/jobs/publish-queue'
 import { withLogging, BusinessLogger, ErrorLogger, SecurityLogger, PerformanceLogger } from '@/lib/middleware/logging'
 import { z } from 'zod'
 
@@ -153,54 +155,159 @@ async function handleCreatePost(request: NextRequest) {
         )
       }
 
-      // Create bulk post
-      const bulkPostOptions = {
-        ...validatedData,
-        platforms: validPlatforms
-      }
+      // Route bulk publishing through the DB-backed queue/processor path
+      // (ADR-0008) instead of socialMediaManager.bulkPost with in-memory
+      // accounts: persist a Post + one PostVariant per resolved account, then
+      // enqueue a single publish job. The worker resolves accounts/tokens from
+      // the DB and records the true per-variant outcome — it never posts from an
+      // in-process account map that only the OAuth-callback process ever filled.
+      const userId = await normalizeUserId(session.user.id)
 
-      const results = await socialMediaManager.bulkPost(bulkPostOptions)
-      
-      // Log the results
-      const successfulPosts = results.filter(r => r.success)
-      const failedPosts = results.filter(r => !r.success)
+      const userWorkspace = await prisma.userWorkspace.findFirst({
+        where: {
+          userId,
+          role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] },
+        },
+        select: { workspaceId: true },
+      })
 
-      if (successfulPosts.length > 0) {
-        BusinessLogger.logBulkOperation(
-          'bulk_post_success',
-          successfulPosts.length,
-          session.user.id,
-          {
-            platforms: successfulPosts.map(r => r.platform),
-            postIds: successfulPosts.map(r => r.result?.id).filter(Boolean)
-          }
+      if (!userWorkspace) {
+        return NextResponse.json(
+          { error: 'No workspace with posting permissions' },
+          { status: 403 }
         )
       }
 
-      if (failedPosts.length > 0) {
-        ErrorLogger.logValidationError({
-          message: 'Some platforms failed during bulk posting',
-          details: failedPosts.map(r => ({ platform: r.platform, error: r.error }))
-        }, { userId: session.user.id, operation: 'bulk_post' })
+      // createPostSchema platforms are lowercase; SocialProvider is uppercase.
+      const providers = validPlatforms.map(p => p.toUpperCase())
+
+      const socialAccounts = await prisma.socialAccount.findMany({
+        where: {
+          workspaceId: userWorkspace.workspaceId,
+          provider: { in: providers as any },
+          status: 'ACTIVE',
+        },
+      })
+
+      if (socialAccounts.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              'No active social accounts found for the selected platforms. Please connect your accounts first.',
+          },
+          { status: 400 }
+        )
       }
+
+      const scheduledAt = validatedData.scheduledFor ? new Date(validatedData.scheduledFor) : null
+      const postStatus = scheduledAt ? 'SCHEDULED' : 'PUBLISHED'
+
+      const post = await prisma.$transaction(async (tx) => {
+        const created = await tx.post.create({
+          data: {
+            workspaceId: userWorkspace.workspaceId,
+            baseContent: validatedData.text,
+            status: postStatus as any,
+            ownerId: userId,
+            scheduledAt,
+            tags: validatedData.hashtags ?? [],
+          },
+        })
+
+        await Promise.all(
+          socialAccounts.map(account =>
+            tx.postVariant.create({
+              data: {
+                postId: created.id,
+                socialAccountId: account.id,
+                text: validatedData.text,
+                hashtags: validatedData.hashtags ?? [],
+                // Media (already-uploaded URLs) and per-platform settings ride in
+                // platformData so the DB-backed processor can consume them without
+                // fabricating Asset rows here (asset handling is ADR-0007/0009).
+                platformData: {
+                  ...(validatedData.platformSpecificSettings?.[
+                    account.provider.toLowerCase() as keyof typeof validatedData.platformSpecificSettings
+                  ] ?? {}),
+                  ...(validatedData.media ? { media: validatedData.media } : {}),
+                } as any,
+                status: 'PENDING',
+              },
+            })
+          )
+        )
+
+        return created
+      })
+
+      // Enqueue after commit; roll back to DRAFT if it fails (ADR-0008 step 3).
+      try {
+        await enqueuePublishJob({
+          postId: post.id,
+          workspaceId: userWorkspace.workspaceId,
+          userId,
+          scheduledAt,
+        })
+      } catch (enqueueError) {
+        await prisma.post
+          .update({ where: { id: post.id }, data: { status: 'DRAFT' } })
+          .catch(() => {})
+
+        ErrorLogger.logUnexpectedError(enqueueError as Error, {
+          operation: 'enqueue_publish_job',
+          postId: post.id,
+          userId,
+        })
+
+        timer.end({ error: true, enqueueFailed: true })
+
+        return NextResponse.json(
+          {
+            error:
+              'Post saved as a draft, but it could not be queued for publishing. Please try again.',
+          },
+          { status: 503 }
+        )
+      }
+
+      const results = socialAccounts.map(account => ({
+        platform: account.provider.toLowerCase(),
+        accountId: account.id,
+        success: true,
+        status: 'queued' as const,
+      }))
+
+      BusinessLogger.logBulkOperation(
+        'bulk_post_queued',
+        results.length,
+        userId,
+        {
+          postId: post.id,
+          platforms: results.map(r => r.platform),
+          scheduled: postStatus === 'SCHEDULED',
+        }
+      )
 
       timer.end({
         platformCount: results.length,
-        successCount: successfulPosts.length,
-        failureCount: failedPosts.length
+        queued: results.length,
+        scheduled: postStatus === 'SCHEDULED',
       })
 
       return NextResponse.json({
         success: true,
         data: {
+          postId: post.id,
+          status: postStatus === 'SCHEDULED' ? 'scheduled' : 'queued',
           results,
           summary: {
             total: results.length,
-            successful: successfulPosts.length,
-            failed: failedPosts.length,
-            validationIssues: validationIssues.length > 0 ? validationIssues : undefined
-          }
-        }
+            successful: results.length,
+            failed: 0,
+            queued: results.length,
+            validationIssues: validationIssues.length > 0 ? validationIssues : undefined,
+          },
+        },
       })
 
     } catch (error) {

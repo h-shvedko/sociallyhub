@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, normalizeUserId } from '@/lib/auth'
 import { PrismaClient } from '@prisma/client'
+import {
+  upsertClientReportScheduler,
+  removeClientReportScheduler,
+} from '@/lib/jobs/client-reports-queue'
 const prisma = new PrismaClient()
 
 // GET /api/client-reports/schedules/[id] - Get specific schedule
@@ -188,6 +192,20 @@ export async function PUT(
 
     console.log(`📅 Schedule ${scheduleId} updated by user ${userId}`)
 
+    // Keep the BullMQ repeatable in lockstep with the row (ADR-0008 Phase 4):
+    // a still-active schedule re-upserts (new cadence replaces the old timer);
+    // a paused/deactivated one has its scheduler removed. Best-effort — the
+    // worker's boot-time full resync reconciles any drift.
+    try {
+      if (updatedSchedule.isActive) {
+        await upsertClientReportScheduler(updatedSchedule)
+      } else {
+        await removeClientReportScheduler(scheduleId)
+      }
+    } catch (queueError) {
+      console.error(`Failed to sync repeatable for schedule ${scheduleId}:`, queueError)
+    }
+
     return NextResponse.json({ schedule: updatedSchedule })
 
   } catch (error) {
@@ -247,6 +265,14 @@ export async function DELETE(
     })
 
     console.log(`🗑️ Schedule ${scheduleId} deleted by user ${userId}`)
+
+    // Remove the backing BullMQ repeatable (ADR-0008 Phase 4). Best-effort — the
+    // worker's boot-time full resync drops any scheduler with no matching row.
+    try {
+      await removeClientReportScheduler(scheduleId)
+    } catch (queueError) {
+      console.error(`Failed to remove repeatable for schedule ${scheduleId}:`, queueError)
+    }
 
     return NextResponse.json({ success: true })
 

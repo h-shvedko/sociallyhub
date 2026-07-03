@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { withLogging, BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 import { AppLogger } from '@/lib/logger'
+import { enqueuePublishJob, removePublishJob } from '@/lib/jobs/publish-queue'
 
 const updatePostSchema = z.object({
   title: z.string().optional(),
@@ -296,6 +297,65 @@ async function putHandler(
       }
     }
 
+    // --- Keep the publish job in lockstep with the post's status (ADR-0008) ---
+    // Same deterministic jobId (publish:{postId}). Transition INTO — or a
+    // reschedule within — PUBLISHED/SCHEDULED re-enqueues (remove + re-add);
+    // transition OUT cancels the job.
+    const prevStatus = existingPost.status
+    const nextStatus = updatedPost.status
+    const shouldBeQueued = nextStatus === 'PUBLISHED' || nextStatus === 'SCHEDULED'
+    const wasQueued = prevStatus === 'PUBLISHED' || prevStatus === 'SCHEDULED'
+
+    if (shouldBeQueued) {
+      try {
+        await enqueuePublishJob({
+          postId,
+          workspaceId: updatedPost.workspaceId,
+          userId: updatedPost.ownerId,
+          scheduledAt: nextStatus === 'SCHEDULED' ? updatedPost.scheduledAt : null,
+        })
+      } catch (enqueueError) {
+        // Could not (re)queue -> fall back to DRAFT so the post never claims a
+        // schedule it can't honor.
+        await prisma.post
+          .update({ where: { id: postId }, data: { status: 'DRAFT' } })
+          .catch(() => {})
+
+        ErrorLogger.logUnexpectedError(enqueueError as Error, {
+          operation: 'enqueue_publish_job',
+          postId,
+        })
+
+        return NextResponse.json(
+          {
+            error:
+              'Saved as a draft, but the post could not be queued for publishing. Please try again.',
+          },
+          { status: 503 }
+        )
+      }
+    } else if (wasQueued) {
+      try {
+        await removePublishJob(postId)
+      } catch (removeError) {
+        // Could not cancel the job -> revert to the prior queued status so a
+        // stale job can never fire against a post the user just unscheduled.
+        await prisma.post
+          .update({ where: { id: postId }, data: { status: prevStatus } })
+          .catch(() => {})
+
+        ErrorLogger.logUnexpectedError(removeError as Error, {
+          operation: 'remove_publish_job',
+          postId,
+        })
+
+        return NextResponse.json(
+          { error: 'Could not update the schedule right now. Please try again.' },
+          { status: 503 }
+        )
+      }
+    }
+
     // Log the update
     BusinessLogger.logPostUpdated(updatedPost.id, session.user.id, {
       fieldsChanged: Object.keys(validatedData),
@@ -390,9 +450,28 @@ async function deleteHandler(
       )
     }
 
+    // Cancel any pending publish job before deleting so a stale scheduled job
+    // can't fire against a removed post (ADR-0008). Among the deletable statuses
+    // only SCHEDULED carries a job (PUBLISHED/ARCHIVED are blocked above).
+    if (existingPost.status === 'SCHEDULED') {
+      try {
+        await removePublishJob(postId)
+      } catch (removeError) {
+        ErrorLogger.logUnexpectedError(removeError as Error, {
+          operation: 'remove_publish_job',
+          postId,
+        })
+
+        return NextResponse.json(
+          { error: 'Could not cancel the scheduled job for this post. Please try again.' },
+          { status: 503 }
+        )
+      }
+    }
+
     // Log the deletion before deleting
     BusinessLogger.logPostDeleted(postId, session.user.id)
-    
+
     // Delete post (variants and other related records will be cascade deleted)
     await prisma.post.delete({
       where: { id: postId }

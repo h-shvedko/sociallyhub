@@ -2,6 +2,20 @@ import { queueManager } from './queue-manager'
 import { postSchedulingProcessor, bulkPostSchedulingProcessor } from './processors/post-scheduling'
 import { analyticsCollectionProcessor, scheduledAnalyticsProcessor } from './processors/analytics-collection'
 import { notificationDispatchProcessor, bulkNotificationDispatchProcessor } from './processors/notification-dispatch'
+import {
+  reconcileScheduledPostsProcessor,
+  RECONCILE_JOB_NAME,
+  RECONCILE_SCHEDULER_ID,
+  RECONCILE_INTERVAL_MS,
+} from './reconcile'
+import { clientReportsProcessor } from './processors/client-reports'
+import {
+  CLIENT_REPORTS_QUEUE,
+  CLIENT_REPORT_JOB_NAME,
+  upsertClientReportScheduler,
+  removeClientReportScheduler,
+} from './client-reports-queue'
+import { prisma } from '@/lib/prisma'
 import { BusinessLogger, ErrorLogger } from '@/lib/middleware/logging'
 
 export class JobScheduler {
@@ -18,27 +32,47 @@ export class JobScheduler {
         timestamp: new Date().toISOString()
       })
 
-      // Register all job processors
-      queueManager.registerProcessor('post-scheduling', postSchedulingProcessor)
-      queueManager.registerProcessor('post-scheduling', bulkPostSchedulingProcessor)
-      queueManager.registerProcessor('analytics-collection', analyticsCollectionProcessor)
-      queueManager.registerProcessor('analytics-collection', scheduledAnalyticsProcessor)
-      queueManager.registerProcessor('notification-dispatch', notificationDispatchProcessor)
-      queueManager.registerProcessor('notification-dispatch', bulkNotificationDispatchProcessor)
+      // Register all job processors, keyed by (queueName, jobName) so paired
+      // single/bulk processors no longer overwrite each other (ADR-0008). The
+      // jobName MUST match the `type` field enqueued via queueManager.addJob,
+      // which BullMQ uses as job.name for dispatch.
+      queueManager.registerProcessor('post-scheduling', 'post_scheduling', postSchedulingProcessor)
+      queueManager.registerProcessor('post-scheduling', 'bulk_post_scheduling', bulkPostSchedulingProcessor)
+      queueManager.registerProcessor('analytics-collection', 'analytics_collection', analyticsCollectionProcessor)
+      queueManager.registerProcessor('analytics-collection', 'scheduled_analytics', scheduledAnalyticsProcessor)
+      queueManager.registerProcessor('notification-dispatch', 'notification_dispatch', notificationDispatchProcessor)
+      queueManager.registerProcessor('notification-dispatch', 'bulk_notification_dispatch', bulkNotificationDispatchProcessor)
 
-      // Create and start workers for each queue
+      // Client-report generation (ADR-0008 Phase 4). Both the per-schedule
+      // repeatable and the manual "run now" one-off fire this job name.
+      queueManager.registerProcessor(CLIENT_REPORTS_QUEUE, CLIENT_REPORT_JOB_NAME, clientReportsProcessor)
+
+      // Reconcile sweep (ADR-0008 Phase 3 step 9) runs on the post-scheduling
+      // queue under its own job name, so the existing post-scheduling worker
+      // dispatches it. Registered here (single registration authority); the
+      // repeatable itself is upserted by scheduleReconcileScheduledPosts(), which
+      // the worker calls during repeatable-job sync.
+      queueManager.registerProcessor('post-scheduling', RECONCILE_JOB_NAME, reconcileScheduledPostsProcessor)
+
+      // Create and start workers for each queue. `media-processing` is omitted:
+      // no processor exists (reserved for ADR-0007), and createWorker would skip
+      // it anyway.
       const queueConfigs = [
         { name: 'post-scheduling', concurrency: 5 },
         { name: 'analytics-collection', concurrency: 3 },
         { name: 'notification-dispatch', concurrency: 10 },
-        { name: 'media-processing', concurrency: 2 }
+        { name: CLIENT_REPORTS_QUEUE, concurrency: 3 }
       ]
 
       for (const config of queueConfigs) {
         try {
           const worker = await queueManager.createWorker(config.name)
+          if (!worker) {
+            // No processor registered for this queue — skipped (not fatal).
+            continue
+          }
           this.workers.set(config.name, worker)
-          
+
           BusinessLogger.logSystemEvent('worker_started', {
             queueName: config.name,
             concurrency: config.concurrency
@@ -70,25 +104,20 @@ export class JobScheduler {
   }
 
   private async scheduleRecurringJobs(): Promise<void> {
-    try {
-      // Schedule analytics collection jobs
-      await this.scheduleAnalyticsCollection()
-      
-      // Schedule cleanup jobs
-      await this.scheduleCleanupJobs()
-
-      // Schedule health check jobs
-      await this.scheduleHealthChecks()
-
-      BusinessLogger.logSystemEvent('recurring_jobs_scheduled', {
-        jobTypes: ['analytics_collection', 'cleanup', 'health_checks']
-      })
-
-    } catch (error) {
-      ErrorLogger.logUnexpectedError(error as Error, {
-        context: 'schedule_recurring_jobs'
-      })
-    }
+    // Recurring repeatables are intentionally DISABLED in Phase 1 (ADR-0008):
+    //  - analytics-collection repeatables (scheduleAnalyticsCollection) stay off
+    //    until real provider analytics exist (ADR-0009); scheduling them today
+    //    only burns retries against stub providers.
+    //  - cleanup / health-check repeatables enqueue job names ('queue_cleanup',
+    //    'health_check') for which no processor is registered — they would create
+    //    perpetually-failing recurring jobs. Real health/observability lands in
+    //    ADR-0023.
+    // The private schedule* helpers are retained (uncalled) for when those ADRs
+    // enable them. Client-report repeatables are added in Phase 4.
+    BusinessLogger.logSystemEvent('recurring_jobs_deferred', {
+      deferred: ['analytics_collection', 'cleanup', 'health_checks'],
+      reason: 'ADR-0008 Phase 1: no repeatables until ADR-0009/ADR-0023'
+    })
   }
 
   private async scheduleAnalyticsCollection(): Promise<void> {
@@ -298,7 +327,108 @@ export class JobScheduler {
     }
   }
 
-  async scheduleAnalyticsCollection(data: {
+  /**
+   * Upsert the repeatable reconcile-scheduled-posts sweep (ADR-0008 Phase 3
+   * step 9). Discovered and invoked by the worker's repeatable-job sync
+   * (src/worker.ts). Uses the v5 Job Schedulers API with a stable scheduler id,
+   * so re-running it on every worker boot is idempotent (no duplicate timers).
+   * Runs on the post-scheduling queue under RECONCILE_JOB_NAME.
+   */
+  async scheduleReconcileScheduledPosts(): Promise<void> {
+    try {
+      const queue = await queueManager.createQueue('post-scheduling')
+
+      await queue.upsertJobScheduler(
+        RECONCILE_SCHEDULER_ID,
+        { every: RECONCILE_INTERVAL_MS },
+        {
+          name: RECONCILE_JOB_NAME,
+          data: {
+            id: RECONCILE_SCHEDULER_ID,
+            type: RECONCILE_JOB_NAME,
+            payload: {},
+            userId: 'system',
+            createdAt: new Date().toISOString(),
+          },
+          opts: {
+            removeOnComplete: 20,
+            removeOnFail: 20,
+          },
+        }
+      )
+
+      BusinessLogger.logSystemEvent('reconcile_scheduled_posts_repeatable_upserted', {
+        schedulerId: RECONCILE_SCHEDULER_ID,
+        everyMs: RECONCILE_INTERVAL_MS,
+      })
+    } catch (error) {
+      ErrorLogger.logUnexpectedError(error as Error, {
+        context: 'schedule_reconcile_scheduled_posts',
+      })
+      throw error
+    }
+  }
+
+  /**
+   * Full resync of ClientReportSchedule rows → BullMQ repeatable job schedulers
+   * (ADR-0008 Phase 4). Called on worker boot (picked up automatically by
+   * src/worker.ts's repeatable-sync candidate list). Active rows are upserted
+   * (idempotent by scheduler id — a changed cadence replaces the old timer);
+   * inactive rows have any lingering scheduler removed, correcting drift left by
+   * a crash between a CRUD mutation and its queue write. Per-row failures are
+   * logged and never abort the sweep.
+   */
+  async syncClientReportSchedules(): Promise<void> {
+    try {
+      const schedules = await prisma.clientReportSchedule.findMany({
+        select: {
+          id: true,
+          frequency: true,
+          time: true,
+          dayOfWeek: true,
+          dayOfMonth: true,
+          workspaceId: true,
+          isActive: true,
+        },
+      })
+
+      let upserted = 0
+      let removed = 0
+
+      for (const schedule of schedules) {
+        try {
+          if (schedule.isActive) {
+            await upsertClientReportScheduler(schedule)
+            upserted++
+          } else {
+            await removeClientReportScheduler(schedule.id)
+            removed++
+          }
+        } catch (error) {
+          ErrorLogger.logUnexpectedError(error as Error, {
+            context: 'sync_client_report_schedule',
+            scheduleId: schedule.id,
+          })
+        }
+      }
+
+      BusinessLogger.logSystemEvent('client_report_schedules_synced', {
+        total: schedules.length,
+        upserted,
+        removed,
+      })
+    } catch (error) {
+      ErrorLogger.logUnexpectedError(error as Error, {
+        context: 'sync_client_report_schedules',
+      })
+      throw error
+    }
+  }
+
+  // Renamed from scheduleAnalyticsCollection to fix TS2393 (duplicate impl with
+  // the private repeatable-scheduling helper of the same name). This is the
+  // on-demand enqueue used by callers; the private one schedules repeatables.
+  async enqueueAnalyticsCollection(data: {
     userId: string
     workspaceId: string
     accounts: Array<{ platform: string; accountId: string }>
@@ -453,12 +583,13 @@ export class JobScheduler {
   }
 }
 
-// Singleton instance
+// Singleton instance.
+//
+// NOTE (ADR-0008): there is deliberately NO module-level auto-init here. The
+// production worker bootstrap is owned by the dedicated `src/worker.ts` process
+// (added in Phase 2), which explicitly calls `jobScheduler.initialize()`. Auto
+// starting workers on import (the former NODE_ENV/INIT_JOBS block) shipped broken
+// and unobserved — importing this module must have no side effects. INIT_JOBS, if
+// re-introduced, may only be a dev-in-process convenience invoked explicitly by an
+// entrypoint, never an import side effect.
 export const jobScheduler = new JobScheduler()
-
-// Auto-initialize in production
-if (process.env.NODE_ENV === 'production' || process.env.INIT_JOBS === 'true') {
-  jobScheduler.initialize().catch(error => {
-    console.error('Failed to initialize job scheduler:', error)
-  })
-}
