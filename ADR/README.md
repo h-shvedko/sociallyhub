@@ -16,7 +16,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | ADR | Title | Status | Decision in one line |
 |---|---|---|---|
 | [0004](ADR-0004-platform-authorization-model.md) | Platform Authorization Model & RBAC Enforcement | ✅ Implemented (2026-07-03) | Two-tier model: new `User.isPlatformAdmin` gates `/api/admin/**` and global settings; `WorkspaceRole` enforced only via central helpers; drop the never-enforced Role/UserRole/Permission tables. |
-| [0005](ADR-0005-api-security-hardening.md) | API Security Hardening | Accepted | Default-deny `withApiAuth` wrapper with CI enforcement; endpoint-by-endpoint remediation table (ticket holes, global-config access, unauthenticated writes); remove blanket public Cache-Control on `/api/*`; Redis rate limiting; signed OAuth state. |
+| [0005](ADR-0005-api-security-hardening.md) | API Security Hardening | ✅ Implemented (2026-07-04) | Default-deny `withApiAuth` wrapper with CI enforcement (warn mode); endpoint-by-endpoint remediation table (ticket holes, global-config access, unauthenticated writes); remove blanket public Cache-Control on `/api/*`; Redis rate limiting; signed OAuth state. |
 | [0006](ADR-0006-cryptography-and-secrets.md) | Cryptography, Token Encryption & Secrets | Accepted | Rewrite `encryption.ts` on AES-256-GCM/`createCipheriv` with versioned ciphertext and mandatory `ENCRYPTION_KEY`; encrypt SocialAccount tokens + IntegrationSetting credentials with migration; HMAC-sign OAuth state. |
 
 ### Core product pipeline

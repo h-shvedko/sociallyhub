@@ -1,8 +1,26 @@
 # ADR-0005: API Security Hardening
 
 - **Date:** 2026-07-02
-- **Status:** Accepted
+- **Status:** Accepted — **Implemented 2026-07-04** (core surfaces; full 299-route wrapper migration incremental)
 - **Deciders:** Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-04).** Delivered: `withApiAuth` wrapper
+> (`src/lib/api/with-api-auth.ts`, access = public|session|platformAdmin|workspaceRole|cron,
+> default `no-store`, Redis rate limiting); ioredis sliding-window limiter replacing the broken
+> `ratelimiter` dep (`src/lib/utils/rate-limit.ts`); edge middleware (`src/middleware.ts`:
+> request-id, noindex, `no-store`, coarse per-IP throttle); the blanket `/api/*` public cache
+> header removed from `next.config.js`; `/api/debug/session` deleted; HMAC-signed session-bound
+> OAuth state (`src/lib/security/oauth-state.ts`, verified in the connect callback; interim key
+> from `OAUTH_STATE_SECRET`||`NEXTAUTH_SECRET`, formal keys per ADR-0006); `EngagementEvent` model
+> + migration `0005` for counter dedup; `scripts/check-route-auth.ts` CI coverage check (warn mode).
+> Remediation-table endpoints closed: support tickets (anon `where={id}` fallthrough → session-gated
+> + workspace-scoped; guest tokens deferred to ADR-0011, attachment relocation to ADR-0007), all 13
+> help/documentation/video write handlers (`platformAdmin`), and the four counter endpoints (dedup +
+> rate limit). ADR-0004 had already closed global-settings and `feature-flags/evaluate`. Verified by
+> unit suites + an authenticated exploit-closure matrix (anon ticket→401, anon writes→401,
+> `/api/*`→no-store, dedup+limit fire, debug/session→404, forged state→400). **Not done:** wrapping
+> all 299 routes (CI check runs in *warn* mode, publishing the uncovered count) and proxy-level
+> limits (ADR-0022).
 
 ## Context and Problem Statement
 
