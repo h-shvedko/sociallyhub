@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { writeFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
+import { getStorage, buildHelpKey } from '@/lib/storage'
+
+// Validated MIME type → canonical extension (ADR-0007 traversal-safety).
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/ogg': '.ogv',
+}
 
 interface RouteParams {
   params: Promise<{
@@ -95,22 +104,18 @@ export async function POST(request: NextRequest, props: RouteParams) {
       )
     }
 
-    // Create upload directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'help-articles')
-    if (!existsSync(uploadsDir)) {
-      await mkdir(uploadsDir, { recursive: true })
-    }
-
-    // Generate unique filename
-    const fileExtension = path.extname(file.name)
+    // Derive the extension from the validated MIME type (never file.name).
+    const fileExtension = MIME_EXT[file.type] || ''
     const fileName = `${uuidv4()}${fileExtension}`
-    const filePath = path.join(uploadsDir, fileName)
-    const relativeFilePath = `/uploads/help-articles/${fileName}`
 
-    // Save file to disk
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    await writeFile(filePath, buffer)
+    // Store via the storage service under a public help/articles key, grouped
+    // by article id (ADR-0007 key scheme: help/articles/{...}).
+    const key = buildHelpKey('articles', articleId, fileName)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await getStorage().put(key, buffer, { contentType: file.type })
+
+    // Help content is served publicly by the `/api/files` route.
+    const relativeFilePath = `/api/files/${key}`
 
     // Get the next sort order
     const lastMedia = await prisma.helpArticleMedia.findFirst({

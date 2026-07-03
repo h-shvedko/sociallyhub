@@ -43,6 +43,9 @@ next-env.d.ts
 /src/generated/prisma
 /public/uploads
 
+# Local storage-service root (ADR-0007 STORAGE_LOCAL_ROOT default); prod mounts a volume here
+/uploads
+
 # Test/browser artifacts
 .playwright-mcp/
 test-results/

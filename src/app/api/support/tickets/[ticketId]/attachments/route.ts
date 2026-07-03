@@ -1,11 +1,28 @@
 import { NextResponse } from 'next/server'
-import { writeFile, mkdir } from 'fs/promises'
+import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 import { prisma } from '@/lib/prisma'
 import { withApiAuth } from '@/lib/api/with-api-auth'
 import { jsonError } from '@/lib/api/respond'
+import { getStorage, buildTicketKey } from '@/lib/storage'
+
+// Validated MIME type → canonical file extension. Attachments are stored under
+// keys derived from this map (never from the user-supplied file.name), which is
+// both the allow-list and the traversal-safe extension source (ADR-0007 Phase
+// 0/1): a crafted name like `x./../../evil` can no longer influence the key.
+const ALLOWED_TYPES: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+  'text/plain': '.txt',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/zip': '.zip',
+}
 
 type TicketRouteParams = { ticketId: string }
 
@@ -16,9 +33,9 @@ type TicketRouteParams = { ticketId: string }
 // unauthenticated fallthrough (`where: any = { id: ticketId }` scoped only
 // inside `if (session?.user?.id)`) is gone.
 //
-// NOTE: attachment bytes are still written under `public/uploads/tickets`,
-// leaving them world-readable by URL. Relocating attachment storage out of the
-// public web root is owned by ADR-0007 and intentionally left unchanged here.
+// Attachment bytes are stored via the ADR-0007 storage service under private
+// `tickets/{ticketId}/...` keys and served by the authenticated `/api/files`
+// route — no longer under the public web root.
 async function scopedTicketWhere(userId: string, ticketId: string) {
   const memberships = await prisma.userWorkspace.findMany({
     where: { userId },
@@ -82,43 +99,25 @@ export const POST = withApiAuth<TicketRouteParams>(
       return jsonError(400, 'File size exceeds 10MB limit')
     }
 
-    // Validate file type (security)
-    const allowedTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-      'application/pdf',
-      'text/plain',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/zip',
-    ]
-
-    if (!allowedTypes.includes(file.type)) {
+    // Validate file type (security) and derive the stored extension from the
+    // VALIDATED MIME type — never from user-supplied file.name (ADR-0007).
+    const ext = ALLOWED_TYPES[file.type]
+    if (!ext) {
       return jsonError(400, 'File type not allowed')
     }
 
-    // Generate unique filename
-    const fileExtension = file.name.split('.').pop()
-    const filename = `${uuidv4()}.${fileExtension}`
-    // NOTE (ADR-0007): still under the public web root — see module header.
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'tickets')
-    const filePath = join(uploadDir, filename)
+    // Store via the storage service under a private ticket key.
+    const filename = `${uuidv4()}${ext}`
+    const key = buildTicketKey(ticketId, filename)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await getStorage().put(key, buffer, { contentType: file.type })
 
-    // Create upload directory if it doesn't exist
-    try {
-      await mkdir(uploadDir, { recursive: true })
-    } catch (error) {
-      // Directory might already exist
-    }
-
-    // Save file
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    await writeFile(filePath, buffer)
-
-    // Create attachment record
+    // Create attachment record. The file is served by the authenticated
+    // `/api/files` route (private), not the public web root.
+    //
+    // scanResult stays NULL and isScanned false: no scanner exists yet. Writing
+    // 'pending' was a permanent lie (ADR-0007). Real ClamAV scanning lands in
+    // ADR-0008; until then no "scanned" state may be claimed.
     const attachment = await prisma.ticketAttachment.create({
       data: {
         ticketId,
@@ -126,12 +125,13 @@ export const POST = withApiAuth<TicketRouteParams>(
         originalName: file.name,
         fileSize: file.size,
         mimeType: file.type,
-        fileUrl: `/uploads/tickets/${filename}`,
+        fileUrl: `/api/files/${key}`,
+        storageKey: key,
         uploadedBy: userId,
         uploadedByType: 'user',
         uploadedByName: user!.name || ticket.guestName || 'Guest User',
         isScanned: false,
-        scanResult: 'pending',
+        scanResult: null,
       },
     })
 
@@ -186,13 +186,16 @@ export const DELETE = withApiAuth<TicketRouteParams>(
       return jsonError(404, 'Attachment not found')
     }
 
-    // Delete file from filesystem
+    // Delete the underlying file. New attachments live in the storage service
+    // (storageKey); legacy rows still point at a public/uploads path.
     try {
-      const fs = require('fs').promises
-      const filePath = join(process.cwd(), 'public', attachment.fileUrl)
-      await fs.unlink(filePath)
+      if (attachment.storageKey) {
+        await getStorage().delete(attachment.storageKey)
+      } else if (attachment.fileUrl?.startsWith('/uploads/')) {
+        await unlink(join(process.cwd(), 'public', attachment.fileUrl))
+      }
     } catch (error) {
-      console.warn('Failed to delete file from filesystem:', error)
+      console.warn('Failed to delete attachment file:', error)
     }
 
     // Delete from database

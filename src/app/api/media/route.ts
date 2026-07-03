@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { getStorage } from '@/lib/storage'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
 
@@ -126,16 +127,29 @@ export async function DELETE(request: NextRequest) {
       select: {
         id: true,
         filename: true,
-        url: true
+        url: true,
+        storageKey: true
       }
     })
 
-    // Delete physical files from storage
+    // Delete physical files (ADR-0007). New assets go through the storage
+    // service via storageKey; pre-migration legacy rows (no storageKey, url
+    // under /uploads/) fall back to a best-effort unlink from public/. Never
+    // let a file-deletion failure abort the DB delete.
+    const storage = getStorage()
     for (const asset of assetsToDelete) {
       try {
-        // Convert URL path to file system path
-        const filePath = join(process.cwd(), 'public', asset.url.replace(/^\//, ''))
-        await unlink(filePath)
+        if (asset.storageKey) {
+          await storage.delete(asset.storageKey)
+        } else if (asset.url && asset.url.startsWith('/uploads/')) {
+          // Legacy public file (pre-ADR-0007). Best-effort cleanup.
+          const filePath = join(process.cwd(), 'public', asset.url.replace(/^\//, ''))
+          await unlink(filePath)
+        } else {
+          console.warn(
+            `Asset ${asset.id} has no storageKey and no legacy public url; skipping file delete`
+          )
+        }
       } catch (fileError) {
         console.warn(`Failed to delete file ${asset.filename}:`, fileError)
         // Continue even if file deletion fails (file might already be deleted)

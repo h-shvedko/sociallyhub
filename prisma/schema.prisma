@@ -477,6 +477,7 @@ model Asset {
   size         Int // File size in bytes
   url          String // Storage URL
   thumbnailUrl String? // Thumbnail for videos/images
+  storageKey   String? // ADR-0007: storage-service key (media/{workspaceId}/{uuid}{ext})
   width        Int? // Image/video width
   height       Int? // Image/video height
   duration     Float? // Video duration in seconds
@@ -495,6 +496,7 @@ model Asset {
   optimizedVersions     ImageOptimization[]       @relation("OptimizedAsset")
   abTestControl         ImageABTest[]             @relation("ABTestControlAsset")
 
+  @@index([storageKey])
   @@map("assets")
 }
 
@@ -3812,6 +3814,7 @@ model TicketAttachment {
   fileSize     Int // bytes
   mimeType     String
   fileUrl      String
+  storageKey   String? // ADR-0007: storage-service key (tickets/{ticketId}/{uuid}{ext})
 
   // Upload Info
   uploadedBy     String? // User or Agent ID
@@ -3830,6 +3833,7 @@ model TicketAttachment {
   @@index([ticketId])
   @@index([uploadedBy])
   @@index([createdAt])
+  @@index([storageKey])
   @@map("ticket_attachments")
 }
 

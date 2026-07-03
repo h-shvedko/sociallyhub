@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requirePlatformAdmin } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { writeFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
+import { getStorage, buildHelpKey } from '@/lib/storage'
+
+// Validated image MIME type → canonical extension (ADR-0007 traversal-safety).
+const IMAGE_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -192,25 +198,17 @@ export async function POST(request: NextRequest) {
         }, { status: 400 })
       }
 
-      // Generate unique filename
-      const fileExtension = path.extname(file.name)
-      const uniqueId = uuidv4()
-      const fileName = `thumbnail_${uniqueId}${fileExtension}`
+      // Derive the extension from the validated MIME type (never file.name).
+      const fileExtension = IMAGE_EXT[file.type] || ''
+      const fileName = `thumbnail_${uuidv4()}${fileExtension}`
 
-      // Create upload directory
-      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'videos', 'thumbnails')
-      if (!existsSync(uploadDir)) {
-        await mkdir(uploadDir, { recursive: true })
-      }
+      // Store via the storage service under a public help/thumbnails key.
+      const key = buildHelpKey('thumbnails', fileName)
+      const buffer = Buffer.from(await file.arrayBuffer())
+      await getStorage().put(key, buffer, { contentType: file.type })
 
-      // Write file to disk
-      const filePath = path.join(uploadDir, fileName)
-      const bytes = await file.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      await writeFile(filePath, buffer)
-
-      // Generate public URL
-      const publicUrl = `/uploads/videos/thumbnails/${fileName}`
+      // Help content is served publicly by the `/api/files` route.
+      const publicUrl = `/api/files/${key}`
 
       // Update video with new thumbnail
       const updatedVideo = await prisma.videoTutorial.update({

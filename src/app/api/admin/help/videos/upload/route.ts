@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePlatformAdmin } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
-import { writeFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
+import { getStorage, buildHelpKey } from '@/lib/storage'
+
+// Validated MIME type → canonical extension. The stored key extension comes from
+// this map, not the user-supplied file.name (ADR-0007 traversal-safety).
+const MIME_EXT: Record<string, string> = {
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/ogg': '.ogv',
+  'video/avi': '.avi',
+  'video/mov': '.mov',
+  'video/wmv': '.wmv',
+  'video/flv': '.flv',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,26 +80,18 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Generate unique filename
-    const fileExtension = path.extname(file.name)
-    const uniqueId = uuidv4()
-    const fileName = `${uniqueId}${fileExtension}`
+    // Derive the extension from the validated MIME type (never file.name).
+    const fileExtension = MIME_EXT[file.type] || ''
+    const fileName = `${uuidv4()}${fileExtension}`
 
-    // Create upload directory structure
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'videos', type === 'video' ? 'files' : 'thumbnails')
+    // Store via the storage service under a public help key. Videos go under
+    // help/videos/*, thumbnails under help/thumbnails/* (ADR-0007 key scheme).
+    const key = buildHelpKey(type === 'video' ? 'videos' : 'thumbnails', fileName)
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await getStorage().put(key, buffer, { contentType: file.type })
 
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true })
-    }
-
-    // Write file to disk
-    const filePath = path.join(uploadDir, fileName)
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    await writeFile(filePath, buffer)
-
-    // Generate public URL
-    const publicUrl = `/uploads/videos/${type === 'video' ? 'files' : 'thumbnails'}/${fileName}`
+    // Help content is served publicly by the `/api/files` route.
+    const publicUrl = `/api/files/${key}`
 
     // For video files, we could add encoding/transcoding here
     // This would typically involve ffmpeg or a cloud service like AWS Elemental MediaConvert
