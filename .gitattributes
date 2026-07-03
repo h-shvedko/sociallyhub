@@ -1,0 +1,2 @@
+# Shell scripts must stay LF — CRLF breaks the Docker entrypoint and dev-local.sh (WSL2 autocrlf hazard)
+*.sh text eol=lf

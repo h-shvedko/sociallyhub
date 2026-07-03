@@ -276,27 +276,31 @@ if [ "$FIRST_TIME_SETUP" = true ]; then
 else
     echo "🔄 Existing setup detected - checking for updates..."
     
-    # Force update mode or check if schema has changed
+    # Force update mode or check for pending migrations
     NEEDS_UPDATE=false
     if [ "$FORCE_UPDATE" = true ]; then
         echo "🔄 Force update mode - applying all changes..."
         NEEDS_UPDATE=true
+    fi
+
+    # Migration-first workflow (ADR-0002): apply committed migrations with
+    # `prisma migrate deploy`. Never use `prisma db push` here — it bypasses
+    # the migration history (and previously ran with --accept-data-loss).
+    # New schema changes must be captured via: npx prisma migrate dev --name <change>
+    echo "🔍 Applying pending database migrations (if any)..."
+    # `prisma migrate status` exits 0 when the schema is fully up to date and
+    # non-zero when migrations are pending (or the database has drifted).
+    if docker-compose exec -T app npx prisma migrate status >/dev/null 2>&1; then
+        echo "ℹ️  No pending migrations - database schema is up to date"
+    elif docker-compose exec -T app npx prisma migrate deploy; then
+        echo "✅ Pending migrations applied"
+        NEEDS_UPDATE=true
     else
-        # Check if schema has changed (this handles code updates)
-        echo "🔍 Checking for database schema changes..."
-        # Run a dry-run to check if there are changes
-        if ! docker-compose exec -T app npx prisma db push --help >/dev/null 2>&1; then
-            echo "⚠️  Prisma command not available, forcing update..."
-            NEEDS_UPDATE=true
-        else
-            # Check for schema drift
-            if docker-compose exec -T app npx prisma db push --accept-data-loss >/dev/null 2>&1; then
-                echo "✅ Database schema synchronized"
-                NEEDS_UPDATE=true
-            else
-                echo "ℹ️  No database schema changes detected"
-            fi
-        fi
+        echo "❌ 'prisma migrate deploy' failed. Please check your database configuration"
+        echo "💡 If this dev database has drifted (e.g. from old 'db push' runs), reset it:"
+        echo "   docker-compose exec app npx prisma migrate reset --force"
+        echo "   (reset re-applies all migrations and re-runs the seed)"
+        exit 1
     fi
     
     if [ "$NEEDS_UPDATE" = true ]; then

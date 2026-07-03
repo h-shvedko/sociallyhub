@@ -41,7 +41,7 @@ jobs:
   database-validation:
     name: Database Schema & Mock Data Validation
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15
@@ -70,11 +70,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate database schema
+      # Schema Gate (ADR-0002) - fail fast: before anything else runs, the
+      # schema must validate and must match the committed migration history
+      # (the drift check replays prisma/migrations into a disposable shadow
+      # database created on the job's postgres service).
+      - name: Validate schema and check migration drift
+        run: |
+          PGPASSWORD=password psql -h localhost -p 5432 -U sociallyhub -d sociallyhub_test -c 'CREATE DATABASE sociallyhub_shadow'
+          npm run db:check
+        env:
+          SHADOW_DATABASE_URL: postgresql://sociallyhub:password@localhost:5432/sociallyhub_shadow
+
+      - name: Deploy migrations and generate client
         run: |
           npx prisma migrate deploy
           npx prisma generate
-          npx prisma validate
 
       - name: Test mock data seeding
         run: |
@@ -164,7 +174,7 @@ jobs:
   test:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15

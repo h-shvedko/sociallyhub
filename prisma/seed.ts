@@ -160,6 +160,8 @@ async function main() {
   console.log('🧹 Clearing existing mock data...')
   await prisma.userAction.deleteMany({})
   await prisma.userSession.deleteMany({})
+  await prisma.videoUserProgress.deleteMany({})
+  await prisma.videoTutorial.deleteMany({})
   await prisma.analyticsMetric.deleteMany({})
   await prisma.conversation.deleteMany({})
   await prisma.inboxItem.deleteMany({})
@@ -280,14 +282,7 @@ async function main() {
       data: {
         userId: demoUser.id,
         workspaceId: demoWorkspace.id,
-        role: 'OWNER',
-        permissions: {
-          canManageTeam: true,
-          canManageContent: true,
-          canManageSettings: true,
-          canViewAnalytics: true,
-          canManageBilling: true
-        }
+        role: 'OWNER'
       }
     })
     teamMemberCount++
@@ -317,14 +312,7 @@ async function main() {
           data: {
             userId: user.id,
             workspaceId: workspace.id,
-            role: role,
-            permissions: {
-              canManageTeam: role === 'OWNER' || role === 'ADMIN',
-              canManageContent: role !== 'CLIENT_VIEWER',
-              canManageSettings: role === 'OWNER' || role === 'ADMIN',
-              canViewAnalytics: role !== 'CLIENT_VIEWER',
-              canManageBilling: role === 'OWNER'
-            }
+            role: role
           }
         })
         teamMemberCount++

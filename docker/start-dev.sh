@@ -17,10 +17,10 @@ if [ ! -d "node_modules/.prisma" ]; then
     npx prisma generate
 fi
 
-# Check if database is ready
+# Check if database is ready (non-destructive connectivity check)
 echo "⏳ Waiting for database to be ready..."
 for i in $(seq 1 30); do
-    if npx prisma db push --skip-generate >/dev/null 2>&1; then
+    if printf 'SELECT 1;' | npx prisma db execute --url "$DATABASE_URL" --stdin >/dev/null 2>&1; then
         echo "✅ Database is ready!"
         break
     fi
@@ -31,13 +31,37 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# Check if tables exist, if not run migrations
+# Check if application tables exist (ignoring _prisma_migrations) to decide on seeding
 echo "🔍 Checking database schema..."
-TABLE_COUNT=$(npx prisma db execute --url "$DATABASE_URL" --stdin <<< "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | grep -oE '[0-9]+' | tail -1 || echo "0")
+TABLE_COUNT=$(node <<'EOF'
+(async () => {
+  let prisma;
+  try {
+    const { PrismaClient } = require("@prisma/client");
+    prisma = new PrismaClient();
+    const rows = await prisma.$queryRawUnsafe("SELECT COUNT(*)::int AS c FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> '_prisma_migrations'");
+    console.log(rows[0].c);
+  } catch (e) {
+    // A query failure is NOT the same as "no tables" - report it and fail
+    console.error("Table-count query failed: " + (e && e.message ? e.message : e));
+    process.exitCode = 1;
+  } finally {
+    if (prisma) await prisma.$disconnect().catch(() => {});
+  }
+})();
+EOF
+) || {
+    echo "❌ Could not determine database schema state (table-count query failed)"
+    echo "   Refusing to treat a database error as a fresh install."
+    exit 1
+}
 
+# Migration-first workflow (ADR-0002): apply committed migrations with
+# `prisma migrate deploy`. Never use `prisma db push` here — schema changes
+# must be captured as migrations via `npx prisma migrate dev --name <change>`.
 if [ "$TABLE_COUNT" = "0" ] || [ -z "$TABLE_COUNT" ]; then
-    echo "📊 Database is empty - running migrations..."
-    npx prisma db push --skip-generate
+    echo "📊 Database is empty - applying migrations..."
+    npx prisma migrate deploy
 
     echo "🌱 Seeding database with demo data..."
     npm run db:seed || {
@@ -47,10 +71,13 @@ if [ "$TABLE_COUNT" = "0" ] || [ -z "$TABLE_COUNT" ]; then
 else
     echo "✅ Database schema exists (found $TABLE_COUNT tables)"
 
-    # Still push schema to ensure it's up to date
-    echo "🔄 Synchronizing database schema..."
-    npx prisma db push --skip-generate || {
-        echo "⚠️  Schema sync failed, continuing anyway..."
+    # Apply any pending migrations to keep the schema in sync
+    echo "🔄 Applying pending migrations..."
+    npx prisma migrate deploy || {
+        echo "❌ 'prisma migrate deploy' failed"
+        echo "   If this dev database has drifted (e.g. from old 'db push' runs),"
+        echo "   reset it with: npx prisma migrate reset --force"
+        exit 1
     }
 fi
 
