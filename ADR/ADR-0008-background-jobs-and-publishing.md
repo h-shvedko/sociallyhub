@@ -1,8 +1,30 @@
 # ADR-0008: Background Jobs and the Publishing Pipeline
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-04** (pipeline infrastructure; real provider posting is ADR-0009)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-04).** Delivered all five phases as infrastructure: queue-manager
+> repaired (REDIS_URL parsing, `maxRetriesPerRequest:null`, `(queueName, jobName)` processor registry,
+> skip-and-warn for unregistered queues); job-scheduler TS2393 fixed and the `NODE_ENV`/`INIT_JOBS`
+> self-init deleted; explicit `src/worker.ts` bootstrap (register → create workers → sync repeatables →
+> Redis heartbeat → SIGTERM/SIGINT graceful shutdown) with `npm run worker`/`build:worker` (esbuild
+> bundle), Dockerfile.prod bundling, and dev+prod compose `worker` services (+ prod Redis AOF). The
+> publish processor is rewritten to load Post/variants/accounts from the DB, decrypt tokens (ADR-0006),
+> **check `APIResponse.success`, and persist the true per-variant outcome** (`PUBLISHED`+`providerPostId`
+> +`publishedAt` or `FAILED`+`failureReason`), roll up `Post.status`, skip already-published variants on
+> retry, and classify errors (401/403 fail-fast vs 429/5xx backoff). `/api/posts` POST/PUT enqueue with
+> `jobId=publish:{postId}`; `/api/social/post` routes through the queue; a `reconcile-scheduled-posts`
+> repeatable recovers the crash window. Client-report schedules became BullMQ repeatables over real
+> `AnalyticsMetric` aggregation; `/api/client-reports/schedules/run` requires `CRON_SECRET` (no default).
+> `/api/jobs/*` read real Redis state (no `mockJobs`/`Math.random`); `/api/health` reports worker
+> liveness. **Verified live:** worker boots (4 workers, heartbeat, clean SIGTERM); an enqueued
+> `publish:{postId}` drove 3 variants `PENDING → FAILED` with truthful `failureReason` ("<platform>
+> provider is not configured") and `Post.status → FAILED` — the pipeline runs and reports the truth
+> rather than faking success; `/api/jobs/stats` shows real counts; no schema change; `prisma validate`/
+> `db:check` green. **Deferred:** real provider posting (ADR-0009 — until then publish jobs fail
+> honestly), demo-token gating so seeded accounts skip the real path (ADR-0025), k8s worker Deployment
+> (ADR-0022), real throughput metrics (ADR-0023).
 
 ## Context and Problem Statement
 
