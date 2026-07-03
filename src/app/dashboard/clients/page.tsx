@@ -1,11 +1,9 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
-import { authOptions } from '@/lib/auth'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { ClientDashboard } from '@/components/dashboard/clients/client-dashboard'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 export const metadata: Metadata = {
   title: 'Client Management - SociallyHub',
   description: 'Manage your clients, track relationships, and monitor progress',

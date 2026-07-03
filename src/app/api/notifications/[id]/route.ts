@@ -1,32 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions } from '@/lib/auth'
 import { withLogging, SecurityLogger, ErrorLogger, BusinessLogger } from '@/lib/middleware/logging'
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 async function handleDeleteNotification(request: NextRequest, { params }: RouteContext) {
+  const { id: notificationId } = await params
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       SecurityLogger.logUnauthorizedAccess(
-        undefined, 
-        `/api/notifications/${params.id}`, 
+        undefined,
+        `/api/notifications/${notificationId}`,
         request.headers.get('x-forwarded-for') || undefined
       )
-      
+
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
       )
     }
-
-    const notificationId = params.id
 
     if (!notificationId || typeof notificationId !== 'string') {
       return NextResponse.json(
@@ -51,7 +50,7 @@ async function handleDeleteNotification(request: NextRequest, { params }: RouteC
 
   } catch (error) {
     ErrorLogger.logUnexpectedError(error as Error, {
-      endpoint: `/api/notifications/${params.id}`,
+      endpoint: `/api/notifications/${notificationId}`,
       method: 'DELETE'
     })
 

@@ -59,19 +59,12 @@ export async function POST(req: NextRequest) {
         })
 
         // Create user-workspace relationship with OWNER role
+        // (role is the sole authorization field; per-member permissions column was removed)
         await tx.userWorkspace.create({
           data: {
             userId: user.id,
             workspaceId: workspace.id,
             role: "OWNER",
-            permissions: {
-              canPublish: true,
-              canApprove: true,
-              canManageTeam: true,
-              canManageAccounts: true,
-              canViewAnalytics: true,
-              canManageWorkspace: true,
-            }
           }
         })
 
@@ -125,17 +118,14 @@ export async function POST(req: NextRequest) {
 
     } catch (dbError) {
       console.error("Database error during signup:", dbError)
-      
-      // Fallback to demo mode if database is not available
-      console.log("Falling back to demo signup:", { name, email, workspaceName })
-      
+
+      // Registration failed — never report success when the account was not persisted
       return NextResponse.json(
-        { 
-          message: "Account created successfully! (Demo mode - database not available). Please sign in with your credentials.",
-          success: true,
-          emailVerificationRequired: false // Demo mode - no email verification needed
+        {
+          message: "We couldn't create your account right now. Please try again later.",
+          success: false
         },
-        { status: 201 }
+        { status: 503 }
       )
     }
 

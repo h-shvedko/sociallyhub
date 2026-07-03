@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/user/workspace - Get user's primary workspace
 export async function GET(request: NextRequest) {
   try {

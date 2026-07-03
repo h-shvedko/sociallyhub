@@ -10,10 +10,8 @@ const ContentSuggestionRequestSchema = z.object({
   contentType: z.nativeEnum(ContentType)
 })
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { trendId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ trendId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {

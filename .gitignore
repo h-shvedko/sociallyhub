@@ -42,3 +42,8 @@ next-env.d.ts
 
 /src/generated/prisma
 /public/uploads
+
+# Test/browser artifacts
+.playwright-mcp/
+test-results/
+.eslintcache

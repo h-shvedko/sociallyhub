@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { PrismaClient } from '@prisma/client'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 const prisma = new PrismaClient()
 
 // GET /api/client-reports/schedules/[id] - Get specific schedule

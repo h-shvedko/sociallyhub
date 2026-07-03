@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/utils'
 
 // GET /api/admin/settings/system/[id] - Get specific system configuration
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const configurationId = params.id
 
     const configuration = await prisma.systemConfiguration.findUnique({
@@ -67,17 +64,15 @@ export async function GET(
 }
 
 // PUT /api/admin/settings/system/[id] - Update system configuration
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const configurationId = params.id
     const body = await request.json()
 
@@ -139,7 +134,7 @@ export async function PUT(
               return false
             }
           case 'EMAIL':
-            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
           default:
             return true
         }
@@ -196,17 +191,15 @@ export async function PUT(
 }
 
 // DELETE /api/admin/settings/system/[id] - Delete system configuration
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const configurationId = params.id
 
     // Get existing configuration

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/feature-requests/moderation - List feature requests needing moderation
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +9,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -26,7 +25,7 @@ export async function GET(request: NextRequest) {
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -179,6 +178,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
           action,
           reason,
           metadata,
-          normalizeUserId(session.user.id),
+          normalizedUserId,
           workspaceId
         )
         results.push({ requestId: id, success: true, result })
@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
         activityType: 'FEATURE_REQUEST_MODERATION',
         title: `Feature request moderation: ${action}`,
         description: `${action} applied to ${results.length} feature request(s)${reason ? ` - ${reason}` : ''}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: workspaceId,

@@ -92,51 +92,53 @@ export async function POST(
     }
 
     if (action === 'accept') {
-      // Check if user exists
-      let user = await prisma.user.findUnique({
-        where: { email: invitation.email }
-      })
-
-      // If user doesn't exist, create them
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            email: invitation.email,
-            name: invitation.email.split('@')[0],
-            emailVerified: null
-          }
+      // Run user creation, membership creation and invitation acceptance atomically
+      // so a mid-flow failure can't strand an orphan User with a stuck PENDING invitation.
+      await prisma.$transaction(async (tx) => {
+        // Check if user exists
+        let user = await tx.user.findUnique({
+          where: { email: invitation.email }
         })
-      }
 
-      // Check if already a workspace member
-      const existingMembership = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: user.id,
-          workspaceId: invitation.workspaceId
+        // If user doesn't exist, create them
+        if (!user) {
+          user = await tx.user.create({
+            data: {
+              email: invitation.email,
+              name: invitation.email.split('@')[0],
+              emailVerified: null
+            }
+          })
         }
-      })
 
-      if (!existingMembership) {
-        // Create workspace membership with permissions
-        const permissions = getDefaultPermissions(invitation.role)
-        
-        await prisma.userWorkspace.create({
-          data: {
+        // Check if already a workspace member
+        const existingMembership = await tx.userWorkspace.findFirst({
+          where: {
             userId: user.id,
-            workspaceId: invitation.workspaceId,
-            role: invitation.role,
-            permissions: permissions
+            workspaceId: invitation.workspaceId
           }
         })
-      }
 
-      // Update invitation status
-      await prisma.teamInvitation.update({
-        where: { id: invitation.id },
-        data: { 
-          status: 'ACCEPTED',
-          respondedAt: new Date()
+        if (!existingMembership) {
+          // Create workspace membership (role is the sole authz field;
+          // per-member permissions column was removed)
+          await tx.userWorkspace.create({
+            data: {
+              userId: user.id,
+              workspaceId: invitation.workspaceId,
+              role: invitation.role
+            }
+          })
         }
+
+        // Update invitation status
+        await tx.teamInvitation.update({
+          where: { id: invitation.id },
+          data: {
+            status: 'ACCEPTED',
+            respondedAt: new Date()
+          }
+        })
       })
 
       return NextResponse.json({
@@ -166,59 +168,5 @@ export async function POST(
       error: 'Failed to process invitation response',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
-  }
-}
-
-// Helper function to get default permissions
-function getDefaultPermissions(role: string) {
-  switch (role) {
-    case 'OWNER':
-      return {
-        canManageTeam: true,
-        canManageContent: true,
-        canManageSettings: true,
-        canViewAnalytics: true,
-        canManageBilling: true
-      }
-    case 'ADMIN':
-      return {
-        canManageTeam: true,
-        canManageContent: true,
-        canManageSettings: true,
-        canViewAnalytics: true,
-        canManageBilling: false
-      }
-    case 'PUBLISHER':
-      return {
-        canManageTeam: false,
-        canManageContent: true,
-        canManageSettings: false,
-        canViewAnalytics: false,
-        canManageBilling: false
-      }
-    case 'ANALYST':
-      return {
-        canManageTeam: false,
-        canManageContent: false,
-        canManageSettings: false,
-        canViewAnalytics: true,
-        canManageBilling: false
-      }
-    case 'CLIENT_VIEWER':
-      return {
-        canManageTeam: false,
-        canManageContent: false,
-        canManageSettings: false,
-        canViewAnalytics: true,
-        canManageBilling: false
-      }
-    default:
-      return {
-        canManageTeam: false,
-        canManageContent: false,
-        canManageSettings: false,
-        canViewAnalytics: false,
-        canManageBilling: false
-      }
   }
 }

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/feature-requests - List feature requests
 export async function GET(request: NextRequest) {
   try {
@@ -117,6 +115,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
     const body = await request.json()
 
     const {
@@ -156,13 +155,13 @@ export async function POST(request: NextRequest) {
 
     // Add user/workspace if authenticated
     if (session?.user?.id) {
-      requestData.userId = normalizeUserId(session.user.id)
+      requestData.userId = normalizedUserId
       if (workspaceId) {
         // Verify user has access to workspace
         const userWorkspace = await prisma.userWorkspace.findUnique({
           where: {
             userId_workspaceId: {
-              userId: normalizeUserId(session.user.id),
+              userId: normalizedUserId,
               workspaceId
             }
           }
@@ -198,7 +197,7 @@ export async function POST(request: NextRequest) {
         activityType: 'FEATURE_REQUEST_CREATED',
         title: 'New feature request created',
         description: title,
-        userId: session?.user?.id ? normalizeUserId(session.user.id) : null,
+        userId: session?.user?.id ? normalizedUserId : null,
         userName: session?.user?.name || guestName || 'Anonymous',
         userAvatar: session?.user?.image,
         targetId: request_obj.id,

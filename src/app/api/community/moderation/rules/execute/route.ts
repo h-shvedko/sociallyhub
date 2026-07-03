@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Rule Execution interfaces
 interface ExecutionRequest {
   workspaceId: string
@@ -87,6 +85,7 @@ interface RuleExecutionContext {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
 
     const body = await request.json() as ExecutionRequest
     const {
@@ -108,7 +107,7 @@ export async function POST(request: NextRequest) {
     // Create execution context
     const context: RuleExecutionContext = {
       workspaceId,
-      userId: session?.user?.id ? normalizeUserId(session.user.id) : undefined,
+      userId: session?.user?.id ? normalizedUserId : undefined,
       ipAddress: content.metadata?.ipAddress,
       userAgent: content.metadata?.userAgent,
       timestamp: new Date(),
@@ -140,6 +139,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }

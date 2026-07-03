@@ -1,38 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
     revisionId: string
-  }
+  }>
 }
 
 // GET /api/admin/help/articles/[id]/revisions/[revisionId] - Get specific revision
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const { id: articleId, revisionId } = params
 
@@ -60,36 +41,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(revision)
   } catch (error) {
-    console.error('Failed to fetch revision:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch revision' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/help/articles/[id]/revisions/[revisionId] - Restore revision
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const { id: articleId, revisionId } = params
 
@@ -166,7 +126,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           seoTitle: revisionToRestore.seoTitle,
           seoDescription: revisionToRestore.seoDescription,
           changeSummary: `Restored from version ${revisionToRestore.version}`,
-          authorId: userId
+          authorId: user.id
         }
       })
 
@@ -179,10 +139,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       newRevision: result.newRevision
     })
   } catch (error) {
-    console.error('Failed to restore revision:', error)
-    return NextResponse.json(
-      { error: 'Failed to restore revision' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

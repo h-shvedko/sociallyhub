@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // POST /api/admin/help/import - Import articles from various formats
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const formData = await request.formData()
     const file = formData.get('file') as File
@@ -151,7 +131,7 @@ export async function POST(request: NextRequest) {
           status: articleData.status || 'draft',
           seoTitle: articleData.seoTitle || articleData.title,
           seoDescription: articleData.seoDescription || articleData.excerpt || generateExcerpt(articleData.content),
-          authorId: userId,
+          authorId: user.id,
           publishedAt: articleData.status === 'published' ? new Date() : null,
           updatedAt: new Date()
         }
@@ -182,7 +162,7 @@ export async function POST(request: NextRequest) {
               seoTitle: updatedArticle.seoTitle,
               seoDescription: updatedArticle.seoDescription,
               changeSummary: `Imported from ${format} file`,
-              authorId: userId
+              authorId: user.id
             }
           })
 
@@ -207,7 +187,7 @@ export async function POST(request: NextRequest) {
               seoTitle: newArticle.seoTitle,
               seoDescription: newArticle.seoDescription,
               changeSummary: `Imported from ${format} file`,
-              authorId: userId
+              authorId: user.id
             }
           })
 
@@ -225,11 +205,7 @@ export async function POST(request: NextRequest) {
       totalProcessed: articles.length
     })
   } catch (error) {
-    console.error('Failed to import articles:', error)
-    return NextResponse.json(
-      { error: 'Failed to import articles' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

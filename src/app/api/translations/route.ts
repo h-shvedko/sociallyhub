@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/auth-options'
+import { authOptions } from '@/lib/auth'
 import translationService from '@/lib/i18n/translation-service'
 import { isValidLocale, Locale } from '@/lib/i18n'
 

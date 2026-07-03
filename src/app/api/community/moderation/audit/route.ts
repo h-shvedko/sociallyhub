@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Audit Trail interfaces
 interface AuditEntry {
   id: string
@@ -68,6 +66,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -91,7 +90,7 @@ export async function GET(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -144,6 +143,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const { action, workspaceId, ...data } = body
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -531,6 +531,7 @@ async function performDataIntegrityChecks(workspaceId: string): Promise<DataInte
 }
 
 async function createManualAuditEntry(workspaceId: string, data: any, userId: string) {
+  const normalizedUserId = await normalizeUserId(userId)
   const {
     entityType,
     entityId,
@@ -546,7 +547,7 @@ async function createManualAuditEntry(workspaceId: string, data: any, userId: st
   const auditEntry = await prisma.moderationAction.create({
     data: {
       workspaceId,
-      moderatorId: normalizeUserId(userId),
+      moderatorId: normalizedUserId,
       actionType: 'AUDIT_ENTRY',
       targetType: entityType,
       targetId: entityId,
@@ -554,7 +555,7 @@ async function createManualAuditEntry(workspaceId: string, data: any, userId: st
       description: `Manual audit entry: ${changeType} - ${field || 'general'}`,
       isAutomatic: false,
       status: 'COMPLETED',
-      reviewedBy: normalizeUserId(userId),
+      reviewedBy: normalizedUserId,
       reviewedAt: new Date(),
       previousData: { [field || 'value']: oldValue },
       newData: { [field || 'value']: newValue },

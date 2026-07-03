@@ -1,37 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // GET /api/admin/help/articles/[id] - Get article details for admin
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const { id } = params
 
@@ -129,36 +110,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(article)
   } catch (error) {
-    console.error('Failed to fetch article details:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch article details' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // PUT /api/admin/help/articles/[id] - Update article
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const { id } = params
     const data = await request.json()
@@ -272,7 +232,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             seoTitle: updatedArticle.seoTitle,
             seoDescription: updatedArticle.seoDescription,
             changeSummary: changeSummary || 'Article updated',
-            authorId: userId
+            authorId: user.id
           }
         })
       }
@@ -282,36 +242,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Failed to update article:', error)
-    return NextResponse.json(
-      { error: 'Failed to update article' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // DELETE /api/admin/help/articles/[id] - Delete article
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const { id } = params
 
@@ -338,10 +277,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       article: deletedArticle
     })
   } catch (error) {
-    console.error('Failed to delete article:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete article' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

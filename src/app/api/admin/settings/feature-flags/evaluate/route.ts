@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/utils'
 
 // POST /api/admin/settings/feature-flags/evaluate - Evaluate feature flags
 export async function POST(request: NextRequest) {
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const evaluationUserId = targetUserId || (session ? normalizeUserId(session.user.id) : null)
+    const evaluationUserId = targetUserId || (session ? await normalizeUserId(session.user.id) : null)
     const userAgent = request.headers.get('user-agent') || undefined
     const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined
 

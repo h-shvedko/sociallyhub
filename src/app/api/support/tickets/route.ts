@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Generate unique ticket number
 function generateTicketNumber(): string {
   const timestamp = Date.now().toString().slice(-8)
@@ -29,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     // If user is logged in, show their tickets and workspace tickets they have access to
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = await normalizeUserId(session.user.id)
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -138,6 +136,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
     const body = await request.json()
 
     const {
@@ -220,13 +219,13 @@ export async function POST(request: NextRequest) {
 
     // Add user/workspace if authenticated
     if (session?.user?.id) {
-      ticketData.userId = normalizeUserId(session.user.id)
+      ticketData.userId = normalizedUserId
       if (workspaceId) {
         // Verify user has access to workspace
         const userWorkspace = await prisma.userWorkspace.findUnique({
           where: {
             userId_workspaceId: {
-              userId: normalizeUserId(session.user.id),
+              userId: normalizedUserId,
               workspaceId
             }
           }

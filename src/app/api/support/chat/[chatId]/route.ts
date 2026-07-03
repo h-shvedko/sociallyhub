@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 interface RouteParams {
   params: Promise<{ chatId: string }>
@@ -10,7 +10,7 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { chatId } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const searchParams = request.nextUrl.searchParams
     const sessionId = searchParams.get('sessionId')
 
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       where: {
         id: chatId,
         OR: [
-          { userId: session?.user?.id },
+          { userId: user?.id },
           { sessionId: sessionId }
         ]
       },
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { chatId } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const body = await request.json()
     const { action, rating, feedback } = body
 
@@ -98,7 +98,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const chat = await prisma.supportChat.findFirst({
       where: {
         id: chatId,
-        userId: session?.user?.id
+        userId: user?.id
       }
     })
 

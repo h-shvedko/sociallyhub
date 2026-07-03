@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/users/[userId] - Get detailed user information
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { userId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ userId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { userId } = params
     const { searchParams } = new URL(request.url)
@@ -24,7 +21,7 @@ export async function GET(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -201,15 +198,14 @@ export async function GET(
 }
 
 // PUT /api/community/users/[userId] - Apply moderation action to user
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { userId: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ userId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { userId } = params
     const body = await request.json()
@@ -233,7 +229,7 @@ export async function PUT(
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -258,7 +254,7 @@ export async function PUT(
     }
 
     // Cannot moderate self
-    if (targetUser.id === normalizeUserId(session.user.id)) {
+    if (targetUser.id === normalizedUserId) {
       return NextResponse.json({ error: 'Cannot moderate yourself' }, { status: 400 })
     }
 
@@ -305,7 +301,7 @@ export async function PUT(
         workspaceId,
         actionType,
         reason,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         targetType: 'USER',
         targetId: targetUser.id,
         severity,
@@ -323,14 +319,14 @@ export async function PUT(
     const moderationAction = await prisma.moderationAction.create({
       data: {
         workspaceId,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType,
         targetType: 'USER',
         targetId: targetUser.id,
         reason,
         description: `User ${action} - ${reason}`,
         status: 'COMPLETED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         ipAddress: request.ip || 'unknown',
         userAgent: request.headers.get('user-agent') || 'unknown'
@@ -361,7 +357,7 @@ export async function PUT(
         activityType: 'MODERATION_ACTION',
         title: `User ${action}ed`,
         description: `${targetUser.name} was ${action}ed by moderator`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: targetUser.id,

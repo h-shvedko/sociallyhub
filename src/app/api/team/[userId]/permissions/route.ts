@@ -1,8 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
+
+// Per-member permission storage was removed (ADR-0004): role is the sole authz
+// field. These static permission sets are derived from roles and are used only
+// to map a requested permissions payload back onto a WorkspaceRole.
+const ASSIGNABLE_ROLE_PERMISSION_SETS = {
+  ADMIN: {
+    canManageTeam: true,
+    canManageContent: true,
+    canManageSettings: true,
+    canViewAnalytics: true,
+    canManageBilling: false
+  },
+  PUBLISHER: {
+    canManageTeam: false,
+    canManageContent: true,
+    canManageSettings: false,
+    canViewAnalytics: false,
+    canManageBilling: false
+  },
+  ANALYST: {
+    canManageTeam: false,
+    canManageContent: false,
+    canManageSettings: false,
+    canViewAnalytics: true,
+    canManageBilling: false
+  },
+  CLIENT_VIEWER: {
+    canManageTeam: false,
+    canManageContent: false,
+    canManageSettings: false,
+    canViewAnalytics: true,
+    canManageBilling: false
+  }
+} as const
+
+type AssignableRole = keyof typeof ASSIGNABLE_ROLE_PERMISSION_SETS
+
+// Returns the role whose derived permission set exactly matches the payload,
+// or null if the payload doesn't correspond to any single assignable role.
+function mapPermissionsToRole(requested: Record<string, boolean>): AssignableRole | null {
+  const matches = (Object.keys(ASSIGNABLE_ROLE_PERMISSION_SETS) as AssignableRole[]).filter(role => {
+    const set: Record<string, boolean> = ASSIGNABLE_ROLE_PERMISSION_SETS[role]
+    const keys = Object.keys(set)
+    return keys.length === Object.keys(requested).length &&
+      keys.every(key => requested[key] === set[key])
+  })
+  return matches.length === 1 ? matches[0] : null
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -84,31 +131,45 @@ export async function PATCH(
 
     // Prevent non-owners from granting billing permissions
     if (permissions.canManageBilling && currentUserWorkspace.role !== 'OWNER') {
-      return NextResponse.json({ 
-        error: 'Only workspace owner can grant billing permissions' 
+      return NextResponse.json({
+        error: 'Only workspace owner can grant billing permissions'
       }, { status: 403 })
     }
 
-    // Update the permissions
-    await prisma.userWorkspace.update({
-      where: {
-        id: targetUserWorkspace.id
-      },
-      data: {
-        permissions: permissions
-      }
-    })
+    // Granular per-member permissions are no longer stored (ADR-0004): role is
+    // the only authorization field. Apply the request only if it maps cleanly
+    // onto a single workspace role; otherwise refuse instead of faking success.
+    const mappedRole = mapPermissionsToRole(permissions)
+
+    if (!mappedRole) {
+      return NextResponse.json({
+        error: 'Custom per-member permissions are not supported',
+        message: 'Granular permission storage was removed (ADR-0004). Only permission sets that exactly match a workspace role (ADMIN, PUBLISHER, ANALYST, CLIENT_VIEWER) can be applied; change the member\'s role instead.'
+      }, { status: 501 })
+    }
+
+    if (mappedRole !== targetUserWorkspace.role) {
+      await prisma.userWorkspace.update({
+        where: {
+          id: targetUserWorkspace.id
+        },
+        data: {
+          role: mappedRole
+        }
+      })
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Permissions updated successfully'
+      message: mappedRole !== targetUserWorkspace.role
+        ? `Member role updated to ${mappedRole} to match the requested permissions`
+        : 'Requested permissions already match the member\'s current role'
     })
 
   } catch (error) {
     console.error('Permissions update error:', error)
     return NextResponse.json({
-      error: 'Failed to update permissions',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Failed to update permissions'
     }, { status: 500 })
   }
 }

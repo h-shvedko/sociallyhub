@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/admin/help/workflows - List all article workflows
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status')
@@ -114,36 +94,14 @@ export async function GET(request: NextRequest) {
       }, {} as Record<string, number>)
     })
   } catch (error) {
-    console.error('Failed to fetch workflows:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch workflows' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/help/workflows - Create new workflow
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const data = await request.json()
     const {
@@ -198,7 +156,7 @@ export async function POST(request: NextRequest) {
       data: {
         articleId,
         workflowType,
-        requestedById: userId,
+        requestedById: user.id,
         assignedToId,
         proposedTitle,
         proposedContent,
@@ -238,10 +196,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(workflow, { status: 201 })
   } catch (error) {
-    console.error('Failed to create workflow:', error)
-    return NextResponse.json(
-      { error: 'Failed to create workflow' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

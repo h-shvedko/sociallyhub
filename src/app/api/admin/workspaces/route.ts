@@ -1,29 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/utils'
 
 // GET /api/admin/workspaces - Get all workspaces with member information
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const searchParams = request.nextUrl.searchParams
     const includeMembers = searchParams.get('includeMembers') === 'true'
@@ -110,34 +93,14 @@ export async function GET(request: NextRequest) {
       stats
     })
   } catch (error) {
-    console.error('Failed to fetch workspaces:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch workspaces' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/workspaces - Create new workspace
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const body = await request.json()
     const {
@@ -214,7 +177,7 @@ export async function POST(request: NextRequest) {
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: user.id,
         workspaceId: workspace.id,
         action: 'workspace_created',
         resource: 'workspace',
@@ -231,10 +194,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(workspace, { status: 201 })
   } catch (error) {
-    console.error('Failed to create workspace:', error)
-    return NextResponse.json(
-      { error: 'Failed to create workspace' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

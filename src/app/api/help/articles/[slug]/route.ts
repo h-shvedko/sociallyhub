@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 // GET /api/help/articles/[slug] - Get specific article by slug
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   try {
     const { slug } = params
 
@@ -75,10 +73,8 @@ export async function GET(
 }
 
 // PUT /api/help/articles/[slug] - Update article (Admin only)
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   try {
     const { slug } = params
     const data = await request.json()
@@ -133,10 +129,8 @@ export async function PUT(
 }
 
 // DELETE /api/help/articles/[slug] - Delete article (Admin only)
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   try {
     const { slug } = params
 

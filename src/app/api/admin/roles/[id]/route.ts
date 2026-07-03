@@ -1,32 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/utils'
 
 // GET /api/admin/roles/[id] - Get specific role
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const role = await prisma.role.findUnique({
       where: { id: params.id },
@@ -80,37 +61,15 @@ export async function GET(
 
     return NextResponse.json(role)
   } catch (error) {
-    console.error('Failed to fetch role:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch role' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // PUT /api/admin/roles/[id] - Update role
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const body = await request.json()
     const {
@@ -184,7 +143,7 @@ export async function PUT(
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: user.id,
         roleId: params.id,
         action: 'role_updated',
         resource: 'role',
@@ -213,37 +172,15 @@ export async function PUT(
 
     return NextResponse.json(updatedRole)
   } catch (error) {
-    console.error('Failed to update role:', error)
-    return NextResponse.json(
-      { error: 'Failed to update role' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // DELETE /api/admin/roles/[id] - Delete role
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     // Check if role exists
     const existingRole = await prisma.role.findUnique({
@@ -289,7 +226,7 @@ export async function DELETE(
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: user.id,
         action: 'role_deleted',
         resource: 'role',
         resourceId: params.id,
@@ -304,11 +241,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Failed to delete role:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete role' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

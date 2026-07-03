@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
-import { headers } from 'next/headers'
-
-// Helper function to get request metadata
-function getRequestMetadata(request: NextRequest) {
-  const headersList = headers()
-  const userAgent = headersList.get('user-agent') || ''
-  const forwardedFor = headersList.get('x-forwarded-for')
-  const realIp = headersList.get('x-real-ip')
-  const ipAddress = forwardedFor?.split(',')[0] || realIp || 'unknown'
-  const referrerUrl = headersList.get('referer') || ''
-
-  return { userAgent, ipAddress, referrerUrl }
-}
+import { getAuthenticatedUser } from '@/lib/auth'
+import { getRequestMetadata } from '@/lib/api/request-metadata'
 
 // POST /api/support/contact - Submit contact form
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const body = await request.json()
     const {
       name,
@@ -46,7 +34,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { userAgent, ipAddress, referrerUrl } = getRequestMetadata(request)
+    const { userAgent, ipAddress, referrerUrl } = await getRequestMetadata()
 
     // Find available agent for assignment
     const availableAgent = await prisma.supportAgent.findFirst({
@@ -65,8 +53,10 @@ export async function POST(request: NextRequest) {
     // Create contact form entry
     const contactForm = await prisma.supportContactForm.create({
       data: {
-        workspaceId: session?.user?.workspaceId || null,
-        userId: session?.user?.id || null,
+        // NOTE(ADR-0003): the session never carried a workspaceId (no session
+        // callback populates it), so this was always null at runtime.
+        workspaceId: null,
+        userId: user?.id || null,
         name: name.trim(),
         email: email.trim().toLowerCase(),
         subject: subject.trim(),
@@ -114,9 +104,9 @@ export async function POST(request: NextRequest) {
 // GET /api/support/contact - Get contact form submissions (for user)
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
-    if (!session) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -125,7 +115,7 @@ export async function GET(request: NextRequest) {
 
     const contactForms = await prisma.supportContactForm.findMany({
       where: {
-        userId: session.user?.id
+        userId: user.id
       },
       select: {
         id: true,

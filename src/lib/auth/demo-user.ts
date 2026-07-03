@@ -1,3 +1,10 @@
+// TODO(ADR-0025): this entire legacy demo-id mapping module is slated for
+// removal. Live sessions may still carry the hardcoded legacy demo IDs, so
+// the mapping stays until ADR-0025 (seeding strategy / explicit demo mode)
+// executes. The only sanctioned call site of normalizeUserId is
+// getAuthenticatedUser() in src/lib/auth/session.ts — deleting demo mode is
+// then a one-file change there plus removal of this module and the temporary
+// barrel re-exports in src/lib/auth/index.ts.
 import { prisma } from "@/lib/prisma"
 import { User } from "@prisma/client"
 

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/forum/moderation - List posts pending moderation
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +9,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -26,7 +25,7 @@ export async function GET(request: NextRequest) {
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -128,6 +127,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
     const moderationAction = await prisma.moderationAction.create({
       data: {
         workspaceId,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType,
         targetType,
         targetId,
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
         previousData,
         newData: updatedEntity || newData,
         status: 'COMPLETED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         ipAddress: request.ip || 'unknown',
         userAgent: request.headers.get('user-agent') || 'unknown'
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
       data: {
         status: actionType === 'APPROVE' ? 'APPROVED' :
                 actionType === 'REJECT' ? 'REJECTED' : 'RESOLVED',
-        assignedModeratorId: normalizeUserId(session.user.id),
+        assignedModeratorId: normalizedUserId,
         resolvedAt: new Date(),
         resolution: description || reason
       }
@@ -275,7 +275,7 @@ export async function POST(request: NextRequest) {
         activityType: 'MODERATION_ACTION',
         title: `Forum post ${actionType.toLowerCase()}`,
         description: description || reason || `Post ${actionType.toLowerCase()} by moderator`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: targetId,

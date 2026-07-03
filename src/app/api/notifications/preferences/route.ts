@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions } from '@/lib/auth'
 import { withLogging, SecurityLogger, ErrorLogger, BusinessLogger } from '@/lib/middleware/logging'
 import { z } from 'zod'
 import { NotificationPreferences, NotificationCategory, NotificationPriority } from '@/lib/notifications/types'

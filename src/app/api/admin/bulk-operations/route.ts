@@ -1,30 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/utils'
 import bcrypt from 'bcryptjs'
 
 // POST /api/admin/bulk-operations - Perform bulk operations on users
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const body = await request.json()
     const { operation, userIds, data = {} } = body
@@ -45,37 +28,37 @@ export async function POST(request: NextRequest) {
 
     switch (operation) {
       case 'assign_role':
-        return await handleBulkRoleAssignment(userIds, data, normalizedUserId, results)
+        return await handleBulkRoleAssignment(userIds, data, user.id, results)
 
       case 'remove_role':
-        return await handleBulkRoleRemoval(userIds, data, normalizedUserId, results)
+        return await handleBulkRoleRemoval(userIds, data, user.id, results)
 
       case 'add_to_workspace':
-        return await handleBulkWorkspaceAdd(userIds, data, normalizedUserId, results)
+        return await handleBulkWorkspaceAdd(userIds, data, user.id, results)
 
       case 'remove_from_workspace':
-        return await handleBulkWorkspaceRemoval(userIds, data, normalizedUserId, results)
+        return await handleBulkWorkspaceRemoval(userIds, data, user.id, results)
 
       case 'add_to_team':
-        return await handleBulkTeamAdd(userIds, data, normalizedUserId, results)
+        return await handleBulkTeamAdd(userIds, data, user.id, results)
 
       case 'remove_from_team':
-        return await handleBulkTeamRemoval(userIds, data, normalizedUserId, results)
+        return await handleBulkTeamRemoval(userIds, data, user.id, results)
 
       case 'update_profile':
-        return await handleBulkProfileUpdate(userIds, data, normalizedUserId, results)
+        return await handleBulkProfileUpdate(userIds, data, user.id, results)
 
       case 'send_invitation':
-        return await handleBulkInvitation(userIds, data, normalizedUserId, results)
+        return await handleBulkInvitation(userIds, data, user.id, results)
 
       case 'deactivate_users':
-        return await handleBulkUserDeactivation(userIds, normalizedUserId, results)
+        return await handleBulkUserDeactivation(userIds, user.id, results)
 
       case 'activate_users':
-        return await handleBulkUserActivation(userIds, normalizedUserId, results)
+        return await handleBulkUserActivation(userIds, user.id, results)
 
       case 'reset_passwords':
-        return await handleBulkPasswordReset(userIds, normalizedUserId, results)
+        return await handleBulkPasswordReset(userIds, user.id, results)
 
       default:
         return NextResponse.json(
@@ -84,11 +67,7 @@ export async function POST(request: NextRequest) {
         )
     }
   } catch (error) {
-    console.error('Failed to perform bulk operation:', error)
-    return NextResponse.json(
-      { error: 'Failed to perform bulk operation' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

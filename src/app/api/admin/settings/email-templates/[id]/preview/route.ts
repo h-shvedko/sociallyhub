@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/utils'
 
 // GET /api/admin/settings/email-templates/[id]/preview - Preview email template
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const templateId = params.id
 
     const template = await prisma.emailTemplate.findUnique({
@@ -99,17 +96,15 @@ export async function GET(
 }
 
 // POST /api/admin/settings/email-templates/[id]/preview - Preview with custom data
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const templateId = params.id
     const { previewData } = await request.json()
 

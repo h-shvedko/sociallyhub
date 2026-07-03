@@ -1,8 +1,7 @@
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
 import AdminSidebar from '@/components/admin/admin-sidebar'
 
 export default async function AdminLayout({
@@ -16,7 +15,7 @@ export default async function AdminLayout({
     redirect('/auth/signin')
   }
 
-  const userId = normalizeUserId(session.user.id)
+  const userId = await normalizeUserId(session.user.id)
 
   // Verify user has admin permissions
   const userWorkspaces = await prisma.userWorkspace.findMany({

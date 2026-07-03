@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 interface RouteParams {
   params: Promise<{ slug: string }>
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const { content, type = 'comment' } = await request.json()
 
     if (!content || !content.trim()) {
@@ -93,8 +93,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // If user is logged in, add their info
-    if (session?.user) {
-      commentData.authorId = session.user.id
+    if (user) {
+      commentData.authorId = user.id
       commentData.isApproved = true // Auto-approve for logged in users
     } else {
       // For anonymous users, we could require email/name

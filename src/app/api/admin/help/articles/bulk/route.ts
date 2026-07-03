@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // POST /api/admin/help/articles/bulk - Bulk operations on articles
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const data = await request.json()
     const { operation, articleIds, updateData } = data
@@ -249,7 +229,7 @@ export async function POST(request: NextRequest) {
                   seoTitle: article.seoTitle,
                   seoDescription: article.seoDescription,
                   changeSummary: `Bulk operation: ${operation}`,
-                  authorId: userId
+                  authorId: user.id
                 }
               })
             }
@@ -268,10 +248,6 @@ export async function POST(request: NextRequest) {
       articleIds
     })
   } catch (error) {
-    console.error('Failed to perform bulk operation:', error)
-    return NextResponse.json(
-      { error: 'Failed to perform bulk operation' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

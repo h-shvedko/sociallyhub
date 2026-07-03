@@ -23,10 +23,8 @@ const actionSchema = z.object({
   }).optional()
 })
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { testId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ testId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     

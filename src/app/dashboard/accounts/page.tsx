@@ -1,11 +1,9 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { AccountsPageClient } from '@/components/dashboard/accounts/accounts-page-client'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 export const metadata: Metadata = {
   title: 'Social Accounts | SociallyHub',
   description: 'Connect and manage your social media accounts for posting and monitoring.',

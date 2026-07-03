@@ -1,11 +1,9 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { TeamManager } from '@/components/dashboard/team/team-manager'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 export const metadata: Metadata = {
   title: 'Team | SociallyHub',
   description: 'Manage your team members, roles, and permissions for collaborative content management.',

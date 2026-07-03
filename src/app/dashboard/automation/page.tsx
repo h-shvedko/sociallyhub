@@ -1,10 +1,8 @@
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { AutomationDashboard } from '@/components/dashboard/automation/automation-dashboard'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 export default async function AutomationPage() {
   const session = await getServerSession(authOptions)
   

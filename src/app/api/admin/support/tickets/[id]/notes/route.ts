@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/admin/support/tickets/[id]/notes - Get all notes for a ticket
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 
@@ -19,7 +15,7 @@ export async function GET(
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
 
     // Verify admin permissions
@@ -96,10 +92,8 @@ export async function GET(
 }
 
 // POST /api/admin/support/tickets/[id]/notes - Add internal note to ticket
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 
@@ -110,7 +104,7 @@ export async function POST(
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
     const body = await request.json()
 

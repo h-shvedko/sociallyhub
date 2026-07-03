@@ -1,11 +1,9 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { CampaignDashboard } from '@/components/dashboard/campaigns/campaign-dashboard'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 export const metadata: Metadata = {
   title: 'Campaign Management | SociallyHub',
   description: 'Create, manage, and track your marketing campaigns with advanced analytics and A/B testing.',

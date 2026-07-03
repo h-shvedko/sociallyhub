@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/reports - List content reports
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +9,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -28,7 +27,7 @@ export async function GET(request: NextRequest) {
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -36,11 +35,11 @@ export async function GET(request: NextRequest) {
 
       if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
         // Regular user - only show their reports
-        userFilter = { submittedById: normalizeUserId(session.user.id) }
+        userFilter = { submittedById: normalizedUserId }
       }
     } else {
       // No workspace specified - show only user's reports
-      userFilter = { submittedById: normalizeUserId(session.user.id) }
+      userFilter = { submittedById: normalizedUserId }
     }
 
     // Build where clause
@@ -197,6 +196,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
     const body = await request.json()
     const {
       targetType, // FORUM_POST, FORUM_REPLY, USER
@@ -273,7 +273,7 @@ export async function POST(request: NextRequest) {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
       const existingReport = await prisma.contentReport.findFirst({
         where: {
-          submittedById: normalizeUserId(session.user.id),
+          submittedById: normalizedUserId,
           targetType,
           targetId: targetId || null,
           reportedUserId: reportedUserId || null,
@@ -318,7 +318,7 @@ export async function POST(request: NextRequest) {
         targetType,
         targetId: targetId || null,
         reportedUserId: reportedUserId || null,
-        submittedById: anonymous ? null : (session?.user?.id ? normalizeUserId(session.user.id) : null),
+        submittedById: anonymous ? null : (session?.user?.id ? normalizedUserId : null),
         category,
         reason: reason.trim(),
         description: description?.trim(),
@@ -388,7 +388,7 @@ export async function POST(request: NextRequest) {
         activityType: 'REPORT_SUBMITTED',
         title: `Content report submitted`,
         description: `${category.toLowerCase()} report: ${reason}`,
-        userId: anonymous ? null : (session?.user?.id ? normalizeUserId(session.user.id) : null),
+        userId: anonymous ? null : (session?.user?.id ? normalizedUserId : null),
         userName: anonymous ? 'Anonymous' : (session?.user?.name || 'Anonymous'),
         userAvatar: anonymous ? null : session?.user?.image,
         targetId: targetId || reportedUserId || '',

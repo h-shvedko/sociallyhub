@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 interface RouteParams {
-  params: {
+  params: Promise<{
     requestId: string
-  }
+  }>
 }
 
 // POST /api/community/feature-requests/[requestId]/vote - Vote on a feature request
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { requestId } = params
@@ -36,7 +35,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const userId = session?.user?.id ? normalizeUserId(session.user.id) : null
+    const userId = session?.user?.id ? await normalizeUserId(session.user.id) : null
 
     // Check if user/guest has already voted
     const existingVote = await prisma.featureRequestVote.findFirst({
@@ -111,7 +110,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 }
 
 // DELETE /api/community/feature-requests/[requestId]/vote - Remove vote from feature request
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { requestId } = params
@@ -122,7 +122,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
                      'unknown'
     const guestIdentifier = `ip_${clientIp}`
 
-    const userId = session?.user?.id ? normalizeUserId(session.user.id) : null
+    const userId = session?.user?.id ? await normalizeUserId(session.user.id) : null
 
     // Find existing vote
     const existingVote = await prisma.featureRequestVote.findFirst({
@@ -171,7 +171,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 }
 
 // GET /api/community/feature-requests/[requestId]/vote - Check if user has voted
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { requestId } = params
@@ -182,7 +183,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
                      'unknown'
     const guestIdentifier = `ip_${clientIp}`
 
-    const userId = session?.user?.id ? normalizeUserId(session.user.id) : null
+    const userId = session?.user?.id ? await normalizeUserId(session.user.id) : null
 
     // Check if user/guest has voted
     const existingVote = await prisma.featureRequestVote.findFirst({

@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/utils'
 
 // POST /api/admin/settings/integrations/[id]/test - Test integration connection
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const integrationId = params.id
 
     const integration = await prisma.integrationSetting.findUnique({
@@ -160,12 +157,13 @@ export async function POST(
 
     // Update error count on failure
     try {
+      const errorUpdatedBy = await normalizeUserId(session?.user?.id || '')
       await prisma.integrationSetting.update({
         where: { id: params.id },
         data: {
           errorCount: { increment: 1 },
           lastError: 'Test connection failed',
-          lastUpdatedBy: normalizeUserId(session?.user?.id || '')
+          lastUpdatedBy: errorUpdatedBy
         }
       })
     } catch (updateError) {

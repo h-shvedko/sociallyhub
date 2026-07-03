@@ -1,29 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/utils'
 
 // GET /api/admin/support-agents - Get all support agents
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status')
@@ -223,34 +206,14 @@ export async function GET(request: NextRequest) {
       stats
     })
   } catch (error) {
-    console.error('Failed to fetch support agents:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch support agents' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/support-agents - Assign support agent role to user
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const admin = await requireAdmin()
 
     const body = await request.json()
     const {
@@ -357,7 +320,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId,
           roleId: supportRole.id,
-          assignedBy: normalizedUserId,
+          assignedBy: admin.id,
           assignedAt: new Date(),
           isActive: true
         }
@@ -387,7 +350,7 @@ export async function POST(request: NextRequest) {
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: admin.id,
         workspaceId,
         action: 'support_agent_assigned',
         resource: 'user',
@@ -411,10 +374,6 @@ export async function POST(request: NextRequest) {
       assignedAt: result.assignedAt
     }, { status: 201 })
   } catch (error) {
-    console.error('Failed to assign support agent role:', error)
-    return NextResponse.json(
-      { error: 'Failed to assign support agent role' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

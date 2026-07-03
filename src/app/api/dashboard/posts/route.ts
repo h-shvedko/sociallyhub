@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/dashboard/posts - Get recent posts for dashboard
 async function getHandler(request: NextRequest) {
   try {

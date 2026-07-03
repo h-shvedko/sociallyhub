@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/admin/help/categories - List all categories for admin management
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const searchParams = request.nextUrl.searchParams
     const includeStats = searchParams.get('includeStats') === 'true'
@@ -109,36 +89,14 @@ export async function GET(request: NextRequest) {
       total: enrichedCategories.length
     })
   } catch (error) {
-    console.error('Failed to fetch help categories for admin:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch help categories' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/help/categories - Create new category
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const data = await request.json()
     const {
@@ -205,10 +163,6 @@ export async function POST(request: NextRequest) {
       faqCount: category._count.faqs
     }, { status: 201 })
   } catch (error) {
-    console.error('Failed to create help category:', error)
-    return NextResponse.json(
-      { error: 'Failed to create help category' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

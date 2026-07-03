@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
-import { normalizeUserId } from '@/lib/auth/demo-user'
 import { subDays, format, startOfDay, endOfDay } from 'date-fns'
 
 // GET /api/analytics/engagement - Get engagement analytics data

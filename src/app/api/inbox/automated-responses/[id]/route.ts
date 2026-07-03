@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return withLogging(async () => {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
@@ -58,10 +54,8 @@ export async function GET(
   }, 'inbox-automated-responses-get')(request)
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return withLogging(async () => {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
@@ -138,10 +132,8 @@ export async function PATCH(
   }, 'inbox-automated-responses-update')(request)
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return withLogging(async () => {
     const session = await getServerSession(authOptions)
     if (!session?.user) {

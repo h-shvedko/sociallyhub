@@ -8,10 +8,8 @@ const ApproveResponseRequestSchema = z.object({
   feedback: z.string().optional()
 })
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { responseId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ responseId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {

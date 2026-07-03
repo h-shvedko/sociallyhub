@@ -1,11 +1,9 @@
 import { Metadata } from 'next'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { TemplateManager } from '@/components/dashboard/templates/template-manager'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 export const metadata: Metadata = {
   title: 'Templates | SociallyHub',
   description: 'Create and manage reusable content templates for social media posts.',

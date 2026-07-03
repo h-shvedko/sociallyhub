@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { withLogging, BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 import { AppLogger } from '@/lib/logger'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Schema for post creation/update
 const postSchema = z.object({
   title: z.string().optional(),

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Moderation Dashboard interfaces
 interface ModerationDashboard {
   overview: {
@@ -122,6 +120,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -136,7 +135,7 @@ export async function GET(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -203,6 +202,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const { action, workspaceId, ...data } = body
@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -226,17 +226,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'DISMISS_ALERT') {
-      const result = await dismissAlert(workspaceId, data.alertId, session.user.id!)
+      const result = await dismissAlert(workspaceId, data.alertId, normalizedUserId)
       return NextResponse.json({ result })
     }
 
     if (action === 'BULK_PROCESS_QUEUE') {
-      const result = await bulkProcessQueue(workspaceId, data.items, data.action, session.user.id!)
+      const result = await bulkProcessQueue(workspaceId, data.items, data.action, normalizedUserId)
       return NextResponse.json({ result })
     }
 
     if (action === 'UPDATE_SETTINGS') {
-      const result = await updateModerationSettings(workspaceId, data.settings, session.user.id!)
+      const result = await updateModerationSettings(workspaceId, data.settings, normalizedUserId)
       return NextResponse.json({ result })
     }
 
@@ -757,13 +757,13 @@ async function calculateCommunityHealthScore(workspaceId: string, startDate: Dat
 }
 
 // Action helper functions
-async function dismissAlert(workspaceId: string, alertId: string, userId: string) {
+async function dismissAlert(workspaceId: string, alertId: string, normalizedUserId: string) {
   // In a real implementation, this would update an alerts table
   // For now, just log the dismissal
   await prisma.moderationAction.create({
     data: {
       workspaceId,
-      moderatorId: normalizeUserId(userId),
+      moderatorId: normalizedUserId,
       actionType: 'DISMISS_ALERT',
       targetType: 'SYSTEM_ALERT',
       targetId: alertId,
@@ -771,7 +771,7 @@ async function dismissAlert(workspaceId: string, alertId: string, userId: string
       description: `Alert ${alertId} dismissed`,
       isAutomatic: false,
       status: 'COMPLETED',
-      reviewedBy: normalizeUserId(userId),
+      reviewedBy: normalizedUserId,
       reviewedAt: new Date()
     }
   })
@@ -779,7 +779,7 @@ async function dismissAlert(workspaceId: string, alertId: string, userId: string
   return { success: true, message: 'Alert dismissed' }
 }
 
-async function bulkProcessQueue(workspaceId: string, items: string[], action: string, userId: string) {
+async function bulkProcessQueue(workspaceId: string, items: string[], action: string, normalizedUserId: string) {
   const results = []
 
   for (const itemId of items) {
@@ -788,7 +788,7 @@ async function bulkProcessQueue(workspaceId: string, items: string[], action: st
         where: { id: itemId, workspaceId },
         data: {
           status: action === 'APPROVE' ? 'COMPLETED' : 'REJECTED',
-          reviewedBy: normalizeUserId(userId),
+          reviewedBy: normalizedUserId,
           reviewedAt: new Date(),
           reason: `Bulk ${action.toLowerCase()}`
         }
@@ -807,13 +807,13 @@ async function bulkProcessQueue(workspaceId: string, items: string[], action: st
   }
 }
 
-async function updateModerationSettings(workspaceId: string, settings: any, userId: string) {
+async function updateModerationSettings(workspaceId: string, settings: any, normalizedUserId: string) {
   // In a real implementation, this would update a workspace settings table
   // For now, just log the settings update
   await prisma.moderationAction.create({
     data: {
       workspaceId,
-      moderatorId: normalizeUserId(userId),
+      moderatorId: normalizedUserId,
       actionType: 'UPDATE_SETTINGS',
       targetType: 'WORKSPACE_SETTINGS',
       targetId: workspaceId,
@@ -821,7 +821,7 @@ async function updateModerationSettings(workspaceId: string, settings: any, user
       description: 'Updated workspace moderation settings',
       isAutomatic: false,
       status: 'COMPLETED',
-      reviewedBy: normalizeUserId(userId),
+      reviewedBy: normalizedUserId,
       reviewedAt: new Date(),
       metadata: { settings }
     }

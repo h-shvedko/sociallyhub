@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/utils'
 
 // POST /api/admin/settings/security/audit - Run security audit
 export async function POST(request: NextRequest) {
@@ -12,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const body = await request.json()
     const { workspaceId, categories, configurationIds } = body
 

@@ -1,32 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/utils'
 
 // GET /api/admin/sso/[id] - Get specific SSO provider
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const ssoProvider = await prisma.sSOProvider.findUnique({
       where: { id: params.id },
@@ -102,37 +83,15 @@ export async function GET(
       }
     })
   } catch (error) {
-    console.error('Failed to fetch SSO provider:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch SSO provider' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // PUT /api/admin/sso/[id] - Update SSO provider
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const body = await request.json()
     const {
@@ -183,7 +142,7 @@ export async function PUT(
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: user.id,
         workspaceId: existingProvider.workspaceId,
         action: 'sso_provider_updated',
         resource: 'sso_provider',
@@ -216,37 +175,15 @@ export async function PUT(
 
     return NextResponse.json(safeProvider)
   } catch (error) {
-    console.error('Failed to update SSO provider:', error)
-    return NextResponse.json(
-      { error: 'Failed to update SSO provider' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // DELETE /api/admin/sso/[id] - Delete SSO provider
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     // Check if SSO provider exists
     const existingProvider = await prisma.sSOProvider.findUnique({
@@ -297,7 +234,7 @@ export async function DELETE(
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: user.id,
         workspaceId: existingProvider.workspaceId,
         action: 'sso_provider_deleted',
         resource: 'sso_provider',
@@ -309,7 +246,7 @@ export async function DELETE(
         },
         metadata: {
           force,
-          deletedBy: normalizedUserId
+          deletedBy: user.id
         },
         timestamp: new Date()
       }
@@ -317,10 +254,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Failed to delete SSO provider:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete SSO provider' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

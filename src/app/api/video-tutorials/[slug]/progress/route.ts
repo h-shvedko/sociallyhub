@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 interface RouteParams {
   params: Promise<{ slug: string }>
@@ -10,9 +10,9 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const progress = await prisma.videoUserProgress.upsert({
       where: {
         userId_videoId: {
-          userId: session.user.id,
+          userId: user.id,
           videoId: tutorial.id
         }
       },
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         updatedAt: new Date()
       },
       create: {
-        userId: session.user.id,
+        userId: user.id,
         videoId: tutorial.id,
         watchTime: watchTime || 0,
         lastPosition: lastPosition || 0,
@@ -114,9 +114,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -142,14 +142,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const progress = await prisma.videoUserProgress.findUnique({
       where: {
         userId_videoId: {
-          userId: session.user.id,
+          userId: user.id,
           videoId: tutorial.id
         }
       }
     })
 
     return NextResponse.json(progress || {
-      userId: session.user.id,
+      userId: user.id,
       videoId: tutorial.id,
       watchTime: 0,
       lastPosition: 0,

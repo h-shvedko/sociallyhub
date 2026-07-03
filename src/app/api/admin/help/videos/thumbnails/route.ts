@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import prisma from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth-utils'
+import { authOptions, normalizeUserId } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
@@ -15,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       select: { workspaceId: true }
@@ -164,7 +163,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       select: { workspaceId: true }

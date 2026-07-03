@@ -19,7 +19,7 @@ function highlightText(text: string, query: string): string {
 
 // Helper function to escape special regex characters
 function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Helper function to extract snippet around search terms
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
     const trimmedQuery = query.trim().toLowerCase()
 
     // Get request metadata for analytics
-    const headersList = headers()
+    const headersList = await headers()
     const userAgent = headersList.get('user-agent') || ''
     const forwardedFor = headersList.get('x-forwarded-for')
     const realIp = headersList.get('x-real-ip')

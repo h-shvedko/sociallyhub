@@ -5,10 +5,8 @@ import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers/social-media-manager'
 import { withLogging } from '@/lib/middleware/logging'
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return withLogging(async () => {
     const session = await getServerSession(authOptions)
     if (!session?.user) {

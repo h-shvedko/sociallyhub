@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/utils'
 
 // GET /api/admin/settings/email-templates/[id] - Get specific email template
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const templateId = params.id
 
     const template = await prisma.emailTemplate.findUnique({
@@ -62,17 +59,15 @@ export async function GET(
 }
 
 // PUT /api/admin/settings/email-templates/[id] - Update email template
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const templateId = params.id
     const body = await request.json()
 
@@ -195,17 +190,15 @@ export async function PUT(
 }
 
 // DELETE /api/admin/settings/email-templates/[id] - Delete email template
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const normalizedUserId = normalizeUserId(session.user.id)
+    const normalizedUserId = await normalizeUserId(session.user.id)
     const templateId = params.id
 
     // Get existing template

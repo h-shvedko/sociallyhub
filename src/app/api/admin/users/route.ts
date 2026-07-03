@@ -1,30 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/utils'
 import bcrypt from 'bcryptjs'
 
 // GET /api/admin/users - Get all users with role information
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const searchParams = request.nextUrl.searchParams
     const search = searchParams.get('search')
@@ -152,34 +135,14 @@ export async function GET(request: NextRequest) {
       stats
     })
   } catch (error) {
-    console.error('Failed to fetch users:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch users' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/users - Create new user
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const admin = await requireAdmin()
 
     const body = await request.json()
     const {
@@ -250,7 +213,7 @@ export async function POST(request: NextRequest) {
         const roleAssignments = roleIds.map((roleId: string) => ({
           userId: user.id,
           roleId,
-          assignedBy: normalizedUserId,
+          assignedBy: admin.id,
           assignedAt: new Date()
         }))
 
@@ -265,7 +228,7 @@ export async function POST(request: NextRequest) {
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: admin.id,
         workspaceId: workspaceId || undefined,
         action: 'user_created',
         resource: 'user',
@@ -293,10 +256,6 @@ export async function POST(request: NextRequest) {
       createdAt: result.createdAt
     }, { status: 201 })
   } catch (error) {
-    console.error('Failed to create user:', error)
-    return NextResponse.json(
-      { error: 'Failed to create user' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

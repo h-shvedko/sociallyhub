@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // POST /api/community/users/bulk - Bulk user moderation actions
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +9,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -40,7 +39,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -68,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     // Remove current user from the list (cannot moderate self)
     const filteredUsers = targetUsers.filter(
-      user => user.id !== normalizeUserId(session.user.id)
+      user => user.id !== normalizedUserId
     )
 
     if (filteredUsers.length === 0) {
@@ -120,7 +119,7 @@ export async function POST(request: NextRequest) {
             workspaceId,
             actionType,
             reason: `${reason} (Bulk action)`,
-            moderatorId: normalizeUserId(session.user.id),
+            moderatorId: normalizedUserId,
             targetType: 'USER',
             targetId: user.id,
             severity,
@@ -139,14 +138,14 @@ export async function POST(request: NextRequest) {
         const moderationAction = await prisma.moderationAction.create({
           data: {
             workspaceId,
-            moderatorId: normalizeUserId(session.user.id),
+            moderatorId: normalizedUserId,
             actionType,
             targetType: 'USER',
             targetId: user.id,
             reason: `${reason} (Bulk action)`,
             description: `Bulk user ${action} - ${reason}`,
             status: 'COMPLETED',
-            reviewedBy: normalizeUserId(session.user.id),
+            reviewedBy: normalizedUserId,
             reviewedAt: new Date(),
             ipAddress: request.ip || 'unknown',
             userAgent: request.headers.get('user-agent') || 'unknown'
@@ -172,7 +171,7 @@ export async function POST(request: NextRequest) {
             activityType: 'MODERATION_ACTION',
             title: `User ${action}ed (bulk action)`,
             description: `${user.name} was ${action}ed via bulk moderation`,
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             userName: session.user.name || 'Moderator',
             userAvatar: session.user.image,
             targetId: user.id,
@@ -217,7 +216,7 @@ export async function POST(request: NextRequest) {
         title: `Bulk user moderation: ${results.length} users ${action}ed`,
         description: `Bulk ${action} action completed on ${results.length} users` +
                     (errors.length > 0 ? `, ${errors.length} failed` : ''),
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: workspaceId,
@@ -262,6 +261,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -271,7 +271,7 @@ export async function GET(request: NextRequest) {
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }

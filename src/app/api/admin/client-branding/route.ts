@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -15,7 +13,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
@@ -70,7 +68,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const body = await request.json()
     const { workspaceId, clientId, ...brandingData } = body
 
@@ -172,7 +170,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 

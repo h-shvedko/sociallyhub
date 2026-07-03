@@ -4,10 +4,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return withLogging(async () => {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
@@ -48,10 +46,8 @@ export async function GET(
   }, 'inbox-get')(request)
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return withLogging(async () => {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
@@ -94,10 +90,8 @@ export async function PATCH(
   }, 'inbox-update')(request)
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return withLogging(async () => {
     const session = await getServerSession(authOptions)
     if (!session?.user) {

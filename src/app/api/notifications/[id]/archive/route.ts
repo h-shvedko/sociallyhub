@@ -1,32 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions } from '@/lib/auth'
 import { withLogging, SecurityLogger, ErrorLogger, BusinessLogger } from '@/lib/middleware/logging'
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 async function handleArchiveNotification(request: NextRequest, { params }: RouteContext) {
+  const { id: notificationId } = await params
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       SecurityLogger.logUnauthorizedAccess(
-        undefined, 
-        `/api/notifications/${params.id}/archive`, 
+        undefined,
+        `/api/notifications/${notificationId}/archive`,
         request.headers.get('x-forwarded-for') || undefined
       )
-      
+
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
       )
     }
-
-    const notificationId = params.id
 
     if (!notificationId || typeof notificationId !== 'string') {
       return NextResponse.json(
@@ -55,7 +54,7 @@ async function handleArchiveNotification(request: NextRequest, { params }: Route
 
   } catch (error) {
     ErrorLogger.logUnexpectedError(error as Error, {
-      endpoint: `/api/notifications/${params.id}/archive`,
+      endpoint: `/api/notifications/${notificationId}/archive`,
       method: 'POST'
     })
 

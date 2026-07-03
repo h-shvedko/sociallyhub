@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/spam-detection/[detectionId] - Get specific detection details
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { detectionId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ detectionId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { detectionId } = params
     const { searchParams } = new URL(request.url)
@@ -24,7 +21,7 @@ export async function GET(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -134,15 +131,14 @@ export async function GET(
 }
 
 // PUT /api/community/spam-detection/[detectionId] - Update detection status (train system)
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { detectionId: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ detectionId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { detectionId } = params
     const body = await request.json()
@@ -165,7 +161,7 @@ export async function PUT(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -190,7 +186,7 @@ export async function PUT(
       where: { id: detectionId },
       data: {
         status,
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         reviewNotes,
         metadata: {
@@ -198,7 +194,7 @@ export async function PUT(
           reviewHistory: [
             ...(currentDetection.metadata?.reviewHistory || []),
             {
-              reviewedBy: normalizeUserId(session.user.id),
+              reviewedBy: normalizedUserId,
               reviewedAt: new Date(),
               previousStatus: currentDetection.status,
               newStatus: status,
@@ -215,7 +211,7 @@ export async function PUT(
         activityType: 'MODERATION_ACTION',
         title: 'Spam detection reviewed',
         description: `Detection status updated to ${status}${reviewNotes ? ` - ${reviewNotes}` : ''}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: detectionId,
@@ -252,15 +248,14 @@ export async function PUT(
 }
 
 // DELETE /api/community/spam-detection/[detectionId] - Delete detection record
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { detectionId: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ detectionId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { detectionId } = params
     const { searchParams } = new URL(request.url)
@@ -271,7 +266,7 @@ export async function DELETE(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -302,7 +297,7 @@ export async function DELETE(
         activityType: 'MODERATION_ACTION',
         title: 'Spam detection deleted',
         description: `Spam detection record deleted`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: detectionId,

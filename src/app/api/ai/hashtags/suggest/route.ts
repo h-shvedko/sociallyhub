@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { aiService } from '@/lib/ai/ai-service'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SocialProvider } from '@prisma/client'
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 interface RouteParams {
   params: Promise<{ slug: string }>
@@ -10,7 +10,7 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
     const tutorial = await prisma.videoTutorial.findFirst({
       where: {
@@ -27,9 +27,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             icon: true
           }
         },
-        userProgress: session?.user?.id ? {
+        userProgress: user ? {
           where: {
-            userId: session.user.id
+            userId: user.id
           },
           select: {
             watchTime: true,

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 // GET /api/user/bookmarks - Get user's bookmarked articles
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const [bookmarks, totalCount] = await Promise.all([
       prisma.helpArticleBookmark.findMany({
         where: {
-          userId: session.user.id
+          userId: user.id
         },
         include: {
           article: {
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.helpArticleBookmark.count({
         where: {
-          userId: session.user.id
+          userId: user.id
         }
       })
     ])

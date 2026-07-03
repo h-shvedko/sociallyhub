@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import prisma from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth-utils'
+import { authOptions, normalizeUserId } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       select: { workspaceId: true }
@@ -55,17 +52,15 @@ export async function GET(
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       select: { workspaceId: true }
@@ -192,17 +187,15 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       select: { workspaceId: true }

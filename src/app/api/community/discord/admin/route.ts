@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Discord API integration helpers
 interface DiscordGuildInfo {
   id: string
@@ -100,6 +98,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -112,7 +111,7 @@ export async function GET(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -219,6 +218,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -240,7 +240,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -359,14 +359,14 @@ export async function POST(request: NextRequest) {
     await prisma.moderationAction.create({
       data: {
         workspaceId,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType: 'DISCORD_ADMIN',
         targetType: 'DISCORD_INTEGRATION',
         targetId: integration.id,
         reason: actionDescription,
         description: `Discord admin action: ${action}`,
         status: result.success ? 'COMPLETED' : 'FAILED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         metadata: {
           discordAction: action,
@@ -383,7 +383,7 @@ export async function POST(request: NextRequest) {
         activityType: 'DISCORD_ADMIN_ACTION',
         title: `Discord admin action: ${action}`,
         description: actionDescription,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Admin',
         userAvatar: session.user.image,
         targetId: integration.id,

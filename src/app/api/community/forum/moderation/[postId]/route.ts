@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/forum/moderation/[postId] - Get post moderation details
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { postId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ postId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { postId } = params
     const { searchParams } = new URL(request.url)
@@ -24,7 +21,7 @@ export async function GET(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -162,15 +159,14 @@ export async function GET(
 }
 
 // PUT /api/community/forum/moderation/[postId] - Update post moderation status
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { postId: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ postId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { postId } = params
     const body = await request.json()
@@ -188,7 +184,7 @@ export async function PUT(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -269,7 +265,7 @@ export async function PUT(
     const moderationAction = await prisma.moderationAction.create({
       data: {
         workspaceId: workspaceId || currentPost.workspaceId!,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType,
         targetType: 'FORUM_POST',
         targetId: postId,
@@ -277,7 +273,7 @@ export async function PUT(
         previousData,
         newData: updatedPost,
         status: 'COMPLETED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         ipAddress: request.ip || 'unknown',
         userAgent: request.headers.get('user-agent') || 'unknown'
@@ -321,7 +317,7 @@ export async function PUT(
           workspaceId: workspaceId || currentPost.workspaceId!,
           actionType,
           reason,
-          moderatorId: normalizeUserId(session.user.id),
+          moderatorId: normalizedUserId,
           targetType: 'FORUM_POST',
           targetId: postId,
           severity: action === 'reject' ? 'MEDIUM' : 'LOW'
@@ -335,7 +331,7 @@ export async function PUT(
         activityType: 'MODERATION_ACTION',
         title: `Forum post ${action}d`,
         description: reason || `Post ${action}d by moderator`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: postId,
@@ -367,15 +363,14 @@ export async function PUT(
 }
 
 // DELETE /api/community/forum/moderation/[postId] - Delete post (moderation action)
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { postId: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ postId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { postId } = params
     const { searchParams } = new URL(request.url)
@@ -387,7 +382,7 @@ export async function DELETE(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -414,7 +409,7 @@ export async function DELETE(
     const moderationAction = await prisma.moderationAction.create({
       data: {
         workspaceId: workspaceId || post.workspaceId!,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType: 'DELETE',
         targetType: 'FORUM_POST',
         targetId: postId,
@@ -427,7 +422,7 @@ export async function DELETE(
           isLocked: post.isLocked
         },
         status: 'COMPLETED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         ipAddress: request.ip || 'unknown',
         userAgent: request.headers.get('user-agent') || 'unknown'
@@ -442,7 +437,7 @@ export async function DELETE(
           workspaceId: workspaceId || post.workspaceId!,
           actionType: 'DELETE',
           reason: reason || 'Post deleted by moderator',
-          moderatorId: normalizeUserId(session.user.id),
+          moderatorId: normalizedUserId,
           targetType: 'FORUM_POST',
           targetId: postId,
           severity: 'HIGH'
@@ -484,7 +479,7 @@ export async function DELETE(
         activityType: 'MODERATION_ACTION',
         title: 'Forum post deleted',
         description: reason || 'Post deleted by moderator',
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: postId,

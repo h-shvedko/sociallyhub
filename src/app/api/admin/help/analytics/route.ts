@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/admin/help/analytics - Get help articles analytics
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const searchParams = request.nextUrl.searchParams
     const period = searchParams.get('period') || '30d'
@@ -310,11 +290,7 @@ export async function GET(request: NextRequest) {
       }))
     })
   } catch (error) {
-    console.error('Failed to fetch analytics:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch analytics' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -372,10 +348,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(analytics, { status: 201 })
   } catch (error) {
-    console.error('Failed to record analytics:', error)
-    return NextResponse.json(
-      { error: 'Failed to record analytics' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

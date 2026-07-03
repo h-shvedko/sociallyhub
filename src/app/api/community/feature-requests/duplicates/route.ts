@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Duplicate detection algorithms
 interface DuplicateMatch {
   requestId: string
@@ -117,6 +115,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -131,7 +130,7 @@ export async function GET(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -289,6 +288,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -319,7 +319,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -376,7 +376,7 @@ export async function POST(request: NextRequest) {
             mergedInto: targetRequestId,
             moderatorNotes: reason || `Merged into ${targetRequest.title}`,
             archivedAt: new Date(),
-            archivedBy: normalizeUserId(session.user.id)
+            archivedBy: normalizedUserId
           }
         })
 
@@ -384,14 +384,14 @@ export async function POST(request: NextRequest) {
         await tx.moderationAction.create({
           data: {
             workspaceId,
-            moderatorId: normalizeUserId(session.user.id),
+            moderatorId: normalizedUserId,
             actionType: 'MERGE',
             targetType: 'FEATURE_REQUEST',
             targetId: duplicateRequest.id,
             reason: reason || `Merged duplicate into ${targetRequest.title}`,
             description: `Merged duplicate request: ${duplicateRequest.title}`,
             status: 'COMPLETED',
-            reviewedBy: normalizeUserId(session.user.id),
+            reviewedBy: normalizedUserId,
             reviewedAt: new Date(),
             metadata: {
               mergedInto: targetRequestId,
@@ -467,7 +467,7 @@ export async function POST(request: NextRequest) {
         activityType: 'FEATURE_REQUEST_MERGED',
         title: 'Feature requests merged',
         description: `${duplicateRequests.length} duplicate request(s) merged into: ${targetRequest.title}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: targetRequestId,

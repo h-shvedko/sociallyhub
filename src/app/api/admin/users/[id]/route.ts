@@ -1,33 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/utils'
 import bcrypt from 'bcryptjs'
 
 // GET /api/admin/users/[id] - Get specific user with full details
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const user = await prisma.user.findUnique({
       where: { id: params.id },
@@ -169,37 +150,15 @@ export async function GET(
       }
     })
   } catch (error) {
-    console.error('Failed to fetch user:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch user' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // PUT /api/admin/users/[id] - Update user information and roles
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const admin = await requireAdmin()
 
     const body = await request.json()
     const {
@@ -234,7 +193,7 @@ export async function PUT(
     }
 
     // Prevent admin from modifying their own admin status
-    if (params.id === normalizedUserId && workspaceRoles.length > 0) {
+    if (params.id === admin.id && workspaceRoles.length > 0) {
       const currentAdminRole = existingUser.workspaces.find(w =>
         ['OWNER', 'ADMIN'].includes(w.role)
       )
@@ -323,7 +282,7 @@ export async function PUT(
         const roleData = additionalRoles.map((roleId: string) => ({
           userId: params.id,
           roleId,
-          assignedBy: normalizedUserId,
+          assignedBy: admin.id,
           assignedAt: new Date(),
           isActive: true
         }))
@@ -359,7 +318,7 @@ export async function PUT(
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: admin.id,
         action: 'user_updated',
         resource: 'user',
         resourceId: params.id,
@@ -399,40 +358,18 @@ export async function PUT(
       updatedAt: updatedUser.updatedAt
     })
   } catch (error) {
-    console.error('Failed to update user:', error)
-    return NextResponse.json(
-      { error: 'Failed to update user' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // DELETE /api/admin/users/[id] - Delete or deactivate user
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has admin permissions
-    const normalizedUserId = normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    const admin = await requireAdmin()
 
     // Prevent admin from deleting themselves
-    if (params.id === normalizedUserId) {
+    if (params.id === admin.id) {
       return NextResponse.json(
         { error: 'Cannot delete your own account' },
         { status: 400 }
@@ -517,7 +454,7 @@ export async function DELETE(
     // Create audit log
     await prisma.auditLog.create({
       data: {
-        userId: normalizedUserId,
+        userId: admin.id,
         action: hardDelete ? 'user_deleted' : 'user_deactivated',
         resource: 'user',
         resourceId: params.id,
@@ -529,7 +466,7 @@ export async function DELETE(
         },
         metadata: {
           hardDelete,
-          deletedBy: normalizedUserId
+          deletedBy: admin.id
         },
         timestamp: new Date()
       }
@@ -540,10 +477,6 @@ export async function DELETE(
       action: hardDelete ? 'deleted' : 'deactivated'
     })
   } catch (error) {
-    console.error('Failed to delete user:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete user' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

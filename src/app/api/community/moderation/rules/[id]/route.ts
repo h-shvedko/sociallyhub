@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/moderation/rules/[id] - Get specific auto-moderation rule
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -28,7 +25,7 @@ export async function GET(
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -119,15 +116,14 @@ export async function GET(
 }
 
 // PUT /api/community/moderation/rules/[id] - Update auto-moderation rule
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -157,7 +153,7 @@ export async function PUT(
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -233,7 +229,7 @@ export async function PUT(
     await prisma.moderationAction.create({
       data: {
         workspaceId,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType: 'UPDATE',
         targetType: 'AUTO_MODERATION_RULE',
         targetId: params.id,
@@ -241,7 +237,7 @@ export async function PUT(
         description: `Updated auto-moderation rule: ${updatedRule.name}`,
         isAutomatic: false,
         status: 'COMPLETED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         previousData: currentRule,
         newData: updatedRule,
@@ -280,15 +276,14 @@ export async function PUT(
 }
 
 // DELETE /api/community/moderation/rules/[id] - Delete auto-moderation rule
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -302,7 +297,7 @@ export async function DELETE(
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -353,7 +348,7 @@ export async function DELETE(
     await prisma.moderationAction.create({
       data: {
         workspaceId,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType: 'DELETE',
         targetType: 'AUTO_MODERATION_RULE',
         targetId: params.id,
@@ -361,7 +356,7 @@ export async function DELETE(
         description: `Deleted auto-moderation rule: ${rule.name}`,
         isAutomatic: false,
         status: 'COMPLETED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         previousData: rule,
         metadata: {
@@ -387,15 +382,14 @@ export async function DELETE(
 }
 
 // PATCH /api/community/moderation/rules/[id] - Toggle rule status or perform specific operations
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const { action, workspaceId, ...data } = body
@@ -408,7 +402,7 @@ export async function PATCH(
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -446,7 +440,7 @@ export async function PATCH(
       await prisma.moderationAction.create({
         data: {
           workspaceId,
-          moderatorId: normalizeUserId(session.user.id),
+          moderatorId: normalizedUserId,
           actionType: 'UPDATE',
           targetType: 'AUTO_MODERATION_RULE',
           targetId: params.id,
@@ -454,7 +448,7 @@ export async function PATCH(
           description: `${updatedRule.isActive ? 'Enabled' : 'Disabled'} auto-moderation rule: ${rule.name}`,
           isAutomatic: false,
           status: 'COMPLETED',
-          reviewedBy: normalizeUserId(session.user.id),
+          reviewedBy: normalizedUserId,
           reviewedAt: new Date(),
           previousData: { isActive: rule.isActive },
           newData: { isActive: updatedRule.isActive },
@@ -517,7 +511,7 @@ export async function PATCH(
           exemptRoles: rule.exemptRoles,
           cooldownPeriod: rule.cooldownPeriod,
           maxTriggersPerHour: rule.maxTriggersPerHour,
-          createdBy: normalizeUserId(session.user.id),
+          createdBy: normalizedUserId,
           triggerCount: 0,
           successRate: 100,
           metadata: {

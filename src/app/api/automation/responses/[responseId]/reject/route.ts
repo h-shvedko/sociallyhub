@@ -8,10 +8,8 @@ const RejectResponseRequestSchema = z.object({
   reason: z.string().min(1, 'Rejection reason is required')
 })
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { responseId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ responseId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {

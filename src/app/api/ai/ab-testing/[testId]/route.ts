@@ -16,10 +16,8 @@ const updateABTestSchema = z.object({
 })
 
 // Get A/B Test Details
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { testId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ testId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     
@@ -121,10 +119,8 @@ export async function GET(
 }
 
 // Update A/B Test
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { testId: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ testId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     
@@ -194,10 +190,8 @@ export async function PATCH(
 }
 
 // Delete A/B Test
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { testId: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ testId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     

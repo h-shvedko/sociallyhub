@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/admin/support/tickets/[id] - Get ticket details with full history
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 
@@ -19,7 +15,7 @@ export async function GET(
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
 
     // Verify admin permissions
@@ -145,10 +141,8 @@ export async function GET(
 }
 
 // PUT /api/admin/support/tickets/[id] - Update ticket
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 
@@ -159,7 +153,7 @@ export async function PUT(
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
     const body = await request.json()
 
@@ -364,10 +358,8 @@ export async function PUT(
 }
 
 // DELETE /api/admin/support/tickets/[id] - Delete ticket (admin only)
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
 
@@ -378,7 +370,7 @@ export async function DELETE(
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
 
     // Verify admin permissions

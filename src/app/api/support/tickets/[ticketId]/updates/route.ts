@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 interface RouteParams {
-  params: {
+  params: Promise<{
     ticketId: string
-  }
+  }>
 }
 
 // GET /api/support/tickets/[ticketId]/updates - Get ticket updates
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { ticketId } = params
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const where: any = { id: ticketId }
 
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = await normalizeUserId(session.user.id)
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -77,9 +76,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 }
 
 // POST /api/support/tickets/[ticketId]/updates - Add ticket update
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
+    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
     const { ticketId } = params
     const body = await request.json()
 
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const where: any = { id: ticketId }
 
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = normalizedUserId
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ticketId,
         updateType,
         message: message.trim(),
-        authorId: session?.user?.id ? normalizeUserId(session.user.id) : null,
+        authorId: session?.user?.id ? normalizedUserId : null,
         authorType: session?.user?.id ? 'user' : 'guest',
         authorName: session?.user?.name || ticket.guestName || 'Guest User',
         isPublic,

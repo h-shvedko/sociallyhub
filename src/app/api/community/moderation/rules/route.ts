@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Auto-Moderation Rules interfaces
 interface AutoModerationRule {
   id: string
@@ -77,6 +75,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -96,7 +95,7 @@ export async function GET(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -217,6 +216,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -248,7 +248,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -289,7 +289,7 @@ export async function POST(request: NextRequest) {
         exemptRoles: exemptRoles || [],
         cooldownPeriod: cooldownPeriod || undefined,
         maxTriggersPerHour: maxTriggersPerHour || undefined,
-        createdBy: normalizeUserId(session.user.id),
+        createdBy: normalizedUserId,
         triggerCount: 0,
         successRate: 100,
         metadata: metadata || {}
@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
     await prisma.moderationAction.create({
       data: {
         workspaceId,
-        moderatorId: normalizeUserId(session.user.id),
+        moderatorId: normalizedUserId,
         actionType: 'CREATE',
         targetType: 'AUTO_MODERATION_RULE',
         targetId: rule.id,
@@ -317,7 +317,7 @@ export async function POST(request: NextRequest) {
         description: `Created auto-moderation rule: ${name}`,
         isAutomatic: false,
         status: 'COMPLETED',
-        reviewedBy: normalizeUserId(session.user.id),
+        reviewedBy: normalizedUserId,
         reviewedAt: new Date(),
         newData: rule,
         metadata: {
@@ -363,6 +363,7 @@ export async function PUT(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const { action, workspaceId, ...data } = body
@@ -375,7 +376,7 @@ export async function PUT(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -393,13 +394,13 @@ export async function PUT(request: NextRequest) {
 
     if (action === 'BULK_TOGGLE') {
       const { ruleIds, isActive } = data
-      const result = await bulkToggleRules(workspaceId, ruleIds, isActive, session.user.id!)
+      const result = await bulkToggleRules(workspaceId, ruleIds, isActive, normalizedUserId)
       return NextResponse.json({ result })
     }
 
     if (action === 'BULK_PRIORITY_UPDATE') {
       const { ruleUpdates } = data // [{ ruleId, priority }]
-      const result = await bulkUpdatePriorities(workspaceId, ruleUpdates, session.user.id!)
+      const result = await bulkUpdatePriorities(workspaceId, ruleUpdates, normalizedUserId)
       return NextResponse.json({ result })
     }
 
@@ -650,7 +651,7 @@ function evaluateCondition(condition: RuleCondition, content: any): { matched: b
   return { matched, score, reason }
 }
 
-async function bulkToggleRules(workspaceId: string, ruleIds: string[], isActive: boolean, userId: string) {
+async function bulkToggleRules(workspaceId: string, ruleIds: string[], isActive: boolean, normalizedUserId: string) {
   const updated = await prisma.autoModerationRule.updateMany({
     where: {
       id: { in: ruleIds },
@@ -663,7 +664,7 @@ async function bulkToggleRules(workspaceId: string, ruleIds: string[], isActive:
   await prisma.moderationAction.create({
     data: {
       workspaceId,
-      moderatorId: normalizeUserId(userId),
+      moderatorId: normalizedUserId,
       actionType: 'BULK_UPDATE',
       targetType: 'AUTO_MODERATION_RULE',
       targetId: ruleIds.join(','),
@@ -671,7 +672,7 @@ async function bulkToggleRules(workspaceId: string, ruleIds: string[], isActive:
       description: `Bulk ${isActive ? 'enabled' : 'disabled'} ${updated.count} auto-moderation rules`,
       isAutomatic: false,
       status: 'COMPLETED',
-      reviewedBy: normalizeUserId(userId),
+      reviewedBy: normalizedUserId,
       reviewedAt: new Date(),
       metadata: {
         bulkOperation: true,
@@ -689,7 +690,7 @@ async function bulkToggleRules(workspaceId: string, ruleIds: string[], isActive:
   }
 }
 
-async function bulkUpdatePriorities(workspaceId: string, ruleUpdates: { ruleId: string; priority: number }[], userId: string) {
+async function bulkUpdatePriorities(workspaceId: string, ruleUpdates: { ruleId: string; priority: number }[], normalizedUserId: string) {
   const results = []
 
   for (const update of ruleUpdates) {
@@ -710,7 +711,7 @@ async function bulkUpdatePriorities(workspaceId: string, ruleUpdates: { ruleId: 
   await prisma.moderationAction.create({
     data: {
       workspaceId,
-      moderatorId: normalizeUserId(userId),
+      moderatorId: normalizedUserId,
       actionType: 'BULK_UPDATE',
       targetType: 'AUTO_MODERATION_RULE',
       targetId: ruleUpdates.map(u => u.ruleId).join(','),
@@ -718,7 +719,7 @@ async function bulkUpdatePriorities(workspaceId: string, ruleUpdates: { ruleId: 
       description: `Bulk updated priorities for ${results.length} auto-moderation rules`,
       isAutomatic: false,
       status: 'COMPLETED',
-      reviewedBy: normalizeUserId(userId),
+      reviewedBy: normalizedUserId,
       reviewedAt: new Date(),
       metadata: {
         bulkOperation: true,

@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 interface RouteParams {
-  params: {
+  params: Promise<{
     ticketId: string
-  }
+  }>
 }
 
 // GET /api/support/tickets/[ticketId] - Get specific ticket details
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { ticketId } = params
@@ -21,7 +20,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // If user is logged in, verify access
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = await normalizeUserId(session.user.id)
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -98,9 +97,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 }
 
 // PUT /api/support/tickets/[ticketId] - Update ticket
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
+    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
     const { ticketId } = params
     const body = await request.json()
 
@@ -118,7 +119,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const where: any = { id: ticketId }
 
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = normalizedUserId
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -157,7 +158,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         message: `Status changed from ${existingTicket.status} to ${status}`,
         oldStatus: existingTicket.status,
         newStatus: status,
-        authorId: session?.user?.id ? normalizeUserId(session.user.id) : null,
+        authorId: session?.user?.id ? normalizedUserId : null,
         authorType: session?.user?.id ? 'user' : 'system',
         authorName: session?.user?.name || 'System',
         isPublic: true
@@ -166,7 +167,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       // Set resolution timestamp if resolving
       if (status === 'RESOLVED' || status === 'CLOSED') {
         updateData.resolvedAt = new Date()
-        updateData.resolvedBy = session?.user?.id ? normalizeUserId(session.user.id) : existingTicket.assignedAgentId
+        updateData.resolvedBy = session?.user?.id ? normalizedUserId : existingTicket.assignedAgentId
       }
     }
 
@@ -178,7 +179,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         message: `Priority changed from ${existingTicket.priority} to ${priority}`,
         oldPriority: existingTicket.priority,
         newPriority: priority,
-        authorId: session?.user?.id ? normalizeUserId(session.user.id) : null,
+        authorId: session?.user?.id ? normalizedUserId : null,
         authorType: session?.user?.id ? 'user' : 'system',
         authorName: session?.user?.name || 'System',
         isPublic: true
@@ -205,7 +206,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           message: `Ticket assigned to ${agent?.displayName || 'Unknown Agent'}`,
           oldAssignee: existingTicket.assignedAgentId,
           newAssignee: assignedAgentId,
-          authorId: session?.user?.id ? normalizeUserId(session.user.id) : null,
+          authorId: session?.user?.id ? normalizedUserId : null,
           authorType: session?.user?.id ? 'user' : 'system',
           authorName: session?.user?.name || 'System',
           isPublic: true
@@ -220,7 +221,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           ticketId,
           updateType: 'RESOLUTION',
           message: resolution,
-          authorId: session?.user?.id ? normalizeUserId(session.user.id) : null,
+          authorId: session?.user?.id ? normalizedUserId : null,
           authorType: session?.user?.id ? 'user' : 'agent',
           authorName: session?.user?.name || 'Support Agent',
           isPublic: true,
@@ -286,7 +287,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 }
 
 // DELETE /api/support/tickets/[ticketId] - Delete ticket (admin only)
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { ticketId } = params
@@ -298,7 +300,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
 
     // Verify user is admin or owner of the ticket
     const ticket = await prisma.supportTicket.findFirst({

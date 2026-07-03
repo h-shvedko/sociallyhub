@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/admin/support/tickets - List all tickets with filtering, search, and sorting
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +14,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
 
     // Query parameters
@@ -289,7 +287,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const body = await request.json()
 
     const {

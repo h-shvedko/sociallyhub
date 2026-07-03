@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, use } from 'react';
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -57,35 +57,28 @@ interface PageProps {
   params: Promise<{ slug: string }>
 }
 
-export default function DocumentationPageView({ params }: PageProps) {
+export default function DocumentationPageView(props: PageProps) {
+  const params = use(props.params);
   const { t, isLoading: dictLoading } = useDictionary()
-  const [pageSlug, setPageSlug] = useState<string>('')
   const [page, setPage] = useState<DocumentationPageData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
   const [feedbackType, setFeedbackType] = useState<'helpful' | 'not-helpful' | null>(null)
 
-  // Extract slug from params
-  useEffect(() => {
-    params.then(({ slug }) => {
-      setPageSlug(slug)
-    })
-  }, [params])
-
   // Fetch page data
   useEffect(() => {
-    if (pageSlug) {
+    if (params.slug) {
       fetchPage()
     }
-  }, [pageSlug])
+  }, [params.slug])
 
   const fetchPage = async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch(`/api/documentation/pages/${pageSlug}`)
+      const response = await fetch(`/api/documentation/pages/${params.slug}`)
 
       if (response.ok) {
         const data = await response.json()

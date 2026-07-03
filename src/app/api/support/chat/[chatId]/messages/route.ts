@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 interface RouteParams {
   params: Promise<{ chatId: string }>
@@ -10,7 +10,7 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { chatId } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const body = await request.json()
     const { content, messageType = 'text', attachments = null } = body
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       where: {
         id: chatId,
         OR: [
-          { userId: session?.user?.id },
+          { userId: user?.id },
           { sessionId: sessionId }
         ]
       },
@@ -61,9 +61,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const message = await prisma.supportMessage.create({
       data: {
         chatId: chat.id,
-        senderId: session?.user?.id || null,
+        senderId: user?.id || null,
         senderType: 'user',
-        senderName: session?.user?.name || chat.guestName || 'Guest',
+        senderName: user?.name || chat.guestName || 'Guest',
         content: content.trim(),
         messageType,
         attachments,
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { chatId } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const searchParams = request.nextUrl.searchParams
     const sessionId = searchParams.get('sessionId')
     const limit = parseInt(searchParams.get('limit') || '50')
@@ -154,7 +154,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       where: {
         id: chatId,
         OR: [
-          { userId: session?.user?.id },
+          { userId: user?.id },
           { sessionId: sessionId }
         ]
       }

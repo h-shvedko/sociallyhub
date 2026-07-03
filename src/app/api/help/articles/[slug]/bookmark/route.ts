@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { getAuthenticatedUser } from '@/lib/auth'
 
 interface RouteParams {
   params: Promise<{ slug: string }>
@@ -10,9 +10,9 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const bookmark = await prisma.helpArticleBookmark.findUnique({
       where: {
         userId_articleId: {
-          userId: session.user.id,
+          userId: user.id,
           articleId: article.id
         }
       }
@@ -60,9 +60,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const bookmark = await prisma.helpArticleBookmark.upsert({
       where: {
         userId_articleId: {
-          userId: session.user.id,
+          userId: user.id,
           articleId: article.id
         }
       },
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         updatedAt: new Date()
       },
       create: {
-        userId: session.user.id,
+        userId: user.id,
         articleId: article.id
       }
     })
@@ -118,9 +118,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug } = await params
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -143,7 +143,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     // Remove bookmark
     await prisma.helpArticleBookmark.deleteMany({
       where: {
-        userId: session.user.id,
+        userId: user.id,
         articleId: article.id
       }
     })

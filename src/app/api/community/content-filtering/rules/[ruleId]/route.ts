@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/content-filtering/rules/[ruleId] - Get specific rule details
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { ruleId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ ruleId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { ruleId } = params
     const { searchParams } = new URL(request.url)
@@ -24,7 +21,7 @@ export async function GET(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -175,15 +172,14 @@ export async function GET(
 }
 
 // PUT /api/community/content-filtering/rules/[ruleId] - Update rule
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { ruleId: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ ruleId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { ruleId } = params
     const body = await request.json()
@@ -202,7 +198,7 @@ export async function PUT(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -232,7 +228,7 @@ export async function PUT(
         ...(actionParameters && { actionParameters }),
         ...(priority && { priority }),
         ...(isActive !== undefined && { isActive }),
-        updatedById: normalizeUserId(session.user.id)
+        updatedById: normalizedUserId
       },
       include: {
         createdBy: {
@@ -258,7 +254,7 @@ export async function PUT(
         activityType: 'MODERATION_ACTION',
         title: 'Auto-moderation rule updated',
         description: `Updated rule: ${updatedRule.name}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Admin',
         userAvatar: session.user.image,
         targetId: ruleId,
@@ -291,15 +287,14 @@ export async function PUT(
 }
 
 // DELETE /api/community/content-filtering/rules/[ruleId] - Delete rule
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { ruleId: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ ruleId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { ruleId } = params
     const { searchParams } = new URL(request.url)
@@ -310,7 +305,7 @@ export async function DELETE(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -349,7 +344,7 @@ export async function DELETE(
         activityType: 'MODERATION_ACTION',
         title: 'Auto-moderation rule deleted',
         description: `Deleted rule: ${rule.name}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Admin',
         userAvatar: session.user.image,
         targetId: ruleId,

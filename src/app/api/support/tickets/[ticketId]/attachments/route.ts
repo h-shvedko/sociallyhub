@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     ticketId: string
-  }
+  }>
 }
 
 // GET /api/support/tickets/[ticketId]/attachments - Get ticket attachments
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { ticketId } = params
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const where: any = { id: ticketId }
 
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = await normalizeUserId(session.user.id)
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -68,16 +68,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 }
 
 // POST /api/support/tickets/[ticketId]/attachments - Upload ticket attachment
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
+    const normalizedUserId = session?.user?.id ? await normalizeUserId(session.user.id) : null
     const { ticketId } = params
 
     // Verify ticket access
     const where: any = { id: ticketId }
 
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = normalizedUserId
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({
@@ -170,7 +172,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         fileSize: file.size,
         mimeType: file.type,
         fileUrl: `/uploads/tickets/${filename}`,
-        uploadedBy: session?.user?.id ? normalizeUserId(session.user.id) : null,
+        uploadedBy: session?.user?.id ? normalizedUserId : null,
         uploadedByType: session?.user?.id ? 'user' : 'guest',
         uploadedByName: session?.user?.name || ticket.guestName || 'Guest User',
         isScanned: false,
@@ -184,7 +186,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         ticketId,
         updateType: 'SYSTEM_UPDATE',
         message: `File uploaded: ${file.name}`,
-        authorId: session?.user?.id ? normalizeUserId(session.user.id) : null,
+        authorId: session?.user?.id ? normalizedUserId : null,
         authorType: session?.user?.id ? 'user' : 'guest',
         authorName: session?.user?.name || ticket.guestName || 'Guest User',
         isPublic: true
@@ -203,7 +205,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 }
 
 // DELETE /api/support/tickets/[ticketId]/attachments/[attachmentId] - Delete attachment
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     const { ticketId } = params
@@ -221,7 +224,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const where: any = { id: ticketId }
 
     if (session?.user?.id) {
-      const userId = normalizeUserId(session.user.id)
+      const userId = await normalizeUserId(session.user.id)
 
       // Get user's workspaces
       const userWorkspaces = await prisma.userWorkspace.findMany({

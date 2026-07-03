@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/reports/[reportId] - Get specific report details
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { reportId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ reportId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { reportId } = params
     const { searchParams } = new URL(request.url)
@@ -61,14 +58,14 @@ export async function GET(
     }
 
     // Check permissions - moderators can see all reports, users can only see their own
-    const isOwnReport = report.submittedById === normalizeUserId(session.user.id)
+    const isOwnReport = report.submittedById === normalizedUserId
     let isModerator = false
 
     if (workspaceId || report.workspaceId) {
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId: workspaceId || report.workspaceId!
           }
         }
@@ -210,15 +207,14 @@ export async function GET(
 }
 
 // PUT /api/community/reports/[reportId] - Update report status/assignment
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { reportId: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ reportId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { reportId } = params
     const body = await request.json()
@@ -237,7 +233,7 @@ export async function PUT(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -268,13 +264,13 @@ export async function PUT(
       ...(assignedModeratorId && { assignedModeratorId }),
       ...(moderatorNotes && { moderatorNotes }),
       ...(resolution && { resolution }),
-      lastUpdatedById: normalizeUserId(session.user.id)
+      lastUpdatedById: normalizedUserId
     }
 
     // If resolving or dismissing, set resolved timestamp
     if (status === 'RESOLVED' || status === 'DISMISSED') {
       updateData.resolvedAt = new Date()
-      updateData.resolvedById = normalizeUserId(session.user.id)
+      updateData.resolvedById = await normalizeUserId(session.user.id)
     }
 
     const updatedReport = await prisma.contentReport.update({
@@ -312,14 +308,14 @@ export async function PUT(
         await prisma.moderationAction.create({
           data: {
             workspaceId: workspaceId || currentReport.workspaceId!,
-            moderatorId: normalizeUserId(session.user.id),
+            moderatorId: normalizedUserId,
             actionType: actionTaken.toUpperCase(),
             targetType: currentReport.targetType,
             targetId: currentReport.targetId,
             reason: `Action taken based on report: ${currentReport.reason}`,
             description: resolution || moderatorNotes || 'Action taken based on user report',
             status: 'COMPLETED',
-            reviewedBy: normalizeUserId(session.user.id),
+            reviewedBy: normalizedUserId,
             reviewedAt: new Date(),
             ipAddress: request.ip || 'unknown',
             userAgent: request.headers.get('user-agent') || 'unknown'
@@ -350,7 +346,7 @@ export async function PUT(
             workspaceId: workspaceId || currentReport.workspaceId!,
             actionType: actionTaken.toUpperCase(),
             reason: `Action taken based on report: ${currentReport.reason}`,
-            moderatorId: normalizeUserId(session.user.id),
+            moderatorId: normalizedUserId,
             targetType: currentReport.targetType,
             targetId: currentReport.targetId,
             severity: currentReport.priority === 'URGENT' ? 'HIGH' :
@@ -366,7 +362,7 @@ export async function PUT(
         activityType: 'MODERATION_ACTION',
         title: `Report ${status.toLowerCase()}`,
         description: resolution || moderatorNotes || `Report status updated to ${status}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Moderator',
         userAvatar: session.user.image,
         targetId: reportId,
@@ -400,15 +396,14 @@ export async function PUT(
 }
 
 // DELETE /api/community/reports/[reportId] - Delete report (admin only)
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { reportId: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ reportId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { reportId } = params
     const { searchParams } = new URL(request.url)
@@ -419,7 +414,7 @@ export async function DELETE(
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -450,7 +445,7 @@ export async function DELETE(
         activityType: 'MODERATION_ACTION',
         title: 'Report deleted',
         description: `Report deleted: ${report.reason}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Admin',
         userAvatar: session.user.image,
         targetId: reportId,

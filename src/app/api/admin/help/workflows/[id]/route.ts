@@ -1,37 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { requireAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 // GET /api/admin/help/workflows/[id] - Get workflow details
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireAdmin()
 
     const { id } = params
 
@@ -86,36 +67,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(workflow)
   } catch (error) {
-    console.error('Failed to fetch workflow:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch workflow' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // PUT /api/admin/help/workflows/[id] - Update workflow (approve, reject, assign)
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   try {
-    // Check authentication and admin permissions
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = normalizeUserId(session.user.id)
-
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const user = await requireAdmin()
 
     const { id } = params
     const data = await request.json()
@@ -174,7 +134,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         updateData = {
           status: 'approved',
-          reviewedById: userId,
+          reviewedById: user.id,
           reviewedAt: new Date(),
           approvedAt: new Date(),
           reviewComments: reviewComments || 'Approved',
@@ -216,7 +176,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         updateData = {
           status: 'rejected',
-          reviewedById: userId,
+          reviewedById: user.id,
           reviewedAt: new Date(),
           rejectedAt: new Date(),
           reviewComments: reviewComments || 'Rejected',
@@ -303,7 +263,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
               seoTitle: updatedArticle.seoTitle,
               seoDescription: updatedArticle.seoDescription,
               changeSummary: `Approved workflow: ${existingWorkflow.workflowType}`,
-              authorId: userId
+              authorId: user.id
             }
           })
         }
@@ -318,10 +278,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       ...(result.updatedArticle && { article: result.updatedArticle })
     })
   } catch (error) {
-    console.error('Failed to update workflow:', error)
-    return NextResponse.json(
-      { error: 'Failed to update workflow' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

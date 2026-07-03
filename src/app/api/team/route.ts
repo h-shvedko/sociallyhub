@@ -2,9 +2,64 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
+
+// Per-member permission storage was removed (role is the sole authz field).
+// This static map derives the response's `permissions` object from the member's
+// role so existing API consumers keep working.
+function derivePermissionsFromRole(role: string) {
+  switch (role) {
+    case 'OWNER':
+      return {
+        canManageTeam: true,
+        canManageContent: true,
+        canManageSettings: true,
+        canViewAnalytics: true,
+        canManageBilling: true
+      }
+    case 'ADMIN':
+      return {
+        canManageTeam: true,
+        canManageContent: true,
+        canManageSettings: true,
+        canViewAnalytics: true,
+        canManageBilling: false
+      }
+    case 'PUBLISHER':
+      return {
+        canManageTeam: false,
+        canManageContent: true,
+        canManageSettings: false,
+        canViewAnalytics: false,
+        canManageBilling: false
+      }
+    case 'ANALYST':
+      return {
+        canManageTeam: false,
+        canManageContent: false,
+        canManageSettings: false,
+        canViewAnalytics: true,
+        canManageBilling: false
+      }
+    case 'CLIENT_VIEWER':
+      return {
+        canManageTeam: false,
+        canManageContent: false,
+        canManageSettings: false,
+        canViewAnalytics: true,
+        canManageBilling: false
+      }
+    default:
+      return {
+        canManageTeam: false,
+        canManageContent: false,
+        canManageSettings: false,
+        canViewAnalytics: false,
+        canManageBilling: false
+      }
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,7 +97,6 @@ export async function GET(request: NextRequest) {
       select: {
         userId: true,
         role: true,
-        permissions: true,
         createdAt: true,
         user: {
           select: {
@@ -123,7 +177,7 @@ export async function GET(request: NextRequest) {
         return {
           userId: member.userId,
           role: member.role,
-          permissions: member.permissions,
+          permissions: derivePermissionsFromRole(member.role), // derived from role; no longer stored per member
           joinedAt: member.createdAt, // Use createdAt as joinedAt for compatibility
           user: member.user,
           stats: {

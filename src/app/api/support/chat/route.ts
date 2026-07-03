@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
-import { headers } from 'next/headers'
-
-// Helper function to get request metadata
-function getRequestMetadata(request: NextRequest) {
-  const headersList = headers()
-  const userAgent = headersList.get('user-agent') || ''
-  const forwardedFor = headersList.get('x-forwarded-for')
-  const realIp = headersList.get('x-real-ip')
-  const ipAddress = forwardedFor?.split(',')[0] || realIp || 'unknown'
-  const referrerUrl = headersList.get('referer') || ''
-
-  return { userAgent, ipAddress, referrerUrl }
-}
+import { getAuthenticatedUser } from '@/lib/auth'
+import { getRequestMetadata } from '@/lib/api/request-metadata'
 
 // Helper function to find available agent
 async function findAvailableAgent(department: string) {
@@ -40,7 +28,7 @@ async function findAvailableAgent(department: string) {
 // POST /api/support/chat - Start a new chat session
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const body = await request.json()
     const {
       subject,
@@ -50,7 +38,7 @@ export async function POST(request: NextRequest) {
       guestEmail
     } = body
 
-    const { userAgent, ipAddress, referrerUrl } = getRequestMetadata(request)
+    const { userAgent, ipAddress, referrerUrl } = await getRequestMetadata()
 
     // Generate session ID
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -61,10 +49,12 @@ export async function POST(request: NextRequest) {
     // Create chat
     const chat = await prisma.supportChat.create({
       data: {
-        workspaceId: session?.user?.workspaceId || null,
-        userId: session?.user?.id || null,
-        guestName: session ? null : guestName,
-        guestEmail: session ? null : guestEmail,
+        // NOTE(ADR-0003): the session never carried a workspaceId (no session
+        // callback populates it), so this was always null at runtime.
+        workspaceId: null,
+        userId: user?.id || null,
+        guestName: user ? null : guestName,
+        guestEmail: user ? null : guestEmail,
         subject,
         department,
         priority,
@@ -145,11 +135,11 @@ export async function POST(request: NextRequest) {
 // GET /api/support/chat - Get user's active chats
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession()
+    const user = await getAuthenticatedUser()
     const searchParams = request.nextUrl.searchParams
     const sessionId = searchParams.get('sessionId')
 
-    if (!session && !sessionId) {
+    if (!user && !sessionId) {
       return NextResponse.json(
         { error: 'Session or sessionId required' },
         { status: 400 }
@@ -160,8 +150,8 @@ export async function GET(request: NextRequest) {
       status: { in: ['open', 'assigned'] }
     }
 
-    if (session) {
-      where.userId = session.user?.id
+    if (user) {
+      where.userId = user.id
     } else if (sessionId) {
       where.sessionId = sessionId
     }

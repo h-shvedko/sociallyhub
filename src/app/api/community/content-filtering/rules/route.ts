@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // GET /api/community/content-filtering/rules - List auto-moderation rules
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +9,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest) {
       const userWorkspace = await prisma.userWorkspace.findUnique({
         where: {
           userId_workspaceId: {
-            userId: normalizeUserId(session.user.id),
+            userId: normalizedUserId,
             workspaceId
           }
         }
@@ -122,6 +121,7 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const normalizedUserId = await normalizeUserId(session.user.id)
 
     const body = await request.json()
     const {
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
     const userWorkspace = await prisma.userWorkspace.findUnique({
       where: {
         userId_workspaceId: {
-          userId: normalizeUserId(session.user.id),
+          userId: normalizedUserId,
           workspaceId
         }
       }
@@ -170,8 +170,8 @@ export async function POST(request: NextRequest) {
         priority,
         workspaceId,
         isActive,
-        createdById: normalizeUserId(session.user.id),
-        updatedById: normalizeUserId(session.user.id)
+        createdById: normalizedUserId,
+        updatedById: normalizedUserId
       },
       include: {
         createdBy: {
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
         activityType: 'MODERATION_ACTION',
         title: 'Auto-moderation rule created',
         description: `Created rule: ${name}`,
-        userId: normalizeUserId(session.user.id),
+        userId: normalizedUserId,
         userName: session.user.name || 'Admin',
         userAvatar: session.user.image,
         targetId: rule.id,

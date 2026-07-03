@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth/config'
+import { authOptions, normalizeUserId } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { normalizeUserId } from '@/lib/auth/demo-user'
-
 // Default landing page configuration
 const DEFAULT_CONFIG = {
   hero: {
@@ -89,7 +87,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
@@ -176,7 +174,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const body = await request.json()
     const { workspaceId, ...configData } = body
 
@@ -262,7 +260,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const userId = normalizeUserId(session.user.id)
+    const userId = await normalizeUserId(session.user.id)
     const { workspaceId, action } = await request.json()
 
     if (!workspaceId) {
