@@ -1,8 +1,28 @@
 # ADR-0006: Cryptography, Token Encryption, and Secrets Management
 
 - **Date:** 2026-07-02
-- **Status:** Accepted
+- **Status:** Accepted — **Implemented 2026-07-04**
 - **Deciders:** Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-04).** Delivered: `src/lib/encryption.ts` rewritten on
+> AES-256-GCM `createCipheriv` with the versioned `enc:v1:<keyId>:<iv>:<ct>:<tag>` format,
+> fail-closed lazy key loading (`ENCRYPTION_KEY`/`ENCRYPTION_KEY_PREVIOUS`, 64-hex, no fallback),
+> `encryptToken`/`decryptToken` (transitional plaintext read fallback), `isEncryptionConfigured()`.
+> OAuth accounts state signed (HKDF from `NEXTAUTH_SECRET`, 10-min, workspace-bound) and verified in
+> `/api/accounts/callback` (forged state → `error=invalid_state`), extending the ADR-0005 module.
+> Encrypt-at-rest on write for SocialAccount tokens (callback) and IntegrationSetting
+> credentials/webhookSecret, with batch back-fill + rotation + legacy-cleanup scripts.
+> `ENCRYPTION_KEY` wired into `.env.example`/docker-compose/CI; `docker/entrypoint.sh` + `/api/health`
+> assert it; `k8s/secrets.yaml` → `secrets.example.yaml` (real file gitignored). **Verified:**
+> `health.encryption: ok`; **all 128 seeded social tokens `enc:v1`-encrypted and round-trip-decrypt
+> — the first successful decryption in the project's history**; forged callback state rejected; app
+> renders (host dev server); no schema change; `prisma validate`/`db:check` green; crypto unit
+> suites 35/35 + rotation + OAuth-state 4/4. **Deferred:** read-side token decrypt at the provider
+> call boundary (ADR-0009 — the manager loads tokens from an in-process Map today, not the DB);
+> removing the transitional plaintext fallback (next release); `SSOProvider`/`SSOAccount` encryption
+> (no active write path). **Dev-env note:** the docker `app` container must be rebuilt after this
+> lands (`docker compose build app`) — a recreated container serving a stale `.next`/baked image
+> hits a next-auth chunk-load error; a host dev server renders correctly.
 
 ## Context and Problem Statement
 
