@@ -1,8 +1,22 @@
 # ADR-0004: Platform Authorization Model and RBAC Enforcement
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-03**
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-03).** Delivered: `requirePlatformAdmin()` and
+> `requireWorkspaceRole(workspaceId, roles?)` in `src/lib/auth/session.ts` (barrel-exported);
+> `requireAdmin()` is now a deprecated alias for `requirePlatformAdmin()`. `User.isPlatformAdmin`
+> is carried on the NextAuth JWT/session (claim for UI, DB re-check for APIs). Admin layout gates
+> on the claim; `/api/admin/roles*` + `/api/admin/permissions*` routes and the roles/permissions
+> management pages are deleted (replaced by a static roles-reference page). The 44 inline
+> `role: { in: ['OWNER','ADMIN'] }` any-workspace checks were swept to the helpers; the 3 global
+> stragglers (`analytics/platform`, `monitoring/alerts`, `monitoring/metrics`) now require platform
+> admin. Seeding grants `isPlatformAdmin` to the demo user + a `PLATFORM_ADMIN_EMAILS` allowlist;
+> `scripts/grant-platform-admin.ts` is the production one-off. Verified by an authenticated persona
+> matrix: workspace-owner → 403 on every cross-tenant/global admin surface (escalation closed),
+> platform admin → 404 (no implicit bypass) into a foreign workspace, anon → 401. Not in this ADR:
+> the admin UI CRUD rework and remaining route↔schema divergences (bulk-ops, SSO) — ADR-0012.
 
 ## Context and Problem Statement
 
