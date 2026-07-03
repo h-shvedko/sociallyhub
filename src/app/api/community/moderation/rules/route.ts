@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // Auto-Moderation Rules interfaces
 interface AutoModerationRule {
@@ -92,18 +93,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Build filter conditions
     const where: any = { workspaceId }
@@ -201,11 +191,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch auto-moderation rules:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch auto-moderation rules' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -245,18 +231,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Validate rule configuration
     const validation = validateRuleConfiguration({
@@ -348,11 +323,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to create auto-moderation rule:', error)
-    return NextResponse.json(
-      { error: 'Failed to create auto-moderation rule' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -373,18 +344,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Verify user has access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     if (action === 'TEST_RULE') {
       const { ruleId, testContent } = data
@@ -413,11 +373,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
   } catch (error) {
-    console.error('Failed to process rule operation:', error)
-    return NextResponse.json(
-      { error: 'Failed to process rule operation' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

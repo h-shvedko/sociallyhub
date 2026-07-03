@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/users/[userId] - Get detailed user information
 export async function GET(request: NextRequest, props: { params: Promise<{ userId: string }> }) {
@@ -18,18 +19,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ userI
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get detailed user information
@@ -189,11 +179,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ userI
     })
 
   } catch (error) {
-    console.error('Failed to fetch user details:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch user details' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -226,18 +212,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ userI
     }
 
     // Verify user has moderation permissions
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get the target user
     const targetUser = await prisma.user.findUnique({
@@ -383,10 +358,6 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ userI
     })
 
   } catch (error) {
-    console.error('Failed to apply user moderation action:', error)
-    return NextResponse.json(
-      { error: 'Failed to apply moderation action' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

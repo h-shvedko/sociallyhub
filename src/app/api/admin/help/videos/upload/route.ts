@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
@@ -8,10 +8,8 @@ import { v4 as uuidv4 } from 'uuid'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const formData = await request.formData()
     const file = formData.get('file') as File
@@ -111,17 +109,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response)
   } catch (error) {
-    console.error('Error uploading file:', error)
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     // Return upload configuration and limits
     return NextResponse.json({
@@ -150,7 +145,6 @@ export async function GET(request: NextRequest) {
       ]
     })
   } catch (error) {
-    console.error('Error getting upload config:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }

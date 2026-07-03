@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 // POST /api/admin/settings/feature-flags/evaluate - Evaluate feature flags
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // ADR-0004/ADR-0005: evaluation requires a session — 401 otherwise.
+    // Authentication precedes body parsing (docs/api-conventions.md §1).
+    const user = await requireSession()
+
+    // Body-supplied userId/workspaceId overrides are honored ONLY for
+    // platform admins; everyone else evaluates as themselves.
+    let isPlatformAdmin = true
+    try {
+      await requirePlatformAdmin()
+    } catch {
+      isPlatformAdmin = false
+    }
+
     const body = await request.json()
 
     const {
@@ -24,7 +36,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const evaluationUserId = targetUserId || (session ? await normalizeUserId(session.user.id) : null)
+    const evaluationUserId = isPlatformAdmin ? (targetUserId || user.id) : user.id
+    const effectiveWorkspaceId = isPlatformAdmin ? (workspaceId || null) : null
     const userAgent = request.headers.get('user-agent') || undefined
     const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined
 
@@ -32,7 +45,7 @@ export async function POST(request: NextRequest) {
     const flags = await prisma.featureFlag.findMany({
       where: {
         key: { in: flagKeys },
-        workspaceId: workspaceId || null,
+        workspaceId: effectiveWorkspaceId,
         isActive: true,
         OR: [
           { expiresAt: null },
@@ -200,16 +213,12 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
       context: {
         userId: evaluationUserId,
-        workspaceId,
+        workspaceId: effectiveWorkspaceId,
         ...context
       }
     })
 
   } catch (error) {
-    console.error('Failed to evaluate feature flags:', error)
-    return NextResponse.json(
-      { error: 'Failed to evaluate feature flags' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

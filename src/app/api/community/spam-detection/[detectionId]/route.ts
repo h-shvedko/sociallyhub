@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/spam-detection/[detectionId] - Get specific detection details
 export async function GET(request: NextRequest, props: { params: Promise<{ detectionId: string }> }) {
@@ -18,18 +19,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ detec
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get the detection record
@@ -122,11 +112,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ detec
     })
 
   } catch (error) {
-    console.error('Failed to fetch detection details:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch detection details' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -158,18 +144,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ detec
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get the current detection
@@ -239,11 +214,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ detec
     })
 
   } catch (error) {
-    console.error('Failed to update detection status:', error)
-    return NextResponse.json(
-      { error: 'Failed to update detection status' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -263,18 +234,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ de
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get the detection before deletion
@@ -322,10 +282,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ de
     })
 
   } catch (error) {
-    console.error('Failed to delete detection record:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete detection record' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

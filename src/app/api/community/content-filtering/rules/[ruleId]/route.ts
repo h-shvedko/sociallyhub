@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/content-filtering/rules/[ruleId] - Get specific rule details
 export async function GET(request: NextRequest, props: { params: Promise<{ ruleId: string }> }) {
@@ -18,18 +19,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ ruleI
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get the rule with detailed information
@@ -163,11 +153,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ ruleI
     })
 
   } catch (error) {
-    console.error('Failed to fetch rule details:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch rule details' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -195,18 +181,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ ruleI
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get the current rule
@@ -278,11 +253,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ ruleI
     return NextResponse.json(updatedRule)
 
   } catch (error) {
-    console.error('Failed to update rule:', error)
-    return NextResponse.json(
-      { error: 'Failed to update rule' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -302,18 +273,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ ru
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get the rule before deletion
@@ -368,10 +328,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ ru
     })
 
   } catch (error) {
-    console.error('Failed to delete rule:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete rule' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

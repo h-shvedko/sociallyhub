@@ -59,43 +59,17 @@ export async function GET(request: NextRequest) {
             }
           }
         },
-        userRoles: {
-          include: {
-            role: {
-              select: {
-                id: true,
-                name: true,
-                displayName: true,
-                color: true
-              }
-            }
-          },
-          where: {
-            isActive: true
-          }
-        },
-        teamMemberships: {
-          include: {
-            team: {
-              select: {
-                id: true,
-                name: true,
-                workspaceId: true
-              }
-            }
-          }
-        },
+        // NOTE (ADR-0004): the custom Role/UserRole/Team tables were removed; the
+        // two-tier model uses WorkspaceRole (via `workspaces` above) + isPlatformAdmin.
+        isPlatformAdmin: true,
         userSessions: {
-          where: {
-            isActive: true
-          },
           select: {
             id: true,
-            lastActiveAt: true,
-            ipAddress: true
+            lastActivity: true,
+            ip: true
           },
           orderBy: {
-            lastActiveAt: 'desc'
+            lastActivity: 'desc'
           },
           take: 1
         },
@@ -208,20 +182,8 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Assign additional roles if specified
-      if (roleIds.length > 0) {
-        const roleAssignments = roleIds.map((roleId: string) => ({
-          userId: user.id,
-          roleId,
-          assignedBy: admin.id,
-          assignedAt: new Date()
-        }))
-
-        await tx.userRole.createMany({
-          data: roleAssignments
-        })
-      }
-
+      // NOTE (ADR-0004): custom per-user Role assignments were removed; workspace
+      // access is governed by WorkspaceRole (set above) + isPlatformAdmin.
       return user
     })
 

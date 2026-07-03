@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/content-filtering/rules - List auto-moderation rules
 export async function GET(request: NextRequest) {
@@ -18,18 +19,7 @@ export async function GET(request: NextRequest) {
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Build where clause
@@ -106,11 +96,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch auto-moderation rules:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch auto-moderation rules' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -145,18 +131,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has moderation permissions
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Create the rule
     const rule = await prisma.autoModerationRule.create({
@@ -209,11 +184,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(rule, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create auto-moderation rule:', error)
-    return NextResponse.json(
-      { error: 'Failed to create auto-moderation rule' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

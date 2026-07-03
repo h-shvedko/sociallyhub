@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+
+// Integration settings are always workspace-scoped (IntegrationSetting.
+// workspaceId is required in the schema), so the two-tier model (ADR-0004)
+// reduces to requireWorkspaceRole(integration.workspaceId, ['OWNER', 'ADMIN']).
 
 // POST /api/admin/settings/integrations/[id]/test - Test integration connection
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
+  // Hoisted so the catch block can attribute the error-count update; the
+  // previous version referenced the try-scoped `session` from the catch,
+  // which could never compile.
+  let userId: string | undefined
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
+    userId = user.id
     const integrationId = params.id
 
     const integration = await prisma.integrationSetting.findUnique({
@@ -20,21 +24,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     })
 
     if (!integration) {
-      return NextResponse.json({ error: 'Integration not found' }, { status: 404 })
+      return jsonError(404, 'Integration not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: integration.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(integration.workspaceId, ['OWNER', 'ADMIN'])
 
     // Mock integration testing based on provider
     const testIntegration = async (provider: string, config: any, credentials: any) => {
@@ -125,7 +118,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     // Update integration with test results
     const updateData: any = {
-      lastUpdatedBy: normalizedUserId
+      lastUpdatedBy: user.id
     }
 
     if (testResult.success) {
@@ -153,17 +146,22 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     })
 
   } catch (error) {
+    // Auth/authorization short-circuits (401/403/404) must not count as
+    // integration errors and use the standard envelope.
+    if (error instanceof ApiError) {
+      return handleApiError(error)
+    }
+
     console.error('Failed to test integration:', error)
 
     // Update error count on failure
     try {
-      const errorUpdatedBy = await normalizeUserId(session?.user?.id || '')
       await prisma.integrationSetting.update({
         where: { id: params.id },
         data: {
           errorCount: { increment: 1 },
           lastError: 'Test connection failed',
-          lastUpdatedBy: errorUpdatedBy
+          ...(userId ? { lastUpdatedBy: userId } : {})
         }
       })
     } catch (updateError) {

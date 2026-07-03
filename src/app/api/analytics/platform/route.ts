@@ -1,28 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
 
 // GET /api/analytics/platform - Get platform-wide analytics
 async function getHandler(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has analytics permissions (admin/owner)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: session.user.id,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    // Platform-wide, cross-tenant aggregates: require platform admin (ADR-0004)
+    await requirePlatformAdmin()
 
     const { searchParams } = new URL(request.url)
     const days = parseInt(searchParams.get('days') || '7')
@@ -40,13 +26,14 @@ async function getHandler(request: NextRequest) {
       // Total users
       prisma.user.count(),
       
-      // Active users (users with recent sessions)
-      prisma.userSession.count({
+      // Active users (distinct users with recent sessions) — count() has no
+      // `distinct`, so group by userId and take the group count.
+      prisma.userSession.groupBy({
+        by: ['userId'],
         where: {
           lastActivity: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-        },
-        distinct: ['userId']
-      }),
+        }
+      }).then((groups) => groups.length),
       
       // Total sessions
       prisma.userSession.count({
@@ -126,11 +113,7 @@ async function getHandler(request: NextRequest) {
     return NextResponse.json(analyticsData)
 
   } catch (error) {
-    console.error('Error fetching platform analytics:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { withLogging } from '@/lib/middleware/logging'
 import { prisma } from '@/lib/prisma'
 async function getClientHandler(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -114,18 +115,8 @@ async function updateClientHandler(req: NextRequest, { params }: { params: Promi
 
     const userId = await normalizeUserId(session.user.id)
 
-    // Verify user has access to this workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
-    }
+    // Verify user has access to this workspace (ADR-0004; non-members get 404)
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
 
     // Update client
     const updatedClient = await prisma.client.update({
@@ -213,8 +204,7 @@ async function updateClientHandler(req: NextRequest, { params }: { params: Promi
 
     return NextResponse.json(formattedClient)
   } catch (error) {
-    console.error('Error updating client:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -231,18 +221,9 @@ async function deleteClientHandler(req: NextRequest, { params }: { params: Promi
 
     const userId = await normalizeUserId(session.user.id)
 
-    // Verify user has access to this workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] } // Only owners and admins can delete
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    // Verify user has access to this workspace (ADR-0004; non-members get
+    // 404). Only owners and admins can delete.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Check if client exists and belongs to workspace
     const client = await prisma.client.findFirst({
@@ -267,8 +248,7 @@ async function deleteClientHandler(req: NextRequest, { params }: { params: Promi
 
     return NextResponse.json({ success: true, message: 'Client deleted successfully' })
   } catch (error) {
-    console.error('Error deleting client:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 

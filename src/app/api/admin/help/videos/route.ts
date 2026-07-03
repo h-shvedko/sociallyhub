@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -30,7 +18,6 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10')
 
     const where: any = {
-      workspaceId: userWorkspace.workspaceId
     }
 
     if (search) {
@@ -90,27 +77,14 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching videos:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const body = await request.json()
     const {
@@ -145,7 +119,6 @@ export async function POST(request: NextRequest) {
     // Create video tutorial
     const video = await prisma.videoTutorial.create({
       data: {
-        workspaceId: userWorkspace.workspaceId,
         title,
         description,
         category,
@@ -202,7 +175,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(video, { status: 201 })
   } catch (error) {
-    console.error('Error creating video:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }

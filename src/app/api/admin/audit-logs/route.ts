@@ -65,13 +65,6 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true
           }
-        },
-        role: {
-          select: {
-            id: true,
-            name: true,
-            displayName: true
-          }
         }
       },
       orderBy: {
@@ -324,8 +317,7 @@ export async function POST(request: NextRequest) {
       resourceId,
       description,
       metadata = {},
-      workspaceId,
-      roleId
+      workspaceId
     } = body
 
     if (!action || !resource) {
@@ -341,10 +333,11 @@ export async function POST(request: NextRequest) {
         action,
         resource,
         resourceId,
-        description,
-        metadata,
+        // ADR-0004: AuditLog.roleId was dropped with the Role table. `description`
+        // and free-form details are folded into `changes` (AuditLog has no
+        // description/metadata columns).
+        changes: { description, metadata },
         workspaceId,
-        roleId,
         timestamp: new Date()
       }
     })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // Community Health interfaces
 interface HealthAlert {
@@ -52,18 +53,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     const healthReport = await generateHealthReport(workspaceId)
 
@@ -76,11 +66,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response)
 
   } catch (error) {
-    console.error('Failed to get community health:', error)
-    return NextResponse.json(
-      { error: 'Failed to get community health' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -101,18 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     if (action === 'ACKNOWLEDGE_ALERTS' && alertIds) {
       // Mark alerts as acknowledged (implement with CommunityHealthAlert model if needed)
@@ -139,11 +114,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
   } catch (error) {
-    console.error('Failed to process health action:', error)
-    return NextResponse.json(
-      { error: 'Failed to process health action' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

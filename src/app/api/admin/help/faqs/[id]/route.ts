@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const faq = await prisma.helpFAQ.findUnique({
       where: { id: params.id },
@@ -43,18 +41,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Error fetching FAQ:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const body = await request.json()
     const {
@@ -115,18 +110,15 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Error updating FAQ:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     // Check if FAQ exists
     const faq = await prisma.helpFAQ.findUnique({
@@ -147,7 +139,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     })
 
   } catch (error) {
-    console.error('Error deleting FAQ:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }

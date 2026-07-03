@@ -1,44 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/admin/support/tickets/analytics - Get comprehensive ticket analytics
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    await requirePlatformAdmin()
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
 
     // Query parameters
     const timeRange = searchParams.get('timeRange') || '30d' // 1d, 7d, 30d, 90d
     const department = searchParams.get('department')
     const agentId = searchParams.get('agentId')
-
-    // Verify admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      },
-      select: { workspaceId: true }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
 
     // Calculate date range
     const now = new Date()
@@ -61,12 +36,8 @@ export async function GET(request: NextRequest) {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     }
 
-    // Base where clause
+    // Base where clause — platform admins see all tickets platform-wide.
     const baseWhere: any = {
-      OR: [
-        { workspaceId: { in: workspaceIds } },
-        { workspaceId: null }
-      ],
       createdAt: { gte: startDate }
     }
 
@@ -177,11 +148,7 @@ export async function GET(request: NextRequest) {
             select: {
               assignedTickets: {
                 where: {
-                  createdAt: { gte: startDate },
-                  OR: [
-                    { workspaceId: { in: workspaceIds } },
-                    { workspaceId: null }
-                  ]
+                  createdAt: { gte: startDate }
                 }
               }
             }
@@ -197,7 +164,6 @@ export async function GET(request: NextRequest) {
           COUNT(CASE WHEN status = 'RESOLVED' THEN 1 END) as resolved_count
         FROM support_tickets
         WHERE created_at >= ${startDate}
-          AND (workspace_id = ANY(${workspaceIds}) OR workspace_id IS NULL)
         GROUP BY DATE(created_at)
         ORDER BY date DESC
         LIMIT 30
@@ -310,10 +276,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch ticket analytics:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch analytics' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

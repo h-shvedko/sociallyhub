@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
@@ -11,7 +12,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const campaignId = searchParams.get('campaignId') // Optional filter for specific campaign
@@ -21,14 +21,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Verify workspace access
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId, workspaceId }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace access denied' }, { status: 403 })
-    }
+    // Verify workspace access (ADR-0004)
+    await requireWorkspaceRole(workspaceId)
 
     // Calculate date range
     const now = new Date()
@@ -219,10 +213,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(analyticsData)
   } catch (error) {
-    console.error('Error fetching campaign analytics:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch campaign analytics' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

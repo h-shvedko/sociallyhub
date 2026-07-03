@@ -10,6 +10,14 @@ declare module "next-auth" {
       image?: string | null
       currentWorkspaceId?: string
       role?: WorkspaceRole
+      /**
+       * ADR-0004 platform-tier claim, copied from `User.isPlatformAdmin` at
+       * sign-in. "Claim for UI, DB for API": use it ONLY to gate
+       * UI/navigation — API handlers must re-check the database via
+       * `requirePlatformAdmin()` from `@/lib/auth` (JWT claims are not
+       * revocation-safe).
+       */
+      isPlatformAdmin: boolean
     }
   }
 
@@ -26,5 +34,7 @@ declare module "next-auth/jwt" {
     id: string
     currentWorkspaceId?: string
     role?: WorkspaceRole
+    /** ADR-0004 platform-tier claim (UI gating only — see Session.user). */
+    isPlatformAdmin?: boolean
   }
 }

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import path from 'path'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest, props: { params: Promise<{ path: string[] }> }) {
@@ -20,17 +21,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ path:
       return NextResponse.json({ error: 'Invalid file path' }, { status: 400 })
     }
 
-    // Verify user has access to this workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: session.user.id,
-        workspaceId: workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    // Verify user has access to this workspace (ADR-0004)
+    await requireWorkspaceRole(workspaceId)
 
     // Verify asset exists in database
     const asset = await prisma.asset.findFirst({
@@ -57,6 +49,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ path:
     return new NextResponse(fileBuffer, { headers })
 
   } catch (error) {
+    if (error instanceof ApiError) return handleApiError(error)
     console.error('Error serving file:', error)
     return NextResponse.json({ error: 'File not found' }, { status: 404 })
   }

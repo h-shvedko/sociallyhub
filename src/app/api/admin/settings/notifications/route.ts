@@ -1,38 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { canAccessGlobalScope } from '../_lib/global-scope'
 
 // GET /api/admin/settings/notifications - List notification configurations
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const category = searchParams.get('category')
     const eventType = searchParams.get('eventType')
     const isEnabled = searchParams.get('isEnabled')
     const priority = searchParams.get('priority')
-    const includeGlobal = searchParams.get('includeGlobal') === 'true'
+    let includeGlobal = searchParams.get('includeGlobal') === 'true'
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace scope requires OWNER/ADMIN
+    // membership; any global-scope read is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      const membership = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+      if (includeGlobal && !(await canAccessGlobalScope(membership.userId))) {
+        // Mixed scope: restrict to the caller's workspace instead of 403ing.
+        includeGlobal = false
       }
+    } else {
+      // Global scope (with includeGlobal=true this lists ALL workspaces' rows).
+      await requirePlatformAdmin()
     }
 
     // Build where clause
@@ -139,23 +132,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch notification configurations:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch notification configurations' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/notifications - Create notification configuration
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -177,25 +161,15 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!category || !eventType) {
-      return NextResponse.json(
-        { error: 'Missing required fields: category, eventType' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: category, eventType')
     }
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace mutation requires
+    // OWNER/ADMIN membership; global-scope mutation is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Validate category
@@ -206,38 +180,26 @@ export async function POST(request: NextRequest) {
     ]
 
     if (!validCategories.includes(category)) {
-      return NextResponse.json(
-        { error: `Invalid category. Must be one of: ${validCategories.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid category. Must be one of: ${validCategories.join(', ')}`)
     }
 
     // Validate channels
     const validChannels = ['EMAIL', 'PUSH', 'IN_APP', 'SMS', 'WEBHOOK', 'SLACK', 'DISCORD', 'TEAMS']
     const invalidChannels = channels.filter((ch: string) => !validChannels.includes(ch))
     if (invalidChannels.length > 0) {
-      return NextResponse.json(
-        { error: `Invalid channels: ${invalidChannels.join(', ')}. Valid channels: ${validChannels.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid channels: ${invalidChannels.join(', ')}. Valid channels: ${validChannels.join(', ')}`)
     }
 
     // Validate frequency
     const validFrequencies = ['INSTANT', 'HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM']
     if (!validFrequencies.includes(frequency)) {
-      return NextResponse.json(
-        { error: `Invalid frequency. Must be one of: ${validFrequencies.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid frequency. Must be one of: ${validFrequencies.join(', ')}`)
     }
 
     // Validate priority
     const validPriorities = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL', 'EMERGENCY']
     if (!validPriorities.includes(priority)) {
-      return NextResponse.json(
-        { error: `Invalid priority. Must be one of: ${validPriorities.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid priority. Must be one of: ${validPriorities.join(', ')}`)
     }
 
     // Check for existing configuration
@@ -250,10 +212,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingConfig) {
-      return NextResponse.json(
-        { error: 'Notification configuration for this category and event type already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Notification configuration for this category and event type already exists')
     }
 
     // Validate quiet hours format if provided
@@ -266,10 +225,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (!isValidQuietHours(quietHours)) {
-        return NextResponse.json(
-          { error: 'Invalid quiet hours format. Must include startTime, endTime, timezone, and days array' },
-          { status: 400 }
-        )
+        return jsonError(400, 'Invalid quiet hours format. Must include startTime, endTime, timezone, and days array')
       }
     }
 
@@ -290,7 +246,7 @@ export async function POST(request: NextRequest) {
         priority,
         retryAttempts,
         batchSize,
-        lastUpdatedBy: normalizedUserId
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -305,10 +261,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ configuration }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create notification configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to create notification configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

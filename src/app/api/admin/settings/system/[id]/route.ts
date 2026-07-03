@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+
+// Two-tier authorization (ADR-0004): workspace-scoped configurations require
+// OWNER/ADMIN membership of that workspace; global (workspaceId = null)
+// configurations are platform-admin-only for reads AND writes (blanket
+// admin-surface rule; ADR-0016 may relax masked reads later).
+async function requireConfigurationScope(workspaceId: string | null): Promise<void> {
+  if (workspaceId) {
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+  } else {
+    await requirePlatformAdmin()
+  }
+}
 
 // GET /api/admin/settings/system/[id] - Get specific system configuration
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const configurationId = params.id
 
     const configuration = await prisma.systemConfiguration.findUnique({
@@ -28,23 +35,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
     if (!configuration) {
-      return NextResponse.json({ error: 'Configuration not found' }, { status: 404 })
+      return jsonError(404, 'Configuration not found')
     }
 
-    // Check permissions
-    if (configuration.workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: configuration.workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
+    await requireConfigurationScope(configuration.workspaceId)
 
     return NextResponse.json({
       configuration: {
@@ -55,11 +49,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Failed to fetch system configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch system configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -67,12 +57,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const configurationId = params.id
     const body = await request.json()
 
@@ -91,23 +76,10 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Configuration not found' }, { status: 404 })
+      return jsonError(404, 'Configuration not found')
     }
 
-    // Check permissions
-    if (existing.workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: existing.workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
+    await requireConfigurationScope(existing.workspaceId)
 
     // Validate value if provided
     if (value !== undefined) {
@@ -141,16 +113,13 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       }
 
       if (!validateValue(value, existing.dataType)) {
-        return NextResponse.json(
-          { error: `Invalid value for data type ${existing.dataType}` },
-          { status: 400 }
-        )
+        return jsonError(400, `Invalid value for data type ${existing.dataType}`)
       }
     }
 
     // Update configuration
     const updateData: any = {
-      lastUpdatedBy: normalizedUserId
+      lastUpdatedBy: user.id
     }
 
     if (value !== undefined) updateData.value = String(value)
@@ -182,11 +151,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Failed to update system configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to update system configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -194,12 +159,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const configurationId = params.id
 
     // Get existing configuration
@@ -208,30 +168,14 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Configuration not found' }, { status: 404 })
+      return jsonError(404, 'Configuration not found')
     }
 
-    // Check permissions
-    if (existing.workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: existing.workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
+    await requireConfigurationScope(existing.workspaceId)
 
     // Prevent deletion of required configurations
     if (existing.isRequired) {
-      return NextResponse.json(
-        { error: 'Cannot delete required configuration' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Cannot delete required configuration')
     }
 
     await prisma.systemConfiguration.delete({
@@ -241,10 +185,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     return NextResponse.json({ success: true })
 
   } catch (error) {
-    console.error('Failed to delete system configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete system configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

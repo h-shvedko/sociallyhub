@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+
+// Email templates are always workspace-scoped (EmailTemplate.workspaceId is
+// required in the schema), so the two-tier model (ADR-0004) reduces to
+// requireWorkspaceRole(template.workspaceId, ['OWNER', 'ADMIN']) here.
 
 // GET /api/admin/settings/email-templates/[id] - Get specific email template
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const templateId = params.id
 
     const template = await prisma.emailTemplate.findUnique({
@@ -31,30 +30,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
     if (!template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      return jsonError(404, 'Template not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: template.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(template.workspaceId, ['OWNER', 'ADMIN'])
 
     return NextResponse.json({ template })
 
   } catch (error) {
-    console.error('Failed to fetch email template:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch email template' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -62,12 +46,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const templateId = params.id
     const body = await request.json()
 
@@ -89,28 +68,14 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      return jsonError(404, 'Template not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: existing.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(existing.workspaceId, ['OWNER', 'ADMIN'])
 
     // Prevent modification of system templates
     if (existing.isSystem) {
-      return NextResponse.json(
-        { error: 'Cannot modify system templates' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Cannot modify system templates')
     }
 
     // Validate category if provided
@@ -121,10 +86,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       ]
 
       if (!validCategories.includes(category)) {
-        return NextResponse.json(
-          { error: `Invalid category. Must be one of: ${validCategories.join(', ')}` },
-          { status: 400 }
-        )
+        return jsonError(400, `Invalid category. Must be one of: ${validCategories.join(', ')}`)
       }
     }
 
@@ -139,16 +101,13 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       })
 
       if (conflictingTemplate) {
-        return NextResponse.json(
-          { error: 'Template with this slug already exists' },
-          { status: 409 }
-        )
+        return jsonError(409, 'Template with this slug already exists')
       }
     }
 
     // Build update data
     const updateData: any = {
-      lastUpdatedBy: normalizedUserId
+      lastUpdatedBy: user.id
     }
 
     if (name !== undefined) updateData.name = name
@@ -181,11 +140,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     return NextResponse.json({ template })
 
   } catch (error) {
-    console.error('Failed to update email template:', error)
-    return NextResponse.json(
-      { error: 'Failed to update email template' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -193,12 +148,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const templateId = params.id
 
     // Get existing template
@@ -207,28 +157,14 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      return jsonError(404, 'Template not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: existing.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(existing.workspaceId, ['OWNER', 'ADMIN'])
 
     // Prevent deletion of system templates
     if (existing.isSystem) {
-      return NextResponse.json(
-        { error: 'Cannot delete system templates' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Cannot delete system templates')
     }
 
     await prisma.emailTemplate.delete({
@@ -238,10 +174,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     return NextResponse.json({ success: true })
 
   } catch (error) {
-    console.error('Failed to delete email template:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete email template' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

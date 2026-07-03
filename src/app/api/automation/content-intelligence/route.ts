@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 
@@ -22,18 +23,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Verify user has access to workspace
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId: workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    // Verify workspace access (ADR-0004): any member of THIS workspace.
+    await requireWorkspaceRole(workspaceId)
 
     // Get recent posts for content analysis
     const recentPosts = await prisma.post.findMany({
@@ -76,8 +67,7 @@ export async function GET(request: NextRequest) {
       lastAnalyzed: new Date().toISOString()
     })
   } catch (error) {
-    console.error('Error fetching content intelligence:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -95,19 +85,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Verify user has access to workspace
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId: workspaceId,
-        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    // Verify workspace access (ADR-0004): same role set as the old inline check.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
 
     if (action === 'enable') {
       // Create a content intelligence automation rule
@@ -143,8 +122,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
-    console.error('Error enabling content intelligence:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 

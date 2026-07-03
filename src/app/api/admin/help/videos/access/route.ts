@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const { searchParams } = new URL(request.url)
     const videoId = searchParams.get('videoId')
@@ -29,7 +17,6 @@ export async function GET(request: NextRequest) {
       const video = await prisma.videoTutorial.findFirst({
         where: {
           id: videoId,
-          workspaceId: userWorkspace.workspaceId
         },
         select: {
           id: true,
@@ -73,7 +60,6 @@ export async function GET(request: NextRequest) {
       const video = await prisma.videoTutorial.findFirst({
         where: {
           id: videoId,
-          workspaceId: userWorkspace.workspaceId
         },
         select: {
           id: true,
@@ -150,7 +136,6 @@ export async function GET(request: NextRequest) {
     // Get access control overview for all videos
     const videos = await prisma.videoTutorial.findMany({
       where: {
-        workspaceId: userWorkspace.workspaceId
       },
       select: {
         id: true,
@@ -233,27 +218,14 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching access control data:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const body = await request.json()
     const { videoId, action } = body
@@ -262,7 +234,6 @@ export async function POST(request: NextRequest) {
     const video = await prisma.videoTutorial.findFirst({
       where: {
         id: videoId,
-        workspaceId: userWorkspace.workspaceId
       }
     })
 
@@ -388,7 +359,6 @@ export async function POST(request: NextRequest) {
           const targetVideo = await prisma.videoTutorial.findFirst({
             where: {
               id,
-              workspaceId: userWorkspace.workspaceId
             }
           })
 
@@ -502,8 +472,7 @@ export async function POST(request: NextRequest) {
       error: 'Invalid action. Supported: update_settings, bulk_update, generate_access_link, validate_access'
     }, { status: 400 })
   } catch (error) {
-    console.error('Error processing access control:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 

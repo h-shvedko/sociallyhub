@@ -1,38 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { canAccessGlobalScope } from '../_lib/global-scope'
 
 // GET /api/admin/settings/backup - List backup configurations
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const backupType = searchParams.get('backupType')
     const storageLocation = searchParams.get('storageLocation')
     const isActive = searchParams.get('isActive')
     const includeRecords = searchParams.get('includeRecords') === 'true'
-    const includeGlobal = searchParams.get('includeGlobal') === 'true'
+    let includeGlobal = searchParams.get('includeGlobal') === 'true'
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace scope requires OWNER/ADMIN
+    // membership; any global-scope read is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      const membership = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+      if (includeGlobal && !(await canAccessGlobalScope(membership.userId))) {
+        // Mixed scope: restrict to the caller's workspace instead of 403ing.
+        includeGlobal = false
       }
+    } else {
+      // Global scope (with includeGlobal=true this lists ALL workspaces' rows).
+      await requirePlatformAdmin()
     }
 
     // Build where clause
@@ -165,23 +158,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch backup configurations:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch backup configurations' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/backup - Create backup configuration
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -205,60 +189,38 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!name || !backupType || !schedule || !storageLocation || !storageConfig) {
-      return NextResponse.json(
-        { error: 'Missing required fields: name, backupType, schedule, storageLocation, storageConfig' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: name, backupType, schedule, storageLocation, storageConfig')
     }
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace mutation requires
+    // OWNER/ADMIN membership; global-scope mutation is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Validate backup type
     const validBackupTypes = ['FULL', 'INCREMENTAL', 'DIFFERENTIAL', 'DATABASE_ONLY', 'MEDIA_ONLY', 'CONFIGURATION_ONLY']
     if (!validBackupTypes.includes(backupType)) {
-      return NextResponse.json(
-        { error: `Invalid backup type. Must be one of: ${validBackupTypes.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid backup type. Must be one of: ${validBackupTypes.join(', ')}`)
     }
 
     // Validate storage location
     const validStorageLocations = ['LOCAL', 'AWS_S3', 'AZURE_BLOB', 'GCP_STORAGE', 'DROPBOX', 'GOOGLE_DRIVE', 'FTP', 'SFTP', 'CUSTOM']
     if (!validStorageLocations.includes(storageLocation)) {
-      return NextResponse.json(
-        { error: `Invalid storage location. Must be one of: ${validStorageLocations.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid storage location. Must be one of: ${validStorageLocations.join(', ')}`)
     }
 
     // Validate priority
     const validPriorities = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL']
     if (!validPriorities.includes(priority)) {
-      return NextResponse.json(
-        { error: `Invalid priority. Must be one of: ${validPriorities.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid priority. Must be one of: ${validPriorities.join(', ')}`)
     }
 
     // Validate cron schedule format (basic validation)
     if (!isValidCronExpression(schedule)) {
-      return NextResponse.json(
-        { error: 'Invalid cron schedule format. Use standard cron syntax (e.g., "0 2 * * *" for daily at 2 AM)' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Invalid cron schedule format. Use standard cron syntax (e.g., "0 2 * * *" for daily at 2 AM)')
     }
 
     // Check for existing configuration with same name
@@ -270,10 +232,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingConfig) {
-      return NextResponse.json(
-        { error: 'Backup configuration with this name already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Backup configuration with this name already exists')
     }
 
     // Create configuration
@@ -296,8 +255,8 @@ export async function POST(request: NextRequest) {
         maxSize: maxSize ? BigInt(maxSize) : null,
         parallelJobs,
         nextRun: calculateNextRun(schedule),
-        createdBy: normalizedUserId,
-        lastUpdatedBy: normalizedUserId
+        createdBy: user.id,
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -315,11 +274,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ configuration }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create backup configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to create backup configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

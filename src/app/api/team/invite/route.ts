@@ -1,41 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { emailService } from '@/lib/notifications/email-service'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
+    const userId = user.id
     const body = await request.json()
     const { email, role, workspaceId } = body
 
     if (!email || !role || !workspaceId) {
-      return NextResponse.json({ 
-        error: 'Email, role, and workspaceId are required' 
-      }, { status: 400 })
+      return jsonError(400, 'Email, role, and workspaceId are required')
     }
 
     // Verify user has permission to invite (OWNER or ADMIN)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ 
-        error: 'No permission to invite members' 
-      }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Check if user already exists and is already in workspace
     const existingUser = await prisma.user.findUnique({
@@ -126,10 +107,6 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Team invite error:', error)
-    return NextResponse.json({
-      error: 'Failed to invite member',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    return handleApiError(error)
   }
 }

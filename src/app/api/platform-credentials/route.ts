@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { encryptCredentials, decryptCredentials } from '@/lib/encryption'
 
@@ -12,7 +13,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
@@ -20,18 +20,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Verify user has access to workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] } // Only admins can manage credentials
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    // Verify user has access to workspace (ADR-0004) — only admins can manage credentials
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get all platform credentials for workspace
     const credentials = await prisma.platformCredentials.findMany({
@@ -59,11 +49,7 @@ export async function GET(request: NextRequest) {
       total: credentials.length
     })
   } catch (error) {
-    console.error('Error fetching platform credentials:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch platform credentials' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -85,18 +71,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Verify user has access to workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    // Verify user has access to workspace (ADR-0004)
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Validate platform credentials structure
     const validationResult = await validatePlatformCredentials(platform, credentials)
@@ -152,11 +128,7 @@ export async function POST(request: NextRequest) {
       message: `${platform} credentials ${validationResult.isValid ? 'configured successfully' : 'saved with validation errors'}`
     })
   } catch (error) {
-    console.error('Error saving platform credentials:', error)
-    return NextResponse.json(
-      { error: 'Failed to save platform credentials' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

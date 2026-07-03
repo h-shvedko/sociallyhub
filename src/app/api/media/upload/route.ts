@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -32,22 +33,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Verify user has access to workspace
+    // Verify user has access to workspace (ADR-0004)
     const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId: workspaceId,
-        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json(
-        { error: 'No workspace with upload permissions' },
-        { status: 403 }
-      )
-    }
+    const userWorkspace = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
 
     const file = formData.get('file') as File
 
@@ -159,10 +147,6 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error in media upload:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

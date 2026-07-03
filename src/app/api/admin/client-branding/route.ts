@@ -1,42 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError, jsonError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
-    // Verify user has admin access to the workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId: workspaceId || ''
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
+    if (!workspaceId) {
+      return jsonError(400, 'Workspace ID is required')
     }
+
+    // Workspace-scoped admin surface (ADR-0004): OWNER/ADMIN of THIS workspace.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get client branding for the workspace
     const clientBranding = await prisma.clientBranding.findUnique({
-      where: { workspaceId: workspaceId || '' },
+      where: { workspaceId },
       include: {
         workspace: {
           select: { name: true }
@@ -49,52 +29,24 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ branding: clientBranding })
   } catch (error) {
-    console.error('Error fetching client branding:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // Authentication precedes body parsing (docs/api-conventions.md §1).
+    await requireSession()
 
-    const userId = await normalizeUserId(session.user.id)
     const body = await request.json()
     const { workspaceId, clientId, ...brandingData } = body
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: 'Workspace ID is required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Workspace ID is required')
     }
 
-    // Verify user has admin access to the workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
+    // Workspace-scoped admin surface (ADR-0004): OWNER/ADMIN of THIS workspace.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Validate allowed fields
     const allowedFields = [
@@ -116,19 +68,13 @@ export async function POST(request: NextRequest) {
     const colorFields = ['primaryColor', 'secondaryColor', 'accentColor']
     for (const field of colorFields) {
       if (updateData[field] && !/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(updateData[field])) {
-        return NextResponse.json(
-          { error: `Invalid color format for ${field}. Use hex format (#RRGGBB or #RGB)` },
-          { status: 400 }
-        )
+        return jsonError(400, `Invalid color format for ${field}. Use hex format (#RRGGBB or #RGB)`)
       }
     }
 
     // Validate custom domain format
     if (updateData.customDomain && !/^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(updateData.customDomain)) {
-      return NextResponse.json(
-        { error: 'Invalid custom domain format' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Invalid custom domain format')
     }
 
     // Upsert client branding
@@ -146,78 +92,43 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       branding: clientBranding,
-      message: 'Client branding updated successfully' 
+      message: 'Client branding updated successfully'
     })
   } catch (error) {
-    console.error('Error updating client branding:', error)
-    return NextResponse.json(
-      { error: 'Failed to update client branding' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: 'Workspace ID is required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Workspace ID is required')
     }
 
-    // Verify user has admin access to the workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
+    // Workspace-scoped admin surface (ADR-0004): OWNER/ADMIN of THIS workspace.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Delete client branding (revert to defaults)
     await prisma.clientBranding.delete({
       where: { workspaceId }
     })
 
-    return NextResponse.json({ 
-      message: 'Client branding reset to defaults' 
+    return NextResponse.json({
+      message: 'Client branding reset to defaults'
     })
   } catch (error) {
-    if (error.code === 'P2025') {
+    if ((error as { code?: string } | null)?.code === 'P2025') {
       // Record not found - already at defaults
-      return NextResponse.json({ 
-        message: 'Client branding already at defaults' 
+      return NextResponse.json({
+        message: 'Client branding already at defaults'
       })
     }
-    
-    console.error('Error deleting client branding:', error)
-    return NextResponse.json(
-      { error: 'Failed to reset client branding' },
-      { status: 500 }
-    )
+
+    return handleApiError(error)
   }
 }

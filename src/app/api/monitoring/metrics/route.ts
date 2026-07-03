@@ -1,28 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
 
 // GET /api/monitoring/metrics - Get system metrics
 async function getHandler(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user has monitoring permissions (admin/owner)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: session.user.id,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    // System-wide metrics: require platform admin (ADR-0004)
+    await requirePlatformAdmin()
 
     // Calculate metrics
     const now = new Date()
@@ -75,11 +61,7 @@ async function getHandler(request: NextRequest) {
     return NextResponse.json(metrics)
 
   } catch (error) {
-    console.error('Error fetching metrics:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // POST /api/admin/support/tickets/bulk - Bulk operations on tickets
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    const user = await requirePlatformAdmin()
+    const userId = user.id
     const body = await request.json()
 
     const {
@@ -38,32 +31,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      },
-      select: { workspaceId: true }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-    // Verify all tickets exist and user has access
+    // Verify all tickets exist (platform admins operate platform-wide)
     const tickets = await prisma.supportTicket.findMany({
       where: {
-        id: { in: ticketIds },
-        OR: [
-          { workspaceId: { in: workspaceIds } },
-          { workspaceId: null }
-        ]
+        id: { in: ticketIds }
       },
       select: {
         id: true,
@@ -122,7 +93,7 @@ export async function POST(request: NextRequest) {
                 newStatus: data.status,
                 authorId: userId,
                 authorType: 'admin',
-                authorName: session.user.name || 'Admin',
+                authorName: user.name || 'Admin',
                 isPublic: false
               }
             })
@@ -158,7 +129,7 @@ export async function POST(request: NextRequest) {
                 newPriority: data.priority,
                 authorId: userId,
                 authorType: 'admin',
-                authorName: session.user.name || 'Admin',
+                authorName: user.name || 'Admin',
                 isPublic: false
               }
             })
@@ -220,7 +191,7 @@ export async function POST(request: NextRequest) {
                 newAssignee: data.agentId,
                 authorId: userId,
                 authorType: 'admin',
-                authorName: session.user.name || 'Admin',
+                authorName: user.name || 'Admin',
                 isPublic: false
               }
             })
@@ -253,7 +224,7 @@ export async function POST(request: NextRequest) {
                   newAssignee: null,
                   authorId: userId,
                   authorType: 'admin',
-                  authorName: session.user.name || 'Admin',
+                  authorName: user.name || 'Admin',
                   isPublic: false
                 }
               })
@@ -293,7 +264,7 @@ export async function POST(request: NextRequest) {
                 message: `Tags added: ${data.tags.join(', ')} (bulk operation)`,
                 authorId: userId,
                 authorType: 'admin',
-                authorName: session.user.name || 'Admin',
+                authorName: user.name || 'Admin',
                 isPublic: false
               }
             })
@@ -337,10 +308,6 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to perform bulk operation:', error)
-    return NextResponse.json(
-      { error: 'Failed to perform bulk operation' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

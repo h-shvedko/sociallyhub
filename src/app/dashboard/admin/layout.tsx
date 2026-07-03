@@ -1,7 +1,6 @@
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
 import AdminSidebar from '@/components/admin/admin-sidebar'
 
 export default async function AdminLayout({
@@ -15,26 +14,9 @@ export default async function AdminLayout({
     redirect('/auth/signin')
   }
 
-  const userId = await normalizeUserId(session.user.id)
-
-  // Verify user has admin permissions
-  const userWorkspaces = await prisma.userWorkspace.findMany({
-    where: {
-      userId,
-      role: { in: ['OWNER', 'ADMIN'] }
-    },
-    select: {
-      workspaceId: true,
-      role: true,
-      workspace: {
-        select: {
-          name: true
-        }
-      }
-    }
-  })
-
-  if (userWorkspaces.length === 0) {
+  // ADR-0004 doctrine: the session claim gates UI/navigation only — every
+  // /api/admin/** handler re-checks the database via requirePlatformAdmin().
+  if (!session.user.isPlatformAdmin) {
     redirect('/dashboard')
   }
 
@@ -42,7 +24,6 @@ export default async function AdminLayout({
     <div className="flex h-screen bg-gray-50">
       {/* Admin Sidebar */}
       <AdminSidebar
-        userWorkspaces={userWorkspaces}
         user={{
           name: session.user.name,
           email: session.user.email,
@@ -66,7 +47,7 @@ export default async function AdminLayout({
               </div>
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-500">
-                  {userWorkspaces.length} workspace{userWorkspaces.length !== 1 ? 's' : ''}
+                  Platform administrator
                 </span>
                 <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center">
                   <div className="h-2 w-2 bg-green-500 rounded-full"></div>

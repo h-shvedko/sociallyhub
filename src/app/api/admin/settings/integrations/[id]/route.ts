@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+
+// Integration settings are always workspace-scoped (IntegrationSetting.
+// workspaceId is required in the schema), so the two-tier model (ADR-0004)
+// reduces to requireWorkspaceRole(integration.workspaceId, ['OWNER', 'ADMIN']).
 
 // GET /api/admin/settings/integrations/[id] - Get specific integration setting
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const integrationId = params.id
 
     const integration = await prisma.integrationSetting.findUnique({
@@ -31,21 +30,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
     if (!integration) {
-      return NextResponse.json({ error: 'Integration not found' }, { status: 404 })
+      return jsonError(404, 'Integration not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: integration.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(integration.workspaceId, ['OWNER', 'ADMIN'])
 
     return NextResponse.json({
       integration: {
@@ -55,11 +43,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Failed to fetch integration setting:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch integration setting' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -67,12 +51,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const integrationId = params.id
     const body = await request.json()
 
@@ -94,21 +73,10 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Integration not found' }, { status: 404 })
+      return jsonError(404, 'Integration not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: existing.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(existing.workspaceId, ['OWNER', 'ADMIN'])
 
     // Check for name conflicts if name is being changed
     if (name && name !== existing.name) {
@@ -122,16 +90,13 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       })
 
       if (conflictingIntegration) {
-        return NextResponse.json(
-          { error: 'Integration with this provider and name already exists' },
-          { status: 409 }
-        )
+        return jsonError(409, 'Integration with this provider and name already exists')
       }
     }
 
     // Build update data
     const updateData: any = {
-      lastUpdatedBy: normalizedUserId
+      lastUpdatedBy: user.id
     }
 
     if (name !== undefined) updateData.name = name
@@ -176,11 +141,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Failed to update integration setting:', error)
-    return NextResponse.json(
-      { error: 'Failed to update integration setting' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -188,12 +149,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const integrationId = params.id
 
     // Get existing integration
@@ -202,21 +158,10 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Integration not found' }, { status: 404 })
+      return jsonError(404, 'Integration not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: existing.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(existing.workspaceId, ['OWNER', 'ADMIN'])
 
     await prisma.integrationSetting.delete({
       where: { id: integrationId }
@@ -225,10 +170,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     return NextResponse.json({ success: true })
 
   } catch (error) {
-    console.error('Failed to delete integration setting:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete integration setting' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

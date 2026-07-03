@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 // YouTube API integration
@@ -76,20 +76,8 @@ async function importFromVimeo(videoUrl: string, accessToken?: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const body = await request.json()
     const { action, videoUrl, platform, apiKey, accessToken } = body
@@ -111,7 +99,6 @@ export async function POST(request: NextRequest) {
       // Create video tutorial with imported data
       const video = await prisma.videoTutorial.create({
         data: {
-          workspaceId: userWorkspace.workspaceId,
           title: videoData.title,
           description: videoData.description,
           category: 'TUTORIAL', // Default category
@@ -185,17 +172,14 @@ export async function POST(request: NextRequest) {
       error: 'Invalid action. Supported: import, validate'
     }, { status: 400 })
   } catch (error) {
-    console.error('Error with video integration:', error)
-    return NextResponse.json({ error: 'Integration failed' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const { searchParams } = new URL(request.url)
     const platform = searchParams.get('platform')
@@ -275,7 +259,6 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error getting integration info:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }

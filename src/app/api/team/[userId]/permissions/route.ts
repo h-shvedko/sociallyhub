@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 // Per-member permission storage was removed (ADR-0004): role is the sole authz
@@ -56,37 +56,17 @@ export async function PATCH(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const { userId } = await params
     const body = await request.json()
     const { permissions, workspaceId } = body
 
     if (!permissions || !workspaceId) {
-      return NextResponse.json({ 
-        error: 'Permissions and workspaceId are required' 
-      }, { status: 400 })
+      return jsonError(400, 'Permissions and workspaceId are required')
     }
 
     // Verify current user has permission to change permissions (OWNER or ADMIN)
-    const currentUserWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: currentUserId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!currentUserWorkspace) {
-      return NextResponse.json({ 
-        error: 'No permission to modify member permissions' 
-      }, { status: 403 })
-    }
+    const currentUserWorkspace = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get target user's current membership
     const targetUserWorkspace = await prisma.userWorkspace.findFirst({
@@ -167,9 +147,6 @@ export async function PATCH(
     })
 
   } catch (error) {
-    console.error('Permissions update error:', error)
-    return NextResponse.json({
-      error: 'Failed to update permissions'
-    }, { status: 500 })
+    return handleApiError(error)
   }
 }

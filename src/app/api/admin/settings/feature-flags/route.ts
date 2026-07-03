@@ -1,49 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { canAccessGlobalScope } from '../_lib/global-scope'
 
 // GET /api/admin/settings/feature-flags - List feature flags
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const category = searchParams.get('category')
     const environment = searchParams.get('environment')
     const isActive = searchParams.get('isActive')
     const search = searchParams.get('search')
-    const includeGlobal = searchParams.get('includeGlobal') === 'true'
+    let includeGlobal = searchParams.get('includeGlobal') === 'true'
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace scope requires OWNER/ADMIN
+    // membership; any global-scope read is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      const membership = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+      if (includeGlobal && !(await canAccessGlobalScope(membership.userId))) {
+        // Mixed scope: restrict to the caller's workspace instead of 403ing.
+        includeGlobal = false
       }
+    } else {
+      // Global scope (with includeGlobal=true this lists ALL workspaces' rows).
+      await requirePlatformAdmin()
     }
 
-    // Build where clause
+    // Build where clause. Scope and search are composed with AND — the
+    // previous code let the search OR overwrite the scope OR, leaking
+    // rows from other workspaces when workspaceId+includeGlobal+search
+    // were combined.
     const where: any = {}
 
     if (workspaceId) {
       if (includeGlobal) {
-        where.OR = [
-          { workspaceId: workspaceId },
-          { workspaceId: null }
-        ]
+        where.AND = [{
+          OR: [
+            { workspaceId: workspaceId },
+            { workspaceId: null }
+          ]
+        }]
       } else {
         where.workspaceId = workspaceId
       }
@@ -64,12 +62,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { key: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { tags: { has: search } }
-      ]
+      const searchFilter = {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { key: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+          { tags: { has: search } }
+        ]
+      }
+      if (where.AND) {
+        where.AND.push(searchFilter)
+      } else {
+        where.OR = searchFilter.OR
+      }
     }
 
     const flags = await prisma.featureFlag.findMany({
@@ -130,23 +135,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch feature flags:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch feature flags' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/feature-flags - Create feature flag
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -172,25 +168,15 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!name || !key || !category) {
-      return NextResponse.json(
-        { error: 'Missing required fields: name, key, category' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: name, key, category')
     }
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace mutation requires
+    // OWNER/ADMIN membership; global-scope mutation is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Validate category
@@ -200,27 +186,18 @@ export async function POST(request: NextRequest) {
     ]
 
     if (!validCategories.includes(category)) {
-      return NextResponse.json(
-        { error: `Invalid category. Must be one of: ${validCategories.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid category. Must be one of: ${validCategories.join(', ')}`)
     }
 
     // Validate environment
     const validEnvironments = ['DEVELOPMENT', 'STAGING', 'PRODUCTION', 'TEST']
     if (!validEnvironments.includes(environment)) {
-      return NextResponse.json(
-        { error: `Invalid environment. Must be one of: ${validEnvironments.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid environment. Must be one of: ${validEnvironments.join(', ')}`)
     }
 
     // Validate rollout percentage
     if (rolloutPercent < 0 || rolloutPercent > 100) {
-      return NextResponse.json(
-        { error: 'Rollout percentage must be between 0 and 100' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Rollout percentage must be between 0 and 100')
     }
 
     // Check for existing flag with same key
@@ -232,10 +209,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingFlag) {
-      return NextResponse.json(
-        { error: 'Feature flag with this key already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Feature flag with this key already exists')
     }
 
     // Create flag
@@ -259,8 +233,8 @@ export async function POST(request: NextRequest) {
         tags,
         environment,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
-        createdBy: normalizedUserId,
-        lastUpdatedBy: normalizedUserId
+        createdBy: user.id,
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -278,10 +252,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ flag }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create feature flag:', error)
-    return NextResponse.json(
-      { error: 'Failed to create feature flag' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

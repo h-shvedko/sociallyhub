@@ -1,38 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { canAccessGlobalScope } from '../_lib/global-scope'
 
 // GET /api/admin/settings/security - List security configurations
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const category = searchParams.get('category')
     const severity = searchParams.get('severity')
     const isEnabled = searchParams.get('isEnabled')
-    const includeGlobal = searchParams.get('includeGlobal') === 'true'
     const auditStatus = searchParams.get('auditStatus')
+    let includeGlobal = searchParams.get('includeGlobal') === 'true'
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace scope requires OWNER/ADMIN
+    // membership; any global-scope read is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      const membership = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+      if (includeGlobal && !(await canAccessGlobalScope(membership.userId))) {
+        // Mixed scope: restrict to the caller's workspace instead of 403ing.
+        includeGlobal = false
       }
+    } else {
+      // Global scope (with includeGlobal=true this lists ALL workspaces' rows).
+      await requirePlatformAdmin()
     }
 
     // Build where clause
@@ -150,23 +143,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch security configurations:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch security configurations' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/security - Create security configuration
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -186,25 +170,15 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!category || !setting || value === undefined) {
-      return NextResponse.json(
-        { error: 'Missing required fields: category, setting, value' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: category, setting, value')
     }
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace mutation requires
+    // OWNER/ADMIN membership; global-scope mutation is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Validate category
@@ -215,19 +189,13 @@ export async function POST(request: NextRequest) {
     ]
 
     if (!validCategories.includes(category)) {
-      return NextResponse.json(
-        { error: `Invalid category. Must be one of: ${validCategories.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid category. Must be one of: ${validCategories.join(', ')}`)
     }
 
     // Validate severity
     const validSeverities = ['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
     if (!validSeverities.includes(severity)) {
-      return NextResponse.json(
-        { error: `Invalid severity. Must be one of: ${validSeverities.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid severity. Must be one of: ${validSeverities.join(', ')}`)
     }
 
     // Check for existing configuration
@@ -240,10 +208,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingConfig) {
-      return NextResponse.json(
-        { error: 'Security configuration with this category and setting already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Security configuration with this category and setting already exists')
     }
 
     // Create configuration
@@ -261,7 +226,7 @@ export async function POST(request: NextRequest) {
         autoRemediation,
         remediationScript,
         alertThreshold,
-        lastUpdatedBy: normalizedUserId
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -276,10 +241,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ configuration }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create security configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to create security configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

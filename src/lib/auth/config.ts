@@ -90,15 +90,34 @@ export const authOptions: NextAuthOptions = {
     error: "/auth/error",
   },
   callbacks: {
+    // ADR-0004 "claim for UI, DB for API": at sign-in we copy
+    // User.isPlatformAdmin from the DATABASE into the JWT so layouts and
+    // client components can gate navigation without an extra query. The
+    // claim is UI-only — it goes stale on revocation until the token
+    // expires, so API handlers always re-check the DB via
+    // requirePlatformAdmin() (src/lib/auth/session.ts).
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { isPlatformAdmin: true },
+          })
+          token.isPlatformAdmin = dbUser?.isPlatformAdmin === true
+        } catch (error) {
+          // Never block sign-in on the claim lookup; default to the safe
+          // value. Enforcement happens in the API helpers regardless.
+          console.error("Failed to load isPlatformAdmin claim:", error)
+          token.isPlatformAdmin = false
+        }
       }
       return token
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string
+        session.user.isPlatformAdmin = token.isPlatformAdmin === true
       }
       return session
     },

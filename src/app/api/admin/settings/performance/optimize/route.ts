@@ -1,33 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 // POST /api/admin/settings/performance/optimize - Run performance optimization
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
     const { workspaceId, categories, configurationIds, dryRun = false } = body
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): the optimization query below is
+    // scoped to `workspaceId || null`, so workspace scope requires
+    // OWNER/ADMIN membership and global-scope optimization (a mutation)
+    // is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Build query for configurations to optimize
@@ -70,7 +60,7 @@ export async function POST(request: NextRequest) {
               value: optimization.recommendedValue,
               lastOptimized: new Date(),
               currentMetric: optimization.newMetric,
-              lastUpdatedBy: normalizedUserId
+              lastUpdatedBy: user.id
             }
           })
 
@@ -87,7 +77,7 @@ export async function POST(request: NextRequest) {
                 configurationId: config.id,
                 oldValue: config.value,
                 newValue: optimization.recommendedValue,
-                optimizedBy: normalizedUserId
+                optimizedBy: user.id
               },
               source: 'auto_optimization',
               collectedAt: new Date()
@@ -120,9 +110,9 @@ export async function POST(request: NextRequest) {
       highImpactOptimizations: optimizationResults.filter(r => r.impactScore >= 7).length,
       optimizationTimestamp: new Date(),
       optimizedBy: {
-        id: normalizedUserId,
-        name: session.user.name,
-        email: session.user.email
+        id: user.id,
+        name: user.name,
+        email: user.email
       },
       dryRun
     }
@@ -137,11 +127,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to run performance optimization:', error)
-    return NextResponse.json(
-      { error: 'Failed to run performance optimization' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

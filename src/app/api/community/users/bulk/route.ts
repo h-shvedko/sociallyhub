@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // POST /api/community/users/bulk - Bulk user moderation actions
 export async function POST(request: NextRequest) {
@@ -36,18 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has moderation permissions
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get all target users
     const targetUsers = await prisma.user.findMany({
@@ -246,11 +236,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to execute bulk user moderation:', error)
-    return NextResponse.json(
-      { error: 'Failed to execute bulk user moderation' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -268,18 +254,7 @@ export async function GET(request: NextRequest) {
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
@@ -428,10 +403,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch user moderation statistics:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch statistics' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

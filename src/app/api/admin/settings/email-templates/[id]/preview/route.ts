@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+
+// Email templates are always workspace-scoped (EmailTemplate.workspaceId is
+// required in the schema), so the two-tier model (ADR-0004) reduces to
+// requireWorkspaceRole(template.workspaceId, ['OWNER', 'ADMIN']) here.
 
 // GET /api/admin/settings/email-templates/[id]/preview - Preview email template
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const templateId = params.id
 
     const template = await prisma.emailTemplate.findUnique({
@@ -25,21 +24,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
     if (!template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      return jsonError(404, 'Template not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: template.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(template.workspaceId, ['OWNER', 'ADMIN'])
 
     // Simple template variable replacement
     const replaceVariables = (content: string, variables: any): string => {
@@ -49,8 +37,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
       // Default variables
       const defaultVars = {
-        user_name: session.user.name || 'John Doe',
-        user_email: session.user.email || 'user@example.com',
+        user_name: user.name || 'John Doe',
+        user_email: user.email || 'user@example.com',
         workspace_name: template.workspace?.name || 'My Workspace',
         current_date: new Date().toLocaleDateString(),
         current_year: new Date().getFullYear().toString(),
@@ -87,11 +75,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Failed to preview email template:', error)
-    return NextResponse.json(
-      { error: 'Failed to preview email template' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -99,12 +83,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const templateId = params.id
     const { previewData } = await request.json()
 
@@ -118,21 +97,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     })
 
     if (!template) {
-      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+      return jsonError(404, 'Template not found')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: template.workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(template.workspaceId, ['OWNER', 'ADMIN'])
 
     // Simple template variable replacement with custom data
     const replaceVariables = (content: string, customData: any): string => {
@@ -140,8 +108,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
       // Default variables
       const defaultVars = {
-        user_name: session.user.name || 'John Doe',
-        user_email: session.user.email || 'user@example.com',
+        user_name: user.name || 'John Doe',
+        user_email: user.email || 'user@example.com',
         workspace_name: template.workspace?.name || 'My Workspace',
         current_date: new Date().toLocaleDateString(),
         current_year: new Date().getFullYear().toString(),
@@ -178,10 +146,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     })
 
   } catch (error) {
-    console.error('Failed to preview email template:', error)
-    return NextResponse.json(
-      { error: 'Failed to preview email template' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

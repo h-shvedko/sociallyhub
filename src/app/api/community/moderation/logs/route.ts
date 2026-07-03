@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // Moderation Log interfaces
 interface ModerationLogEntry {
@@ -73,18 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has moderation access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Build filter conditions
     const where: any = { workspaceId }
@@ -197,11 +187,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch moderation logs:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch moderation logs' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -222,18 +208,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has moderation access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     if (action === 'EXPORT_LOGS') {
       const exportResult = await exportModerationLogs(workspaceId, data, session.user.id!)
@@ -313,11 +288,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
   } catch (error) {
-    console.error('Failed to process moderation log action:', error)
-    return NextResponse.json(
-      { error: 'Failed to process moderation log action' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

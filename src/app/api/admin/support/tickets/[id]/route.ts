@@ -1,40 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/admin/support/tickets/[id] - Get ticket details with full history
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    await requirePlatformAdmin()
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
-
-    // Verify admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      },
-      select: { workspaceId: true }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
 
     // Get ticket with full details
     const ticket = await prisma.supportTicket.findUnique({
@@ -121,22 +96,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       )
     }
 
-    // Verify access to ticket
-    if (ticket.workspaceId && !workspaceIds.includes(ticket.workspaceId)) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      )
-    }
-
     return NextResponse.json({ ticket })
 
   } catch (error) {
-    console.error('Failed to fetch ticket details:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch ticket details' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -144,16 +107,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    const user = await requirePlatformAdmin()
+    const userId = user.id
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
     const body = await request.json()
 
@@ -168,24 +125,6 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       resolution,
       expectedResponseBy
     } = body
-
-    // Verify admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      },
-      select: { workspaceId: true }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
 
     // Get current ticket
     const currentTicket = await prisma.supportTicket.findUnique({
@@ -208,14 +147,6 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json(
         { error: 'Ticket not found' },
         { status: 404 }
-      )
-    }
-
-    // Verify access to ticket
-    if (currentTicket.workspaceId && !workspaceIds.includes(currentTicket.workspaceId)) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
       )
     }
 
@@ -336,7 +267,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
             newAssignee: assignedAgentId !== undefined ? assignedAgentId : undefined,
             authorId: userId,
             authorType: 'admin',
-            authorName: session.user.name || 'Admin',
+            authorName: user.name || 'Admin',
             isPublic: false
           }
         })
@@ -349,11 +280,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     })
 
   } catch (error) {
-    console.error('Failed to update ticket:', error)
-    return NextResponse.json(
-      { error: 'Failed to update ticket' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -361,37 +288,12 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    await requirePlatformAdmin()
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
 
-    // Verify admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      },
-      select: { workspaceId: true }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-    // Verify ticket exists and access
+    // Verify ticket exists
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: ticketId },
       select: {
@@ -408,13 +310,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
       )
     }
 
-    if (ticket.workspaceId && !workspaceIds.includes(ticket.workspaceId)) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      )
-    }
-
     // Delete ticket (cascading deletes will handle related records)
     await prisma.supportTicket.delete({
       where: { id: ticketId }
@@ -426,10 +321,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     })
 
   } catch (error) {
-    console.error('Failed to delete ticket:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete ticket' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

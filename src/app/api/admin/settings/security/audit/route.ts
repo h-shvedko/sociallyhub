@@ -1,33 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 // POST /api/admin/settings/security/audit - Run security audit
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
     const { workspaceId, categories, configurationIds } = body
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): the audit query below is scoped to
+    // `workspaceId || null`, so workspace scope requires OWNER/ADMIN
+    // membership and the global-scope audit (which writes audit results)
+    // is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Build query for configurations to audit
@@ -163,7 +153,7 @@ export async function POST(request: NextRequest) {
         data: {
           lastAudit: result.timestamp,
           auditResult: result.auditResult,
-          lastUpdatedBy: normalizedUserId
+          lastUpdatedBy: user.id
         }
       })
     )
@@ -178,9 +168,9 @@ export async function POST(request: NextRequest) {
       failed: auditResults.filter(r => r.auditResult === 'FAIL').length,
       auditTimestamp: new Date(),
       auditedBy: {
-        id: normalizedUserId,
-        name: session.user.name,
-        email: session.user.email
+        id: user.id,
+        name: user.name,
+        email: user.email
       }
     }
 
@@ -200,11 +190,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to run security audit:', error)
-    return NextResponse.json(
-      { error: 'Failed to run security audit' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

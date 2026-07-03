@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // POST /api/admin/support/tickets/[id]/reply - Add response to ticket
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    const user = await requirePlatformAdmin()
+    const userId = user.id
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const ticketId = params.id
     const body = await request.json()
 
@@ -35,25 +29,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       )
     }
 
-    // Verify admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      },
-      select: { workspaceId: true }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-    // Verify ticket exists and access
+    // Verify ticket exists
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: ticketId },
       select: {
@@ -78,13 +54,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json(
         { error: 'Ticket not found' },
         { status: 404 }
-      )
-    }
-
-    if (ticket.workspaceId && !workspaceIds.includes(ticket.workspaceId)) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
       )
     }
 
@@ -177,7 +146,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           newPriority: updatePriority || undefined,
           authorId: userId,
           authorType: 'agent',
-          authorName: agent?.displayName || session.user.name || 'Agent',
+          authorName: agent?.displayName || user.name || 'Agent',
           isPublic,
           isResolution
         },
@@ -212,10 +181,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to add ticket reply:', error)
-    return NextResponse.json(
-      { error: 'Failed to add reply' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

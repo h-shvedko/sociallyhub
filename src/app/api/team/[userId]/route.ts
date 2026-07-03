@@ -1,43 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const { userId } = await params
     const body = await request.json()
     const { role, workspaceId } = body
 
     if (!role || !workspaceId) {
-      return NextResponse.json({ 
-        error: 'Role and workspaceId are required' 
-      }, { status: 400 })
+      return jsonError(400, 'Role and workspaceId are required')
     }
 
     // Verify current user has permission to change roles (OWNER or ADMIN)
-    const currentUserWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: currentUserId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!currentUserWorkspace) {
-      return NextResponse.json({ 
-        error: 'No permission to change member roles' 
-      }, { status: 403 })
-    }
+    const currentUserWorkspace = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get target user's current membership
     const targetUserWorkspace = await prisma.userWorkspace.findFirst({
@@ -83,11 +63,7 @@ export async function PATCH(
     })
 
   } catch (error) {
-    console.error('Role change error:', error)
-    return NextResponse.json({
-      error: 'Failed to update role',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -96,37 +72,17 @@ export async function DELETE(
   { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUserId = await normalizeUserId(session.user.id)
+    await requireSession()
     const { userId } = await params
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
     if (!workspaceId) {
-      return NextResponse.json({ 
-        error: 'workspaceId is required' 
-      }, { status: 400 })
+      return jsonError(400, 'workspaceId is required')
     }
 
     // Verify current user has permission to remove members (OWNER or ADMIN)
-    const currentUserWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: currentUserId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!currentUserWorkspace) {
-      return NextResponse.json({ 
-        error: 'No permission to remove members' 
-      }, { status: 403 })
-    }
+    const currentUserWorkspace = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get target user's membership
     const targetUserWorkspace = await prisma.userWorkspace.findFirst({
@@ -150,7 +106,7 @@ export async function DELETE(
     }
 
     // Prevent users from removing themselves (unless they're leaving)
-    if (userId === currentUserId) {
+    if (userId === currentUserWorkspace.userId) {
       return NextResponse.json({ 
         error: 'Use leave workspace function to remove yourself' 
       }, { status: 400 })
@@ -169,10 +125,6 @@ export async function DELETE(
     })
 
   } catch (error) {
-    console.error('Remove member error:', error)
-    return NextResponse.json({
-      error: 'Failed to remove member',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    return handleApiError(error)
   }
 }

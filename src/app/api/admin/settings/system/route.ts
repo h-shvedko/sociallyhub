@@ -1,35 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { canAccessGlobalScope } from '../_lib/global-scope'
 
 // GET /api/admin/settings/system - List system configurations
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
     const workspaceId = searchParams.get('workspaceId')
-    const includeGlobal = searchParams.get('includeGlobal') === 'true'
+    let includeGlobal = searchParams.get('includeGlobal') === 'true'
 
-    // Check admin permissions
+    // Two-tier authorization (ADR-0004): workspace scope requires OWNER/ADMIN
+    // membership; any global-scope read is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      const membership = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+      if (includeGlobal && !(await canAccessGlobalScope(membership.userId))) {
+        // Mixed scope: restrict to the caller's workspace instead of 403ing.
+        includeGlobal = false
       }
+    } else {
+      // Global scope (with includeGlobal=true this lists ALL workspaces' rows).
+      await requirePlatformAdmin()
     }
 
     // Build where clause
@@ -97,23 +90,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch system configurations:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch system configurations' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/system - Create system configuration
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -131,34 +115,21 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!category || !key || value === undefined || !dataType) {
-      return NextResponse.json(
-        { error: 'Missing required fields: category, key, value, dataType' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: category, key, value, dataType')
     }
 
-    // Check admin permissions
+    // Two-tier authorization (ADR-0004): workspace mutation requires
+    // OWNER/ADMIN membership; global-scope mutation is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Validate data type
     const validDataTypes = ['STRING', 'INTEGER', 'FLOAT', 'BOOLEAN', 'JSON', 'URL', 'EMAIL', 'PASSWORD', 'TEXT', 'ENUM']
     if (!validDataTypes.includes(dataType)) {
-      return NextResponse.json(
-        { error: `Invalid dataType. Must be one of: ${validDataTypes.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid dataType. Must be one of: ${validDataTypes.join(', ')}`)
     }
 
     // Validate value based on data type
@@ -192,10 +163,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!validateValue(value, dataType)) {
-      return NextResponse.json(
-        { error: `Invalid value for data type ${dataType}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid value for data type ${dataType}`)
     }
 
     // Check for existing configuration
@@ -208,10 +176,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existing) {
-      return NextResponse.json(
-        { error: 'Configuration with this category and key already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Configuration with this category and key already exists')
     }
 
     // Create configuration
@@ -227,7 +192,7 @@ export async function POST(request: NextRequest) {
         isSecret,
         validationRules,
         defaultValue,
-        lastUpdatedBy: normalizedUserId
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -248,10 +213,6 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create system configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to create system configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/reports/[reportId] - Get specific report details
 export async function GET(request: NextRequest, props: { params: Promise<{ reportId: string }> }) {
@@ -230,18 +231,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ repor
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Get current report
@@ -387,11 +377,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ repor
     })
 
   } catch (error) {
-    console.error('Failed to update report:', error)
-    return NextResponse.json(
-      { error: 'Failed to update report' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -411,18 +397,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ re
 
     // Verify user has admin permissions (only admins can delete reports)
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || userWorkspace.role !== 'OWNER') {
-        return NextResponse.json({ error: 'Only workspace owners can delete reports' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER'])
     }
 
     // Get the report before deletion
@@ -471,10 +446,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ re
     })
 
   } catch (error) {
-    console.error('Failed to delete report:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete report' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

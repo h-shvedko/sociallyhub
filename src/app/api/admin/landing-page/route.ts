@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError, jsonError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // Default landing page configuration
 const DEFAULT_CONFIG = {
@@ -78,42 +78,15 @@ const DEFAULT_CONFIG = {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: 'Workspace ID is required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Workspace ID is required')
     }
 
-    // Verify user has admin access to the workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
+    // Workspace-scoped admin surface (ADR-0004): OWNER/ADMIN of THIS workspace.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get landing page config for the workspace
     let landingPageConfig = await prisma.landingPageConfig.findUnique({
@@ -155,52 +128,24 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ config: landingPageConfig })
   } catch (error) {
-    console.error('Error fetching landing page config:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // Authentication precedes body parsing (docs/api-conventions.md §1).
+    await requireSession()
 
-    const userId = await normalizeUserId(session.user.id)
     const body = await request.json()
     const { workspaceId, ...configData } = body
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: 'Workspace ID is required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Workspace ID is required')
     }
 
-    // Verify user has admin access to the workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
+    // Workspace-scoped admin surface (ADR-0004): OWNER/ADMIN of THIS workspace.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Validate and sanitize input
     const allowedFields = [
@@ -236,56 +181,28 @@ export async function PUT(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       config: landingPageConfig,
-      message: 'Landing page configuration updated successfully' 
+      message: 'Landing page configuration updated successfully'
     })
   } catch (error) {
-    console.error('Error updating landing page config:', error)
-    return NextResponse.json(
-      { error: 'Failed to update landing page configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // Authentication precedes body parsing (docs/api-conventions.md §1).
+    await requireSession()
 
-    const userId = await normalizeUserId(session.user.id)
     const { workspaceId, action } = await request.json()
 
     if (!workspaceId) {
-      return NextResponse.json(
-        { error: 'Workspace ID is required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Workspace ID is required')
     }
 
-    // Verify user has admin access to the workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
+    // Workspace-scoped admin surface (ADR-0004): OWNER/ADMIN of THIS workspace.
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     switch (action) {
       case 'publish':
@@ -324,10 +241,6 @@ export async function POST(request: NextRequest) {
         )
     }
   } catch (error) {
-    console.error('Error performing landing page action:', error)
-    return NextResponse.json(
-      { error: 'Failed to perform action' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

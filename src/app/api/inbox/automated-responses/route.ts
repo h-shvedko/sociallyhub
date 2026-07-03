@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
 export async function GET(request: NextRequest) {
@@ -17,17 +18,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Normalize user ID and verify workspace access
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    // Verify workspace access (ADR-0004): any member of THIS workspace.
+    // ApiError maps to its own status; anything else rethrows into
+    // withLogging's generic-500 handling (behavior preserved).
+    try {
+      await requireWorkspaceRole(workspaceId)
+    } catch (error) {
+      if (error instanceof ApiError) return handleApiError(error)
+      throw error
     }
 
     // Get automated responses (SMART_RESPONSE automation rules)
@@ -90,17 +88,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Normalize user ID and verify workspace access
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    // Verify workspace access (ADR-0004): any member of THIS workspace.
+    try {
+      await requireWorkspaceRole(workspaceId)
+    } catch (error) {
+      if (error instanceof ApiError) return handleApiError(error)
+      throw error
     }
 
     // Create automation rule

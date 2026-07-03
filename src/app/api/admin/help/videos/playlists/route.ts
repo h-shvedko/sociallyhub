@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -27,7 +15,6 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'desc'
 
     const where: any = {
-      workspaceId: userWorkspace.workspaceId
     }
 
     if (search) {
@@ -73,27 +60,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(playlistsWithStats)
   } catch (error) {
-    console.error('Error fetching playlists:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const body = await request.json()
     const {
@@ -116,7 +90,6 @@ export async function POST(request: NextRequest) {
     // Create playlist
     const playlist = await prisma.videoPlaylist.create({
       data: {
-        workspaceId: userWorkspace.workspaceId,
         title,
         description,
         category,
@@ -132,7 +105,6 @@ export async function POST(request: NextRequest) {
       const videos = await prisma.videoTutorial.findMany({
         where: {
           id: { in: videoIds },
-          workspaceId: userWorkspace.workspaceId
         }
       })
 
@@ -182,7 +154,6 @@ export async function POST(request: NextRequest) {
       publishedVideos: completePlaylist.videos.filter(video => video.status === 'PUBLISHED').length
     }, { status: 201 })
   } catch (error) {
-    console.error('Error creating playlist:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }

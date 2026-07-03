@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const { searchParams } = new URL(request.url)
     const videoId = searchParams.get('videoId')
@@ -28,7 +16,6 @@ export async function GET(request: NextRequest) {
       const video = await prisma.videoTutorial.findFirst({
         where: {
           id: videoId,
-          workspaceId: userWorkspace.workspaceId
         },
         include: {
           chapters: {
@@ -72,7 +59,6 @@ export async function GET(request: NextRequest) {
     // Get all videos with chapter information
     const videos = await prisma.videoTutorial.findMany({
       where: {
-        workspaceId: userWorkspace.workspaceId
       },
       include: {
         chapters: {
@@ -132,27 +118,14 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Error fetching chapters:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const body = await request.json()
     const { videoId, chapters, action } = body
@@ -161,7 +134,6 @@ export async function POST(request: NextRequest) {
     const video = await prisma.videoTutorial.findFirst({
       where: {
         id: videoId,
-        workspaceId: userWorkspace.workspaceId
       }
     })
 
@@ -329,8 +301,7 @@ export async function POST(request: NextRequest) {
       chapter
     }, { status: 201 })
   } catch (error) {
-    console.error('Error processing chapters:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 

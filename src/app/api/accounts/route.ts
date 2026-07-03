@@ -2,7 +2,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 export async function GET(request: NextRequest) {
   try {
@@ -19,20 +20,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 })
     }
 
-    // Verify user has access to workspace
-    const userId = await normalizeUserId(session.user.id)
-    
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId: workspaceId,
-        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No access to workspace' }, { status: 403 })
-    }
+    // Verify user has access to workspace (ADR-0004)
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
 
     // Get social accounts for the workspace
     const socialAccounts = await prisma.socialAccount.findMany({
@@ -102,10 +91,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(accountsWithStats)
 
   } catch (error) {
-    console.error('Accounts API error:', error)
-    return NextResponse.json({
-      error: 'Failed to fetch accounts',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    return handleApiError(error)
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/feature-requests/analytics - Get feature request analytics
 export async function GET(request: NextRequest) {
@@ -21,18 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId)
 
     const periodDays = parseInt(period)
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000)
@@ -81,11 +71,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch feature request analytics:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch feature request analytics' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

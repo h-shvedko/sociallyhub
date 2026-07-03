@@ -1,25 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 // POST /api/admin/settings/backup/execute - Execute backup
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
     const { configurationId, immediate = false } = body
 
     if (!configurationId) {
-      return NextResponse.json(
-        { error: 'Configuration ID is required' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Configuration ID is required')
     }
 
     // Get backup configuration
@@ -33,30 +25,21 @@ export async function POST(request: NextRequest) {
     })
 
     if (!configuration) {
-      return NextResponse.json({ error: 'Backup configuration not found' }, { status: 404 })
+      return jsonError(404, 'Backup configuration not found')
     }
 
-    // Check permissions
+    // Two-tier authorization (ADR-0004): workspace-scoped backups require
+    // OWNER/ADMIN membership; global (workspaceId = null) backups are
+    // platform-admin-only.
     if (configuration.workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: configuration.workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(configuration.workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Check if configuration is active
     if (!configuration.isActive && !immediate) {
-      return NextResponse.json(
-        { error: 'Cannot execute inactive backup configuration' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Cannot execute inactive backup configuration')
     }
 
     // Generate backup filename
@@ -155,7 +138,7 @@ export async function POST(request: NextRequest) {
         status: 'IN_PROGRESS',
         startTime,
         metadata: {
-          triggeredBy: normalizedUserId,
+          triggeredBy: user.id,
           triggerType: immediate ? 'manual' : 'scheduled',
           compression: configuration.compression,
           encryption: configuration.encryption,
@@ -235,18 +218,11 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      return NextResponse.json(
-        { error: 'Backup execution failed' },
-        { status: 500 }
-      )
+      return jsonError(500, 'Backup execution failed')
     }
 
   } catch (error) {
-    console.error('Failed to execute backup:', error)
-    return NextResponse.json(
-      { error: 'Failed to execute backup' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

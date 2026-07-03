@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers'
 
@@ -22,18 +23,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Verify user has access to workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId,
-        role: { in: ['OWNER', 'ADMIN', 'PUBLISHER'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace access' }, { status: 403 })
-    }
+    // Verify user has access to workspace (ADR-0004)
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
 
     // Check if provider is supported and available
     const allProviders = ['twitter', 'facebook', 'instagram', 'linkedin', 'tiktok', 'youtube']
@@ -101,11 +92,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
   } catch (error) {
-    console.error('Connection initiation error:', error)
-    return NextResponse.json(
-      { error: 'Failed to initiate connection' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

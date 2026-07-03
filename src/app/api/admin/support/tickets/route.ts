@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/admin/support/tickets - List all tickets with filtering, search, and sorting
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    await requirePlatformAdmin()
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
 
     // Query parameters
@@ -30,31 +23,8 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const timeRange = searchParams.get('timeRange') // 1d, 7d, 30d, 90d
 
-    // Verify user has admin permissions
-    const userWorkspaces = await prisma.userWorkspace.findMany({
-      where: {
-        userId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      },
-      select: { workspaceId: true }
-    })
-
-    if (userWorkspaces.length === 0) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
-
-    const workspaceIds = userWorkspaces.map(uw => uw.workspaceId)
-
-    // Build where clause
-    const where: any = {
-      OR: [
-        { workspaceId: { in: workspaceIds } },
-        { workspaceId: null } // Global tickets
-      ]
-    }
+    // Platform admins see all tickets across all workspaces + global tickets.
+    const where: any = {}
 
     if (status && status !== 'all') {
       where.status = status
@@ -187,12 +157,6 @@ export async function GET(request: NextRequest) {
       // Status statistics
       prisma.supportTicket.groupBy({
         by: ['status'],
-        where: {
-          OR: [
-            { workspaceId: { in: workspaceIds } },
-            { workspaceId: null }
-          ]
-        },
         _count: {
           status: true
         }
@@ -201,12 +165,6 @@ export async function GET(request: NextRequest) {
       // Priority statistics
       prisma.supportTicket.groupBy({
         by: ['priority'],
-        where: {
-          OR: [
-            { workspaceId: { in: workspaceIds } },
-            { workspaceId: null }
-          ]
-        },
         _count: {
           priority: true
         }
@@ -215,12 +173,6 @@ export async function GET(request: NextRequest) {
       // Category statistics
       prisma.supportTicket.groupBy({
         by: ['category'],
-        where: {
-          OR: [
-            { workspaceId: { in: workspaceIds } },
-            { workspaceId: null }
-          ]
-        },
         _count: {
           category: true
         }
@@ -267,27 +219,16 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch admin tickets:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch tickets' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/support/tickets - Create new ticket (admin only)
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    // Platform support console: cross-tenant surface (ADR-0004).
+    const user = await requirePlatformAdmin()
+    const userId = user.id
     const body = await request.json()
 
     const {
@@ -311,25 +252,6 @@ export async function POST(request: NextRequest) {
         { error: 'Title and description are required' },
         { status: 400 }
       )
-    }
-
-    // Verify admin permissions
-    if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json(
-          { error: 'Insufficient permissions' },
-          { status: 403 }
-        )
-      }
     }
 
     // Generate ticket number
@@ -400,7 +322,7 @@ export async function POST(request: NextRequest) {
           newAssignee: assignedAgentId,
           authorId: userId,
           authorType: 'admin',
-          authorName: session.user.name || 'Admin',
+          authorName: user.name || 'Admin',
           isPublic: false
         }
       })
@@ -414,7 +336,7 @@ export async function POST(request: NextRequest) {
         message: `Ticket created by admin`,
         authorId: userId,
         authorType: 'admin',
-        authorName: session.user.name || 'Admin',
+        authorName: user.name || 'Admin',
         isPublic: false
       }
     })
@@ -422,10 +344,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(ticket, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create admin ticket:', error)
-    return NextResponse.json(
-      { error: 'Failed to create ticket' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // Duplicate detection algorithms
 interface DuplicateMatch {
@@ -127,18 +128,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has moderation permissions for duplicate detection
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get all feature requests for comparison
     const allRequests = await prisma.featureRequest.findMany({
@@ -273,11 +263,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to detect duplicates:', error)
-    return NextResponse.json(
-      { error: 'Failed to detect duplicates' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -316,18 +302,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has moderation permissions
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get all requests involved in the merge
     const allRequestIds = [targetRequestId, ...duplicateRequestIds]
@@ -495,10 +470,6 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to merge duplicate requests:', error)
-    return NextResponse.json(
-      { error: 'Failed to merge duplicate requests' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

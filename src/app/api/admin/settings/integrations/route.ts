@@ -1,39 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+
+// Integration settings are always workspace-scoped (IntegrationSetting.
+// workspaceId is required in the schema), so the two-tier model (ADR-0004)
+// reduces to requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN']) here.
 
 // GET /api/admin/settings/integrations - List integration settings
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const provider = searchParams.get('provider')
     const isActive = searchParams.get('isActive')
     const isConfigured = searchParams.get('isConfigured')
 
-    // Check workspace permissions
     if (!workspaceId) {
-      return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
+      // Authenticate before validation so missing sessions still 401.
+      await requireSession()
+      return jsonError(400, 'Workspace ID required')
     }
 
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Build where clause
     const where: any = {
@@ -106,23 +95,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch integration settings:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch integration settings' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/integrations - Create integration setting
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -140,24 +120,10 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!workspaceId || !provider || !name || !config) {
-      return NextResponse.json(
-        { error: 'Missing required fields: workspaceId, provider, name, config' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: workspaceId, provider, name, config')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Validate provider
     const validProviders = [
@@ -169,10 +135,7 @@ export async function POST(request: NextRequest) {
     ]
 
     if (!validProviders.includes(provider)) {
-      return NextResponse.json(
-        { error: `Invalid provider. Must be one of: ${validProviders.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid provider. Must be one of: ${validProviders.join(', ')}`)
     }
 
     // Check for existing integration with same provider and name
@@ -185,10 +148,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingIntegration) {
-      return NextResponse.json(
-        { error: 'Integration with this provider and name already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Integration with this provider and name already exists')
     }
 
     // Create integration
@@ -205,8 +165,8 @@ export async function POST(request: NextRequest) {
         features,
         webhookUrl,
         webhookSecret,
-        createdBy: normalizedUserId,
-        lastUpdatedBy: normalizedUserId
+        createdBy: user.id,
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -229,10 +189,6 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create integration setting:', error)
-    return NextResponse.json(
-      { error: 'Failed to create integration setting' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

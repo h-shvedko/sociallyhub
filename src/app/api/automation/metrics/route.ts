@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { BusinessLogger } from '@/lib/middleware/logging'
 export async function GET(request: NextRequest) {
@@ -18,18 +19,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Verify user has access to workspace
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId: workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    // Verify workspace access (ADR-0004): any member of THIS workspace.
+    const membership = await requireWorkspaceRole(workspaceId)
 
     const periodStart = new Date()
     periodStart.setDate(periodStart.getDate() - parseInt(period))
@@ -183,15 +174,14 @@ export async function GET(request: NextRequest) {
       recommendations
     }
 
-    BusinessLogger.logWorkspaceAction('automation_metrics_viewed', workspaceId, userId, {
+    BusinessLogger.logWorkspaceAction('automation_metrics_viewed', workspaceId, membership.userId, {
       period: parseInt(period),
       metricsRequested: Object.keys(metrics)
     })
 
     return NextResponse.json(metrics)
   } catch (error) {
-    console.error('Error fetching automation metrics:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -205,18 +195,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { ruleId, workspaceId, triggeredBy, triggerData, results } = body
 
-    // Verify user has access to workspace
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId: workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    // Verify workspace access (ADR-0004): any member of THIS workspace.
+    const membership = await requireWorkspaceRole(workspaceId)
 
     // Create execution record
     const execution = await prisma.automationExecution.create({
@@ -239,8 +219,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const postUserId = await normalizeUserId(session.user.id)
-    BusinessLogger.logWorkspaceAction('automation_execution_logged', workspaceId, postUserId, {
+    BusinessLogger.logWorkspaceAction('automation_execution_logged', workspaceId, membership.userId, {
       ruleId,
       executionId: execution.id,
       triggeredBy
@@ -248,7 +227,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(execution, { status: 201 })
   } catch (error) {
-    console.error('Error logging automation execution:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }

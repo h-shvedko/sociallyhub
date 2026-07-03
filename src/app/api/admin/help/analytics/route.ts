@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, requirePlatformAdmin } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/admin/help/analytics - Get help articles analytics
@@ -297,6 +297,10 @@ export async function GET(request: NextRequest) {
 // POST /api/admin/help/analytics - Record analytics event
 export async function POST(request: NextRequest) {
   try {
+    // Admin surface (ADR-0004): platform admins only. Public event recording,
+    // if ever needed, belongs on a non-admin route (ADR-0005 scope).
+    await requirePlatformAdmin()
+
     const data = await request.json()
     const {
       articleId,

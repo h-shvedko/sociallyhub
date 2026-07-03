@@ -212,12 +212,37 @@ async function main() {
         timezone: randomChoice(['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo']),
         locale: randomChoice(['en', 'es', 'fr', 'de', 'ja']),
         twoFactorEnabled: randomBoolean(0.2),
+        isPlatformAdmin: false, // ADR-0004: mock users NEVER hold platform power
         image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${firstName}${lastName}`
       }
     })
     users.push(user)
   }
   console.log(`✅ Created ${users.length} users`)
+
+  // ADR-0004: grant the platform-admin flag (two-tier authorization model).
+  // The demo user is always a platform admin in seeded environments; extra
+  // operators come from the PLATFORM_ADMIN_EMAILS comma-separated env
+  // allowlist. Idempotent by construction: pure updateMany, safe on every
+  // re-seed (the demo user survives re-seeds, so this UPDATES its existing
+  // row). All generated mock users above are created with
+  // isPlatformAdmin: false and stay false.
+  console.log('🛡️ Granting platform admin flags (ADR-0004)...')
+  const platformAdminEmails = Array.from(new Set([
+    'demo@sociallyhub.com',
+    ...(process.env.PLATFORM_ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  ]))
+  const platformAdminGrant = await prisma.user.updateMany({
+    where: { email: { in: platformAdminEmails } },
+    data: { isPlatformAdmin: true }
+  })
+  console.log(`✅ Platform admin granted to ${platformAdminGrant.count} of ${platformAdminEmails.length} allowlisted email(s): ${platformAdminEmails.join(', ')}`)
+  if (platformAdminGrant.count < platformAdminEmails.length) {
+    console.warn('⚠️ Some PLATFORM_ADMIN_EMAILS entries matched no user; use scripts/grant-platform-admin.ts after creating those accounts.')
+  }
 
   // Generate Workspaces
   console.log(`🏢 Generating ${CONFIG.WORKSPACES_COUNT} workspaces...`)

@@ -10,29 +10,17 @@ import {
   MessageSquare,
   BarChart3,
   FileText,
-  Video,
-  MessageCircle,
   Shield,
   Settings,
   ChevronDown,
   ChevronRight,
   ArrowLeft,
-  UserCheck,
-  Building,
-  Activity,
   Eye,
   UserPlus,
   KeyRound
 } from 'lucide-react'
 
 interface AdminSidebarProps {
-  userWorkspaces: Array<{
-    workspaceId: string
-    role: string
-    workspace: {
-      name: string
-    }
-  }>
   user: {
     name?: string | null
     email?: string | null
@@ -47,6 +35,9 @@ interface NavItem {
   children?: NavItem[]
 }
 
+// Only link pages that actually exist. The former Role Management and
+// Permission Matrix pages were deleted (ADR-0004/ADR-0012); /users/roles is
+// now a static read-only reference for the five WorkspaceRole values.
 const navigation: NavItem[] = [
   {
     name: 'Overview',
@@ -58,9 +49,7 @@ const navigation: NavItem[] = [
     href: '/dashboard/admin/support',
     icon: MessageSquare,
     children: [
-      { name: 'Tickets', href: '/dashboard/admin/support/tickets', icon: Ticket },
-      { name: 'Agents', href: '/dashboard/admin/support/agents', icon: Users },
-      { name: 'Analytics', href: '/dashboard/admin/support/analytics', icon: BarChart3 }
+      { name: 'Tickets', href: '/dashboard/admin/support/tickets', icon: Ticket }
     ]
   },
   {
@@ -68,21 +57,7 @@ const navigation: NavItem[] = [
     href: '/dashboard/admin/content',
     icon: FileText,
     children: [
-      { name: 'Articles', href: '/dashboard/admin/content/articles', icon: FileText },
-      { name: 'FAQs', href: '/dashboard/admin/content/faqs', icon: MessageCircle },
-      { name: 'Videos', href: '/dashboard/admin/content/videos', icon: Video },
-      { name: 'Documentation', href: '/dashboard/admin/content/documentation', icon: FileText }
-    ]
-  },
-  {
-    name: 'Community',
-    href: '/dashboard/admin/community',
-    icon: MessageCircle,
-    children: [
-      { name: 'Moderation', href: '/dashboard/admin/community/moderation', icon: Shield },
-      { name: 'Forum', href: '/dashboard/admin/community/forum', icon: MessageCircle },
-      { name: 'Discord', href: '/dashboard/admin/community/discord', icon: MessageSquare },
-      { name: 'Analytics', href: '/dashboard/admin/community/analytics', icon: BarChart3 }
+      { name: 'Articles', href: '/dashboard/admin/content/articles', icon: FileText }
     ]
   },
   {
@@ -91,10 +66,7 @@ const navigation: NavItem[] = [
     icon: Users,
     children: [
       { name: 'User Administration', href: '/dashboard/admin/users/administration', icon: Users },
-      { name: 'Role Management', href: '/dashboard/admin/users/roles', icon: Shield },
-      { name: 'Permission Matrix', href: '/dashboard/admin/users/permissions', icon: KeyRound },
-      { name: 'Team Management', href: '/dashboard/admin/users/teams', icon: Building },
-      { name: 'Support Agents', href: '/dashboard/admin/users/support-agents', icon: UserCheck },
+      { name: 'Roles reference', href: '/dashboard/admin/users/roles', icon: Shield },
       { name: 'User Analytics', href: '/dashboard/admin/users/analytics', icon: BarChart3 },
       { name: 'Access Logs', href: '/dashboard/admin/users/access-logs', icon: Eye },
       { name: 'Bulk Operations', href: '/dashboard/admin/users/bulk-operations', icon: UserPlus }
@@ -105,16 +77,13 @@ const navigation: NavItem[] = [
     href: '/dashboard/admin/settings',
     icon: Settings,
     children: [
-      { name: 'General', href: '/dashboard/admin/settings/general', icon: Settings },
-      { name: 'Integrations', href: '/dashboard/admin/settings/integrations', icon: Settings },
-      { name: 'Single Sign-On', href: '/dashboard/admin/settings/sso', icon: KeyRound },
-      { name: 'Security', href: '/dashboard/admin/settings/security', icon: Shield },
-      { name: 'Advanced', href: '/dashboard/admin/settings/advanced', icon: Settings }
+      { name: 'Settings Hub', href: '/dashboard/admin/settings', icon: Settings },
+      { name: 'Single Sign-On', href: '/dashboard/admin/settings/sso', icon: KeyRound }
     ]
   }
 ]
 
-export default function AdminSidebar({ userWorkspaces, user }: AdminSidebarProps) {
+export default function AdminSidebar({ user }: AdminSidebarProps) {
   const pathname = usePathname()
   const [expandedItems, setExpandedItems] = useState<string[]>([])
 
@@ -127,7 +96,7 @@ export default function AdminSidebar({ userWorkspaces, user }: AdminSidebarProps
   }
 
   const isActive = (href: string) => {
-    if (href === '/dashboard/admin') {
+    if (href === '/dashboard/admin' || href === '/dashboard/admin/settings') {
       return pathname === href
     }
     return pathname.startsWith(href)
@@ -242,16 +211,10 @@ export default function AdminSidebar({ userWorkspaces, user }: AdminSidebarProps
               {user.name || 'Admin'}
             </p>
             <p className="text-xs text-gray-400 truncate">
-              {userWorkspaces[0]?.role || 'Administrator'}
+              Platform administrator
             </p>
           </div>
         </div>
-
-        {userWorkspaces.length > 1 && (
-          <div className="mt-2 text-xs text-gray-400">
-            +{userWorkspaces.length - 1} more workspace{userWorkspaces.length > 2 ? 's' : ''}
-          </div>
-        )}
       </div>
     </div>
   )

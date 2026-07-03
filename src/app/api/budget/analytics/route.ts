@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
@@ -11,7 +12,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
@@ -19,14 +19,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
     }
 
-    // Verify workspace access
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId, workspaceId }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace access denied' }, { status: 403 })
-    }
+    // Verify workspace access (ADR-0004; non-members get 404)
+    await requireWorkspaceRole(workspaceId)
 
     // Get campaigns with budget data
     const campaigns = await prisma.campaign.findMany({
@@ -157,6 +151,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
+    if (error instanceof ApiError) return handleApiError(error)
     console.error('Error fetching budget analytics:', error)
     return NextResponse.json(
       { error: 'Failed to fetch budget analytics' },

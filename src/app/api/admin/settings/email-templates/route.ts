@@ -1,39 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+
+// Email templates are always workspace-scoped (EmailTemplate.workspaceId is
+// required in the schema), so the two-tier model (ADR-0004) reduces to
+// requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN']) here.
 
 // GET /api/admin/settings/email-templates - List email templates
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const category = searchParams.get('category')
     const isActive = searchParams.get('isActive')
     const search = searchParams.get('search')
 
-    // Check workspace permissions
     if (!workspaceId) {
-      return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
+      // Authenticate before validation so missing sessions still 401.
+      await requireSession()
+      return jsonError(400, 'Workspace ID required')
     }
 
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Build where clause
     const where: any = {
@@ -104,23 +93,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch email templates:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch email templates' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/email-templates - Create email template
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -138,24 +118,10 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!workspaceId || !name || !slug || !category || !subject || !htmlContent) {
-      return NextResponse.json(
-        { error: 'Missing required fields: workspaceId, name, slug, category, subject, htmlContent' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: workspaceId, name, slug, category, subject, htmlContent')
     }
 
-    // Check permissions
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: normalizedUserId,
-        workspaceId: workspaceId,
-        role: { in: ['OWNER', 'ADMIN'] }
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Validate category
     const validCategories = [
@@ -164,10 +130,7 @@ export async function POST(request: NextRequest) {
     ]
 
     if (!validCategories.includes(category)) {
-      return NextResponse.json(
-        { error: `Invalid category. Must be one of: ${validCategories.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid category. Must be one of: ${validCategories.join(', ')}`)
     }
 
     // Check for existing slug
@@ -179,10 +142,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingTemplate) {
-      return NextResponse.json(
-        { error: 'Template with this slug already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Template with this slug already exists')
     }
 
     // Create template
@@ -198,8 +158,8 @@ export async function POST(request: NextRequest) {
         variables,
         isActive,
         previewData,
-        createdBy: normalizedUserId,
-        lastUpdatedBy: normalizedUserId
+        createdBy: user.id,
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -217,10 +177,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ template }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create email template:', error)
-    return NextResponse.json(
-      { error: 'Failed to create email template' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

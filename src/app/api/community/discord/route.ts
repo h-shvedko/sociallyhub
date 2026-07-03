@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/discord - Get Discord integration info
 export async function GET(request: NextRequest) {
@@ -117,21 +118,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has admin access to workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Upsert Discord integration
     const integration = await prisma.discordIntegration.upsert({
@@ -185,11 +172,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to setup Discord integration:', error)
-    return NextResponse.json(
-      { error: 'Failed to setup Discord integration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -224,21 +207,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Verify user has admin access to workspace
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Update integration
     const updateData: any = {
@@ -261,10 +230,6 @@ export async function PUT(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to update Discord integration:', error)
-    return NextResponse.json(
-      { error: 'Failed to update Discord integration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

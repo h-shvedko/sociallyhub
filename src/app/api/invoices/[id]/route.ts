@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/invoices/[id] - Get invoice details
 export async function GET(
@@ -12,8 +13,6 @@ export async function GET(
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const userId = await normalizeUserId(session.user.id)
 
     const { id } = await context.params
 
@@ -29,20 +28,13 @@ export async function GET(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
 
-    // Check if user has access to this invoice's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-        workspaceId: invoice.workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // Check if user has access to this invoice's workspace (ADR-0004;
+    // non-members get 404 per ADR-0005 no-existence-leak semantics)
+    await requireWorkspaceRole(invoice.workspaceId)
 
     return NextResponse.json({ invoice })
   } catch (error) {
+    if (error instanceof ApiError) return handleApiError(error)
     console.error('Error fetching invoice:', error)
     return NextResponse.json(
       { error: 'Failed to fetch invoice' },
@@ -62,8 +54,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = await normalizeUserId(session.user.id)
-
     const { id } = await context.params
     const body = await request.json()
 
@@ -76,17 +66,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
 
-    // Check if user has access to this invoice's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-        workspaceId: invoice.workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // Check if user has access to this invoice's workspace (ADR-0004;
+    // non-members get 404 per ADR-0005 no-existence-leak semantics)
+    await requireWorkspaceRole(invoice.workspaceId)
 
     // Calculate subtotal and total from line items
     const lineItems = body.lineItems || invoice.lineItems
@@ -127,6 +109,7 @@ export async function PATCH(
       invoice: updatedInvoice 
     })
   } catch (error) {
+    if (error instanceof ApiError) return handleApiError(error)
     console.error('Error updating invoice:', error)
     return NextResponse.json(
       { error: 'Failed to update invoice' },
@@ -146,8 +129,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userId = await normalizeUserId(session.user.id)
-
     const { id } = await context.params
 
     // First get the invoice to check permissions
@@ -159,17 +140,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     }
 
-    // Check if user has access to this invoice's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-        workspaceId: invoice.workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // Check if user has access to this invoice's workspace (ADR-0004;
+    // non-members get 404 per ADR-0005 no-existence-leak semantics)
+    await requireWorkspaceRole(invoice.workspaceId)
 
     // Delete the invoice
     await prisma.invoice.delete({
@@ -183,6 +156,7 @@ export async function DELETE(
       message: 'Invoice deleted successfully' 
     })
   } catch (error) {
+    if (error instanceof ApiError) return handleApiError(error)
     console.error('Error deleting invoice:', error)
     return NextResponse.json(
       { error: 'Failed to delete invoice' },

@@ -1,8 +1,8 @@
 // Team Members API Endpoint
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 // Per-member permission storage was removed (role is the sole authz field).
@@ -63,31 +63,17 @@ function derivePermissionsFromRole(role: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
     if (!workspaceId) {
-      return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 })
+      // Authenticate before validation so missing sessions still 401.
+      await requireSession()
+      return jsonError(400, 'workspaceId is required')
     }
 
-    // Verify user has access to workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId,
-        workspaceId: workspaceId
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No access to workspace' }, { status: 403 })
-    }
+    // Verify user has access to workspace (ADR-0004: any member may list the team)
+    await requireWorkspaceRole(workspaceId)
 
     // Get team members for the workspace
     const teamMembers = await prisma.userWorkspace.findMany({
@@ -242,10 +228,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Team API error:', error)
-    return NextResponse.json({
-      error: 'Failed to fetch team members',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    return handleApiError(error)
   }
 }

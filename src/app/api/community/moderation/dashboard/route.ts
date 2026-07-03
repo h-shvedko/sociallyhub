@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // Moderation Dashboard interfaces
 interface ModerationDashboard {
@@ -132,18 +133,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify user has moderation access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     const periodDays = parseInt(period)
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000)
@@ -187,11 +177,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to generate moderation dashboard:', error)
-    return NextResponse.json(
-      { error: 'Failed to generate moderation dashboard' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -212,18 +198,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     if (action === 'DISMISS_ALERT') {
       const result = await dismissAlert(workspaceId, data.alertId, normalizedUserId)
@@ -253,11 +228,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
   } catch (error) {
-    console.error('Failed to process dashboard action:', error)
-    return NextResponse.json(
-      { error: 'Failed to process dashboard action' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 

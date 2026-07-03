@@ -1,37 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { canAccessGlobalScope } from '../_lib/global-scope'
 
 // GET /api/admin/settings/performance - List performance configurations
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
     const category = searchParams.get('category')
     const isAutoTuning = searchParams.get('isAutoTuning')
-    const includeGlobal = searchParams.get('includeGlobal') === 'true'
     const includeMetrics = searchParams.get('includeMetrics') === 'true'
+    let includeGlobal = searchParams.get('includeGlobal') === 'true'
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace scope requires OWNER/ADMIN
+    // membership; any global-scope read is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      const membership = await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+      if (includeGlobal && !(await canAccessGlobalScope(membership.userId))) {
+        // Mixed scope: restrict to the caller's workspace instead of 403ing.
+        includeGlobal = false
       }
+    } else {
+      // Global scope (with includeGlobal=true this lists ALL workspaces' rows).
+      await requirePlatformAdmin()
     }
 
     // Build where clause
@@ -183,23 +176,14 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch performance configurations:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch performance configurations' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
 // POST /api/admin/settings/performance - Create performance configuration
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const normalizedUserId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const body = await request.json()
 
     const {
@@ -221,25 +205,15 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!category || !setting || value === undefined || !dataType) {
-      return NextResponse.json(
-        { error: 'Missing required fields: category, setting, value, dataType' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Missing required fields: category, setting, value, dataType')
     }
 
-    // Check workspace permissions if specified
+    // Two-tier authorization (ADR-0004): workspace mutation requires
+    // OWNER/ADMIN membership; global-scope mutation is platform-admin-only.
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findFirst({
-        where: {
-          userId: normalizedUserId,
-          workspaceId: workspaceId,
-          role: { in: ['OWNER', 'ADMIN'] }
-        }
-      })
-
-      if (!userWorkspace) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+    } else {
+      await requirePlatformAdmin()
     }
 
     // Validate category
@@ -249,35 +223,23 @@ export async function POST(request: NextRequest) {
     ]
 
     if (!validCategories.includes(category)) {
-      return NextResponse.json(
-        { error: `Invalid category. Must be one of: ${validCategories.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid category. Must be one of: ${validCategories.join(', ')}`)
     }
 
     // Validate data type
     const validDataTypes = ['STRING', 'INTEGER', 'FLOAT', 'BOOLEAN', 'JSON', 'URL', 'EMAIL', 'PASSWORD', 'TEXT', 'ENUM']
     if (!validDataTypes.includes(dataType)) {
-      return NextResponse.json(
-        { error: `Invalid dataType. Must be one of: ${validDataTypes.join(', ')}` },
-        { status: 400 }
-      )
+      return jsonError(400, `Invalid dataType. Must be one of: ${validDataTypes.join(', ')}`)
     }
 
     // Validate impact score
     if (impactScore !== undefined && (impactScore < 1 || impactScore > 10)) {
-      return NextResponse.json(
-        { error: 'Impact score must be between 1 and 10' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Impact score must be between 1 and 10')
     }
 
     // Validate thresholds
     if (threshold !== undefined && criticalThreshold !== undefined && criticalThreshold <= threshold) {
-      return NextResponse.json(
-        { error: 'Critical threshold must be greater than warning threshold' },
-        { status: 400 }
-      )
+      return jsonError(400, 'Critical threshold must be greater than warning threshold')
     }
 
     // Check for existing configuration
@@ -290,10 +252,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingConfig) {
-      return NextResponse.json(
-        { error: 'Performance configuration with this category and setting already exists' },
-        { status: 409 }
-      )
+      return jsonError(409, 'Performance configuration with this category and setting already exists')
     }
 
     // Create configuration
@@ -313,7 +272,7 @@ export async function POST(request: NextRequest) {
         benchmarkValue,
         recommendations,
         dependencies,
-        lastUpdatedBy: normalizedUserId
+        lastUpdatedBy: user.id
       },
       include: {
         workspace: {
@@ -328,10 +287,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ configuration }, { status: 201 })
 
   } catch (error) {
-    console.error('Failed to create performance configuration:', error)
-    return NextResponse.json(
-      { error: 'Failed to create performance configuration' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

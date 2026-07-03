@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 // GET /api/community/forum/moderation - List posts pending moderation
 export async function GET(request: NextRequest) {
@@ -22,18 +23,7 @@ export async function GET(request: NextRequest) {
 
     // Verify user has moderation permissions
     if (workspaceId) {
-      const userWorkspace = await prisma.userWorkspace.findUnique({
-        where: {
-          userId_workspaceId: {
-            userId: normalizedUserId,
-            workspaceId
-          }
-        }
-      })
-
-      if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-        return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-      }
+      await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
     }
 
     // Build where clause for moderation queue
@@ -112,11 +102,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to fetch moderation queue:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch moderation queue' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -149,18 +135,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has moderation permissions
-    const userWorkspace = await prisma.userWorkspace.findUnique({
-      where: {
-        userId_workspaceId: {
-          userId: normalizedUserId,
-          workspaceId
-        }
-      }
-    })
-
-    if (!userWorkspace || !['OWNER', 'ADMIN'].includes(userWorkspace.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-    }
+    await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
 
     // Get the target entity to store previous data
     let previousData = null
@@ -297,10 +272,6 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Failed to execute moderation action:', error)
-    return NextResponse.json(
-      { error: 'Failed to execute moderation action' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

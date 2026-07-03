@@ -1,30 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
+import { requirePlatformAdmin } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     const playlist = await prisma.videoPlaylist.findFirst({
       where: {
         id: params.id,
-        workspaceId: userWorkspace.workspaceId
       },
       include: {
         videos: {
@@ -78,34 +65,20 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       stats
     })
   } catch (error) {
-    console.error('Error fetching playlist:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     // Verify playlist exists and belongs to workspace
     const existingPlaylist = await prisma.videoPlaylist.findFirst({
       where: {
         id: params.id,
-        workspaceId: userWorkspace.workspaceId
       }
     })
 
@@ -175,7 +148,6 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
         const videos = await prisma.videoTutorial.findMany({
           where: {
             id: { in: videoIds },
-            workspaceId: userWorkspace.workspaceId
           }
         })
 
@@ -246,34 +218,20 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
       stats
     })
   } catch (error) {
-    console.error('Error updating playlist:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
-      select: { workspaceId: true }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
-    }
+    // Help CMS is platform-global content (ADR-0004): platform admins only.
+    await requirePlatformAdmin()
 
     // Verify playlist exists and belongs to workspace
     const existingPlaylist = await prisma.videoPlaylist.findFirst({
       where: {
         id: params.id,
-        workspaceId: userWorkspace.workspaceId
       }
     })
 
@@ -298,7 +256,6 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
 
     return NextResponse.json({ message: 'Playlist deleted successfully' })
   } catch (error) {
-    console.error('Error deleting playlist:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
