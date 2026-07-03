@@ -1,8 +1,28 @@
 # ADR-0007: Media Storage, Uploads, and Serving Architecture
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Phases 0–2 implemented 2026-07-04** (S3/ClamAV/images-repurpose deferred)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-04).** Delivered (Phases 0–2): storage service
+> `src/lib/storage/` (driver interface + local driver rooted at `STORAGE_LOCAL_ROOT`, two-layer
+> traversal guard, `getStorage()` with an `s3` seam that throws "wired in ADR-0022"); `/api/media/upload`
+> rebuilt on the service with real sharp dimensions + `Asset.storageKey` + `url=/api/files/{key}`;
+> unified authenticated `GET /api/files/[...key]` (fail-closed: workspace membership for `media/*`,
+> session+workspace for `tickets/*`, public for `help/*`; nosniff + attachment disposition); migration
+> `0007` (additive `storageKey` on Asset + TicketAttachment); `scripts/migrate-uploads.ts` (dry-run/
+> idempotent). Ticket attachments made private with MIME-derived extensions (killed the
+> `split('.').pop()` traversal) and `scanResult = null` (no more fake `'pending'`). Deleted the
+> orphaned `/api/upload` and dead `/api/uploads/[...path]`. `/api/images` interim SSRF stop
+> (session-gated, rejects non-relative URLs, no wildcard CORS). `sharp` moved to `dependencies`.
+> **Verified:** upload→serve round-trip (member 200 / anon 401 / non-member 404, bytes match, real
+> dims + storageKey); DELETE → file 404; old routes 404; SSRF 401/400; traversal suite 35/35;
+> `prisma validate`/`db:check` green. **Deferred (co-scoped):** S3/MinIO driver + CI-against-MinIO
+> (ADR-0022), ClamAV `scan-attachment` worker (ADR-0008), full `/api/images` key-input repurpose +
+> `CDNManager`/`image-optimization` deletion (ADR-0024). **Note:** the ADR-0005 middleware sets
+> `Cache-Control: no-store` on all `/api/*`, which overrides `/api/files`'s intended
+> `private/public max-age` — stricter for private media; help/* public caching would need a
+> middleware carve-out (follow-up).
 
 ## Context and Problem Statement
 
