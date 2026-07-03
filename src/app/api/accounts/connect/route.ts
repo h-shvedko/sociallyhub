@@ -4,6 +4,7 @@ import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers'
+import { signAccountState } from '@/lib/security/oauth-state'
 
 // POST /api/accounts/connect - Initiate OAuth connection for a social platform
 export async function POST(request: NextRequest) {
@@ -65,10 +66,15 @@ export async function POST(request: NextRequest) {
 
     // Create OAuth URL
     const redirectUri = `${process.env.NEXTAUTH_URL}/api/accounts/callback`
-    const state = JSON.stringify({ 
-      workspaceId, 
-      userId, 
-      provider: provider.toLowerCase() 
+    // ADR-0006 Phase 2: bind the OAuth `state` to this session user + the
+    // workspace we just authorized (requireWorkspaceRole above) with an
+    // HMAC-signed, self-contained, 10-minute-expiry token. The callback
+    // recovers and trusts workspaceId/userId ONLY from this verified token,
+    // closing the workspace-binding forgery in the old bare-JSON state.
+    const state = signAccountState({
+      workspaceId,
+      userId,
+      provider: provider.toLowerCase(),
     })
 
     try {

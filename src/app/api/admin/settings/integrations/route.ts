@@ -2,10 +2,37 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSession, requireWorkspaceRole } from '@/lib/auth'
 import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { encryptCredentials, encryptString, isEncrypted } from '@/lib/encryption'
 
 // Integration settings are always workspace-scoped (IntegrationSetting.
 // workspaceId is required in the schema), so the two-tier model (ADR-0004)
 // reduces to requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN']) here.
+
+// Display sentinel substituted for real secret material in every response
+// (`credentials` and `webhookSecret`). A client that re-submits a record it
+// previously fetched sends this value back for unchanged secrets, so writes
+// treat it as "no change" and never encrypt the mask over real data.
+const CREDENTIALS_MASK = '***HIDDEN***'
+
+// Encrypt the credentials JSON blob for storage at rest (ADR-0006 Phase 4).
+// Tolerates values round-tripped from a masked response so re-saving a record
+// never double-encrypts or clobbers secrets:
+//   null/undefined -> null (clears the column)
+//   already enc:v1: -> stored as-is (idempotent; no double-encryption)
+//   anything else   -> JSON-serialized then AES-256-GCM encrypted.
+function encryptCredentialsForStorage(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (isEncrypted(value)) return value
+  return encryptCredentials(value)
+}
+
+// Encrypt a scalar secret (webhookSecret) for storage at rest, with the same
+// round-trip tolerance as above.
+function encryptSecretForStorage(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (isEncrypted(value)) return value
+  return encryptString(String(value))
+}
 
 // GET /api/admin/settings/integrations - List integration settings
 export async function GET(request: NextRequest) {
@@ -60,10 +87,12 @@ export async function GET(request: NextRequest) {
       ]
     })
 
-    // Mask sensitive credentials
+    // Mask sensitive material (never return credentials or webhook secrets —
+    // encrypted at rest per ADR-0006, masked for display).
     const maskedIntegrations = integrations.map(integration => ({
       ...integration,
-      credentials: integration.credentials ? '***HIDDEN***' : null
+      credentials: integration.credentials ? CREDENTIALS_MASK : null,
+      webhookSecret: integration.webhookSecret ? CREDENTIALS_MASK : null
     }))
 
     // Group by provider
@@ -151,6 +180,11 @@ export async function POST(request: NextRequest) {
       return jsonError(409, 'Integration with this provider and name already exists')
     }
 
+    // Encrypt secret material before persisting (ADR-0006 Phase 4). The mask
+    // sentinel is ignored so it can never be stored as a real credential.
+    const hasCredentials = !!credentials && credentials !== CREDENTIALS_MASK
+    const hasWebhookSecret = !!webhookSecret && webhookSecret !== CREDENTIALS_MASK
+
     // Create integration
     const integration = await prisma.integrationSetting.create({
       data: {
@@ -158,13 +192,18 @@ export async function POST(request: NextRequest) {
         provider,
         name,
         config,
-        credentials,
+        // `credentials` is a `Json?` column; Prisma's typed create input rejects
+        // a bare JS `null` (it wants `Prisma.JsonNull`/omission). Coalesce the
+        // "no credentials" case to `undefined` (field omitted -> stored NULL);
+        // encrypted values are always non-null strings. Previously this line only
+        // compiled because the helper's `any` return contaminated the ternary.
+        credentials: (hasCredentials ? encryptCredentialsForStorage(credentials) : null) ?? undefined,
         isActive,
-        isConfigured: credentials ? true : false,
+        isConfigured: hasCredentials ? true : false,
         syncInterval,
         features,
         webhookUrl,
-        webhookSecret,
+        webhookSecret: hasWebhookSecret ? encryptSecretForStorage(webhookSecret) : null,
         createdBy: user.id,
         lastUpdatedBy: user.id
       },
@@ -184,7 +223,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       integration: {
         ...integration,
-        credentials: integration.credentials ? '***HIDDEN***' : null
+        credentials: integration.credentials ? CREDENTIALS_MASK : null,
+        webhookSecret: integration.webhookSecret ? CREDENTIALS_MASK : null
       }
     }, { status: 201 })
 

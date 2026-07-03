@@ -50,6 +50,11 @@ services:
       - NEXTAUTH_SECRET=dev-secret-key-change-in-production
       - NEXTAUTH_URL=http://localhost:3099
       - JWT_SECRET=dev-jwt-secret-change-in-production
+      # ENCRYPTION_KEY (ADR-0006): fixed DEV-ONLY key, like the postgres password
+      # above. Shared by the host dev server, this container, and CI so they can
+      # all decrypt each other's data. Generate a UNIQUE key for every real
+      # environment with `openssl rand -hex 32` — never reuse this value.
+      - ENCRYPTION_KEY=b29945a36f9850725969747a03f57cb7bb83d7655844f8c12d853e16e5a132c2
       # SMTP Configuration for Mailhog
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025

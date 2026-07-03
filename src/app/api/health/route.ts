@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import Redis from 'ioredis'
 
+import { isEncryptionConfigured } from '@/lib/encryption'
+
 const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
@@ -16,6 +18,9 @@ export async function GET(request: NextRequest) {
       database: { status: 'unknown', responseTime: 0 },
       redis: { status: 'unknown', responseTime: 0 },
       filesystem: { status: 'unknown', responseTime: 0 },
+      // ADR-0006: encryption config check (presence + shape only, never decrypts
+      // or exposes key material). Values: 'ok' | 'misconfigured' | 'unknown'.
+      encryption: { status: 'unknown' },
     },
     metrics: {
       memory: process.memoryUsage(),
@@ -77,6 +82,16 @@ export async function GET(request: NextRequest) {
       healthCheck.status = 'degraded'
     }
 
+    // Check encryption configuration (ADR-0006): presence + shape of
+    // ENCRYPTION_KEY only. No decrypt, no key material in the payload/logs.
+    try {
+      healthCheck.services.encryption.status = isEncryptionConfigured()
+        ? 'ok'
+        : 'misconfigured'
+    } catch {
+      healthCheck.services.encryption.status = 'misconfigured'
+    }
+
     // Calculate total response time
     healthCheck.responseTime = Date.now() - start
 
@@ -89,6 +104,16 @@ export async function GET(request: NextRequest) {
     } else if (unhealthyServices >= 2) {
       healthCheck.status = 'unhealthy'
     } else {
+      healthCheck.status = 'degraded'
+    }
+
+    // ADR-0006: a misconfigured encryption key degrades health (it must NOT
+    // 500 the endpoint). Only downgrade from 'healthy' — never mask a worse
+    // status already set by failing services.
+    if (
+      healthCheck.services.encryption.status !== 'ok' &&
+      healthCheck.status === 'healthy'
+    ) {
       healthCheck.status = 'degraded'
     }
 

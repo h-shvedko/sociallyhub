@@ -2,10 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSession, requireWorkspaceRole, ApiError } from '@/lib/auth'
 import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { decryptCredentials, isEncrypted } from '@/lib/encryption'
 
 // Integration settings are always workspace-scoped (IntegrationSetting.
 // workspaceId is required in the schema), so the two-tier model (ADR-0004)
 // reduces to requireWorkspaceRole(integration.workspaceId, ['OWNER', 'ADMIN']).
+
+// Decrypt credentials stored at rest (ADR-0006 Phase 4) so the connectivity
+// test operates on real values. Tolerates the transitional/legacy case where a
+// row predates encryption (raw JSON object or plaintext) and the back-fill
+// script (scripts/encrypt-integration-credentials.ts) has not yet run — such
+// values are returned as-is. Decrypted material is never logged.
+function decryptStoredCredentials(value: unknown): unknown {
+  if (value === null || value === undefined) return value
+  if (isEncrypted(value)) return decryptCredentials(value)
+  return value
+}
 
 // POST /api/admin/settings/integrations/[id]/test - Test integration connection
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -113,7 +125,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const testResult = await testIntegration(
       integration.provider,
       integration.config,
-      integration.credentials
+      decryptStoredCredentials(integration.credentials)
     )
 
     // Update integration with test results

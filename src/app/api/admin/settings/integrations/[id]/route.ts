@@ -2,10 +2,37 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSession, requireWorkspaceRole } from '@/lib/auth'
 import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import { encryptCredentials, encryptString, isEncrypted } from '@/lib/encryption'
 
 // Integration settings are always workspace-scoped (IntegrationSetting.
 // workspaceId is required in the schema), so the two-tier model (ADR-0004)
 // reduces to requireWorkspaceRole(integration.workspaceId, ['OWNER', 'ADMIN']).
+
+// Display sentinel substituted for real secret material in every response
+// (`credentials` and `webhookSecret`). A client that re-submits a record it
+// previously fetched sends this value back for unchanged secrets, so writes
+// treat it as "no change" and never encrypt the mask over real data.
+const CREDENTIALS_MASK = '***HIDDEN***'
+
+// Encrypt the credentials JSON blob for storage at rest (ADR-0006 Phase 4).
+// Tolerates values round-tripped from a masked response so re-saving a record
+// never double-encrypts or clobbers secrets:
+//   null/undefined -> null (clears the column)
+//   already enc:v1: -> stored as-is (idempotent; no double-encryption)
+//   anything else   -> JSON-serialized then AES-256-GCM encrypted.
+function encryptCredentialsForStorage(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (isEncrypted(value)) return value
+  return encryptCredentials(value)
+}
+
+// Encrypt a scalar secret (webhookSecret) for storage at rest, with the same
+// round-trip tolerance as above.
+function encryptSecretForStorage(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (isEncrypted(value)) return value
+  return encryptString(String(value))
+}
 
 // GET /api/admin/settings/integrations/[id] - Get specific integration setting
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -38,7 +65,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     return NextResponse.json({
       integration: {
         ...integration,
-        credentials: integration.credentials ? '***HIDDEN***' : null
+        credentials: integration.credentials ? CREDENTIALS_MASK : null,
+        webhookSecret: integration.webhookSecret ? CREDENTIALS_MASK : null
       }
     })
 
@@ -101,15 +129,19 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
 
     if (name !== undefined) updateData.name = name
     if (config !== undefined) updateData.config = config
-    if (credentials !== undefined) {
-      updateData.credentials = credentials
+    // Encrypt credentials on write (ADR-0006 Phase 4). Skip the mask sentinel so
+    // a client re-submitting a fetched record leaves existing secrets untouched.
+    if (credentials !== undefined && credentials !== CREDENTIALS_MASK) {
+      updateData.credentials = credentials ? encryptCredentialsForStorage(credentials) : null
       updateData.isConfigured = credentials ? true : false
     }
     if (isActive !== undefined) updateData.isActive = isActive
     if (syncInterval !== undefined) updateData.syncInterval = syncInterval
     if (features !== undefined) updateData.features = features
     if (webhookUrl !== undefined) updateData.webhookUrl = webhookUrl
-    if (webhookSecret !== undefined) updateData.webhookSecret = webhookSecret
+    if (webhookSecret !== undefined && webhookSecret !== CREDENTIALS_MASK) {
+      updateData.webhookSecret = webhookSecret ? encryptSecretForStorage(webhookSecret) : null
+    }
 
     if (resetErrorCount) {
       updateData.errorCount = 0
@@ -136,7 +168,8 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     return NextResponse.json({
       integration: {
         ...integration,
-        credentials: integration.credentials ? '***HIDDEN***' : null
+        credentials: integration.credentials ? CREDENTIALS_MASK : null,
+        webhookSecret: integration.webhookSecret ? CREDENTIALS_MASK : null
       }
     })
 

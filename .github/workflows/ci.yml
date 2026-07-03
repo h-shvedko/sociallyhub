@@ -12,6 +12,10 @@ env:
   NEXTAUTH_SECRET: test-secret-for-ci
   DATABASE_URL: postgresql://sociallyhub:password@localhost:5432/sociallyhub_test
   REDIS_URL: redis://localhost:6379/1
+  # ADR-0006: fail-closed crypto requires ENCRYPTION_KEY in every mode, including
+  # CI. Throwaway fixed 64-hex test key (never used for real data); shared across
+  # jobs so tests/build don't break on missing-key errors.
+  ENCRYPTION_KEY: b29945a36f9850725969747a03f57cb7bb83d7655844f8c12d853e16e5a132c2
 
 jobs:
   # Linting and Code Quality
