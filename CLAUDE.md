@@ -20,7 +20,7 @@
 ### Subsystem reality check
 | Subsystem | APIs | UI | Actually runnable? |
 |---|---|---|---|
-| Core social (posts, calendar, inbox, campaigns, clients, invoices, client-reports, templates, media, analytics, custom dashboards) | Real Prisma CRUD, workspace-isolated | Wired up | ✅ Yes (models are in the generated client) — but outbound publishing/replies to real platforms don't work (see blockers 3; `provider.reply()` unimplemented; no webhook ingestion for inbox) |
+| Core social (posts, calendar, inbox, campaigns, clients, invoices, client-reports, templates, media, analytics, custom dashboards) | Real Prisma CRUD, workspace-isolated | Wired up | ✅ Yes — the publishing pipeline is real (ADR-0008) and the integration foundations are honest (ADR-0009: `replyToItem()` + `refreshAccount()` implemented, Meta webhook `/api/webhooks/meta` ingests InboxItems, analytics no longer fabricate data). **Real posting/media/analytics to live platforms is gated on real credentials** (paid X tier / Meta App Review) — until then publish jobs fail honestly. |
 | AI features (`/api/ai/**`, `/api/automation/**`, `/api/audience/**`) | Real, DB-backed; OpenAI when `OPENAI_API_KEY` set, silent `MockAIProvider`/heuristic fallback otherwise | **Orphaned** — `src/components/ai/*` and `src/components/audience/*` have zero page imports | ✅ APIs yes / UI unreachable |
 | Help Center public (`/api/help/**`, `/dashboard/help`) | Real (articles, FAQs, search w/ ILIKE + JS scoring, bookmarks, votes) | Wired (713-line help-center.tsx) | ✅ Yes — but write endpoints have `TODO: Add authentication` |
 | Help admin CMS (`/api/admin/help/**`) | Real workflows (revisions, approval, bulk ops, import/export) | ArticleEditor exists | ⚠️ Blocked by un-awaited `normalizeUserId` (blocker 2) |
@@ -54,7 +54,7 @@
 ### Documentation map (which file to trust for what)
 - `TODO.md` — master roadmap; 7/16 items marked complete. Stale: "Custom Dashboards" and "Help Center" are listed pending but actually built; "Billing System" (no Stripe) and "Client Portal" are genuinely unbuilt.
 - `TODO_HELP_DASHBOARD.md` — help/admin roadmap, internally inconsistent (early checklists contradict later ✅ summaries); genuinely pending: Phase 3 admin analytics/monitoring/backup/integrations, mobile & accessibility, performance & SEO.
-- `AI_MOCK_DATA.md` — **honest audit doc**; its Priority-1 fix was never applied (`/api/ai/performance/predict` and `/api/ai/tone/analyze` still import `simpleAIService`, bypassing the mock-fallback layer). All six social providers still return `generateMockAnalytics()` regardless of API keys.
+- `AI_MOCK_DATA.md` — **honest audit doc**; its Priority-1 fix was never applied (`/api/ai/performance/predict` and `/api/ai/tone/analyze` still import `simpleAIService`, bypassing the mock-fallback layer). ~~All six social providers still return `generateMockAnalytics()`~~ — **RESOLVED (ADR-0009, 2026-07-04): `generateMockAnalytics` removed from all providers; `getAnalytics` fails honestly (`success:false`), no fabricated data.**
 - `STRUCTURE.md` (60KB, detailed page-by-page map) is current-ish; the stale Sep-2025 duplicate `STRUCTURES.md` was deleted 2026-07-03 (ADR-0024).
 - `SOCIAL_INTEGRATION_GUIDE.md` — describes intended real OAuth setup; production security checklist entirely unchecked.
 - `PRODUCT_OVERVIEW.md/.html` — marketing doc; `PRODUCT_OVERVIEW.pdf` was never generated.

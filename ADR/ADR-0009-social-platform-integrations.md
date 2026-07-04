@@ -1,8 +1,29 @@
 # ADR-0009: Social Platform Integration Completion Strategy
 
 - Date: 2026-07-02
-- Status: Proposed
+- Status: Proposed — **Foundations + honesty cleanup implemented 2026-07-04** (live-API verification deferred pending real platform credentials)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-04).** ADR-0009's full end-to-end scope requires external
+> dependencies that do not exist in this environment (a paid X API tier, Meta App Review, real
+> platform OAuth credentials, a public webhook subscription). Delivered the code-complete,
+> **in-environment-testable** foundations + the ADR's headline honesty cleanup: (1) **no fabricated
+> data** — every provider `getAnalytics` returns `success:false` on failure instead of
+> `generateMockAnalytics`/`Math.random`; `uploadMedia` reads real bytes from ADR-0007 storage and
+> fails honestly (no `mock_media_`/`yt_video_` IDs); real S256 PKCE (RFC 7636) with a Redis verifier
+> store. (2) **Fixed the three broken-method bugs** — `/api/inbox/[id]/reply` → new
+> `provider.replyToItem()`; `/api/accounts/[id]/refresh` → new `SocialMediaManager.refreshAccount()`;
+> `getSocialManager(workspaceId)` credential factory (`PlatformCredentials` → env, decrypt via
+> ADR-0006) + `getDecryptedAccount()`, accounts Map off the publish path. (3) **A fully-testable Meta
+> webhook receiver** `/api/webhooks/meta` (GET `hub.challenge`, POST `X-Hub-Signature-256` HMAC
+> validation, `InboxItem` ingestion) — proven end-to-end against the running app (challenge echo,
+> wrong-token 403, valid-signed payload → real InboxItem, invalid-sig 401). (4) **Honest availability
+> tiers** (`/api/accounts/platforms`: LinkedIn/TikTok/YouTube = `unavailable`); `createDemoConnection`
+> gated behind `isDemoMode()`; docs corrected. An `inbox-sync` repeatable is registered in the
+> ADR-0008 worker (idle without creds). **Deferred-external (NOT defects):** live posting/media/
+> analytics against Twitter/Meta, Meta App Review + webhook subscription bootstrap, paid X tier — all
+> gated on real platform credentials. When credentials exist, the pipeline (ADR-0008) + these
+> foundations produce real posts instead of honest failures.
 
 ## Context and Problem Statement
 
