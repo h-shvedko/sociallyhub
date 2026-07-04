@@ -6,6 +6,7 @@ import {
   SocialAccount,
   PostOptions,
   RateLimitInfo,
+  InboxReplyTarget,
   SocialMediaError,
   RateLimitError,
   AuthenticationError
@@ -28,9 +29,12 @@ export abstract class BaseSocialMediaProvider implements SocialMediaProvider {
     this.maxRetries = config.maxRetries || this.maxRetries
   }
   
-  // Abstract methods that must be implemented by each provider
-  abstract getAuthUrl(redirectUri: string, scopes?: string[]): string
-  abstract exchangeCodeForToken(code: string, redirectUri: string): Promise<APIResponse<SocialAccount>>
+  // Abstract methods that must be implemented by each provider.
+  // `state` (ADR-0009): the single, HMAC-signed OAuth state the connect route
+  // mints; providers embed it in the auth URL (and PKCE providers key the
+  // verifier by it), and receive it back on `exchangeCodeForToken`.
+  abstract getAuthUrl(redirectUri: string, scopes?: string[], state?: string): string
+  abstract exchangeCodeForToken(code: string, redirectUri: string, state?: string): Promise<APIResponse<SocialAccount>>
   abstract getProfile(account: SocialAccount): Promise<APIResponse<any>>
   abstract createPost(account: SocialAccount, options: PostOptions): Promise<APIResponse<any>>
   
@@ -133,10 +137,28 @@ export abstract class BaseSocialMediaProvider implements SocialMediaProvider {
   
   async replyToComment(account: SocialAccount, commentId: string, text: string): Promise<APIResponse<any>> {
     throw new SocialMediaError(
-      this.platform, 
-      'NOT_IMPLEMENTED', 
+      this.platform,
+      'NOT_IMPLEMENTED',
       'Comment reply not implemented for this provider'
     )
+  }
+
+  // Reply to an ingested inbox item (comment/mention/message). ADR-0009 requires
+  // honesty over coverage: the default RETURNS `success: false` (rather than
+  // throwing) so the reply route can surface a clean failure, and providers that
+  // have no real implementation never masquerade a fabricated success.
+  async replyToItem(
+    account: SocialAccount,
+    item: InboxReplyTarget,
+    text: string
+  ): Promise<APIResponse<{ id: string }>> {
+    return {
+      success: false,
+      error: {
+        code: 'NOT_IMPLEMENTED',
+        message: `Inbox reply is not implemented for this provider (${this.platform})`
+      }
+    }
   }
   
   async getRateLimit(account: SocialAccount): Promise<APIResponse<RateLimitInfo>> {

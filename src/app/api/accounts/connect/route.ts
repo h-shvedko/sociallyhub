@@ -5,6 +5,12 @@ import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers'
 import { signAccountState } from '@/lib/security/oauth-state'
+import { isDemoMode } from '@/lib/config/demo'
+
+// Platforms gated until their own ADR-0009 completion phase (depth-first:
+// Twitter/X + Meta first). Reported `unavailable` by /api/accounts/platforms
+// and never fabricated here — not even in demo mode (honesty over coverage).
+const GATED_PLATFORMS = new Set<string>(['linkedin', 'tiktok', 'youtube'])
 
 // POST /api/accounts/connect - Initiate OAuth connection for a social platform
 export async function POST(request: NextRequest) {
@@ -36,33 +42,44 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Check if any real credentials are configured
-    const hasTwitterCredentials = !!(process.env.TWITTER_CLIENT_ID && process.env.TWITTER_CLIENT_SECRET)
-    const hasFacebookCredentials = !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET)
-    const hasInstagramCredentials = !!(process.env.INSTAGRAM_CLIENT_ID && process.env.INSTAGRAM_CLIENT_SECRET)
-    const hasLinkedInCredentials = !!(process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET)
-    const hasTikTokCredentials = !!(process.env.TIKTOK_CLIENT_ID && process.env.TIKTOK_CLIENT_SECRET)
-    const hasYouTubeCredentials = !!(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET)
+    // ADR-0009 Phase 0.3 — demo gating + availability tiers.
+    const providerLc = provider.toLowerCase()
+    const displayName = getPlatformDisplayName(providerLc)
 
-    const hasAnyCredentials = hasTwitterCredentials || hasFacebookCredentials || hasInstagramCredentials ||
-                              hasLinkedInCredentials || hasTikTokCredentials || hasYouTubeCredentials
-
-    // If no real credentials are configured, enable demo mode for all platforms
-    if (!hasAnyCredentials) {
-      console.log(`🚀 Creating demo connection for ${provider} - no real credentials configured`)
-      return await createDemoConnection(provider.toLowerCase(), workspaceId, userId)
-    }
-
-    // If some credentials exist, check if this specific provider is supported
-    const supportedProviders = socialMediaManager.getSupportedPlatforms().map(p => p.toLowerCase())
-
-    if (!supportedProviders.includes(provider.toLowerCase())) {
+    // Gated platforms (LinkedIn/TikTok/YouTube) are not on the real completion
+    // path yet. We never fabricate them — not even in demo mode — so the honest
+    // signal is a "coming soon" 503 rather than a fake connection.
+    if (GATED_PLATFORMS.has(providerLc)) {
       return NextResponse.json({
-        error: `${provider} is not available - API credentials not configured`,
-        code: 'PROVIDER_NOT_CONFIGURED',
-        availablePlatforms: supportedProviders
-      }, { status: 400 })
+        error: `${displayName} integration is not yet available. It is coming in a future release.`,
+        code: 'PLATFORM_UNAVAILABLE',
+      }, { status: 503 })
     }
+
+    // Does this install have a real (env-configured) provider wired for this
+    // platform? That is the only path that can complete a live OAuth handshake
+    // today. (Workspace BYO `PlatformCredentials` become usable once the manager
+    // factory lands in a later ADR-0009 phase; until then env creds are the
+    // operative source that `getSupportedPlatforms()` reflects.)
+    const supportedProviders = socialMediaManager.getSupportedPlatforms().map(p => p.toLowerCase())
+    const hasRealProvider = supportedProviders.includes(providerLc)
+
+    if (!hasRealProvider) {
+      // No real credentials for this platform. Only fabricate a demo account
+      // when demo mode is explicitly enabled (ADR-0025); otherwise fail with an
+      // actionable configuration error instead of silently faking a connection.
+      if (isDemoMode()) {
+        console.log(`Demo mode enabled — creating flagged demo connection for ${providerLc}`)
+        return await createDemoConnection(providerLc, workspaceId, userId)
+      }
+
+      return NextResponse.json({
+        error: `${displayName} is not configured. Add credentials in Platform Settings or enable demo mode.`,
+        code: 'PLATFORM_NOT_CONFIGURED',
+      }, { status: 503 })
+    }
+
+    // Real credentials present → proceed to the real OAuth flow below.
 
     // Create OAuth URL
     const redirectUri = `${process.env.NEXTAUTH_URL}/api/accounts/callback`
@@ -78,15 +95,21 @@ export async function POST(request: NextRequest) {
     })
 
     try {
+      // ADR-0009: hand the SIGNED state to getAuthUrl so the provider embeds it
+      // as the single `state` param (and, for Twitter/X, keys the PKCE verifier
+      // by it). Do NOT append a second `state` here — the old double-state made
+      // the callback's verifyAccountState() and PKCE-verifier lookup depend on
+      // two different, conflicting values, so real OAuth failed either way.
       const authUrl = await socialMediaManager.getAuthUrl(
         provider.toLowerCase() as any,
         redirectUri,
-        getDefaultScopes(provider.toLowerCase())
+        getDefaultScopes(provider.toLowerCase()),
+        state
       )
 
       return NextResponse.json({
         success: true,
-        authUrl: `${authUrl}&state=${encodeURIComponent(state)}`,
+        authUrl,
         provider,
         redirectUri
       })
@@ -177,4 +200,16 @@ function getDefaultScopes(provider: string): string[] {
     default:
       return []
   }
+}
+
+function getPlatformDisplayName(provider: string): string {
+  const displayNames: Record<string, string> = {
+    twitter: 'Twitter/X',
+    facebook: 'Facebook',
+    instagram: 'Instagram',
+    linkedin: 'LinkedIn',
+    tiktok: 'TikTok',
+    youtube: 'YouTube',
+  }
+  return displayNames[provider.toLowerCase()] || provider
 }

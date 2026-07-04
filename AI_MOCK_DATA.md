@@ -67,20 +67,32 @@ export const openai = new OpenAI({
 - **Fallback Key**: `'sk-fake-key-for-demo'`
 - **Usage**: Development mode when no real API key provided
 
-### 2. **Social Media Provider Mocks**
+### 2. **Social Media Provider Mocks** — ✅ RESOLVED (ADR-0009)
 
-All social media providers include mock analytics generation:
+> **Status update (2026-07-04):** This item is **resolved by ADR-0009 Phase 1–3.** Every
+> `generateMockAnalytics()` method has been **removed** from the provider files below, and the
+> silent `success: true` mock-fallback paths (Twitter inline `Math.random`; LinkedIn/TikTok
+> unconditional mocks; Facebook/Instagram/YouTube fall-through-on-failure) are gone. Providers
+> now call the real platform analytics APIs and, on unavailability or any failure, return
+> `success: false` with the platform error — **they never fabricate metrics that masquerade
+> as real.** Verified: `grep -rn "generateMockAnalytics" src/services/social-providers/`
+> returns no definitions or calls.
 
-| Provider | File | Mock Method | Data Generated |
-|----------|------|-------------|----------------|
-| Facebook | `/src/services/social-providers/facebook-provider.ts` | `generateMockAnalytics()` | Reach, engagement, demographics |
-| Instagram | `/src/services/social-providers/instagram-provider.ts` | `generateMockAnalytics()` | Impressions, likes, stories data |
-| LinkedIn | `/src/services/social-providers/linkedin-provider.ts` | `generateMockAnalytics()` | Professional metrics, clicks |
-| TikTok | `/src/services/social-providers/tiktok-provider.ts` | `generateMockAnalytics()` | Views, shares, viral metrics |
-| YouTube | `/src/services/social-providers/youtube-provider.ts` | `generateMockAnalytics()` | Views, watch time, subscribers |
-| Twitter | `/src/services/social-providers/twitter-provider.ts` | `generateMockAnalytics()` | Tweets, retweets, impressions |
+Previous state (for the record) — all providers used to return mock analytics regardless of
+API-key configuration:
 
-**Note**: These providers return mock analytics **regardless** of whether real API keys are configured.
+| Provider | File | Former Mock Method | Current Behavior |
+|----------|------|--------------------|------------------|
+| Facebook | `/src/services/social-providers/facebook-provider.ts` | ~~`generateMockAnalytics()`~~ | Real page insights; `success: false` on failure |
+| Instagram | `/src/services/social-providers/instagram-provider.ts` | ~~`generateMockAnalytics()`~~ | Real IG insights; `success: false` on failure |
+| LinkedIn | `/src/services/social-providers/linkedin-provider.ts` | ~~`generateMockAnalytics()`~~ | Gated `unavailable`; no fabricated data |
+| TikTok | `/src/services/social-providers/tiktok-provider.ts` | ~~`generateMockAnalytics()`~~ | Gated `unavailable`; no fabricated data |
+| YouTube | `/src/services/social-providers/youtube-provider.ts` | ~~`generateMockAnalytics()`~~ | Gated `unavailable`; no fabricated data |
+| Twitter | `/src/services/social-providers/twitter-provider.ts` | ~~inline `Math.random()`~~ | Real v2 tweet metrics; `success: false` on failure |
+
+**Note**: Providers no longer return mock analytics under any circumstance. Live analytics
+against the real networks still require configured credentials + platform approval (Meta App
+Review; paid X API tier); until then the calls fail honestly rather than returning fiction.
 
 ### 3. **Database Seed Data**
 
@@ -164,10 +176,13 @@ function generateMockMetrics() {
 - **Risk**: Two AI endpoints will fail without proper error handling
 - **Impact**: Poor user experience, no fallback for development
 
-### 2. **Social Provider Analytics Always Mock**
-- **Issue**: All social platforms return mock data regardless of API configuration
-- **Risk**: Users may expect real analytics when API keys are configured
-- **Impact**: Misleading analytics data in production environments
+### 2. **Social Provider Analytics Always Mock** — ✅ RESOLVED (ADR-0009)
+- ~~**Issue**: All social platforms return mock data regardless of API configuration~~
+- ~~**Risk**: Users may expect real analytics when API keys are configured~~
+- ~~**Impact**: Misleading analytics data in production environments~~
+- **Resolution (ADR-0009 Phase 1–3):** `generateMockAnalytics()` removed from all providers;
+  silent `success: true` fallbacks deleted. Analytics now hit the real APIs and return
+  `success: false` on failure/unavailability. Misleading-data hazard eliminated.
 
 ### 3. **Mixed Data Sources**
 - **Issue**: Some endpoints use real database data, others use generated mocks
@@ -188,10 +203,18 @@ function generateMockMetrics() {
 2. **Implement proper fallback** for performance prediction and tone analysis
 3. **Standardize error handling** across all AI endpoints
 
-### Priority 2: Social Provider Strategy
-1. **Evaluate real API integration** for social media analytics
-2. **Add configuration flags** to control mock vs real data per provider
-3. **Implement progressive enhancement** (start with mocks, upgrade to real APIs)
+### Priority 2: Social Provider Strategy — ✅ ADDRESSED (ADR-0009, different approach)
+> ADR-0009 resolved this via **honesty over coverage** rather than the mock-fallback approach
+> originally proposed here. Real analytics are integrated for the depth-first platforms
+> (Twitter/X, Facebook, Instagram); the deliberate decision was **not** to keep a mock
+> fallback — failures return `success: false`. Recommendations 2–3 below (mock/real config
+> flags, "start with mocks") are intentionally **superseded**: no mock analytics remain.
+1. ~~**Evaluate real API integration** for social media analytics~~ → done for the depth-first
+   platforms; LinkedIn/TikTok/YouTube gated `unavailable`
+2. ~~**Add configuration flags** to control mock vs real data per provider~~ → superseded (no
+   mock analytics to toggle)
+3. ~~**Implement progressive enhancement** (start with mocks, upgrade to real APIs)~~ →
+   superseded (honesty over coverage: fail clearly instead of showing mocks)
 
 ### Priority 3: Mock Data Standardization
 1. **Create unified mock data helpers** with consistent quality
@@ -215,12 +238,15 @@ function generateMockMetrics() {
 ```
 **Goal**: Replace `simpleAIService` with `aiService` for consistent fallback behavior
 
-### Phase 2: Social Provider Enhancement (Medium Priority)
+### Phase 2: Social Provider Enhancement — ✅ DONE (ADR-0009)
 ```bash
-# Files to evaluate:
-- /src/services/social-providers/*.ts (all provider files)
+# Files remediated:
+- /src/services/social-providers/*.ts (mock analytics removed from all provider files)
 ```
-**Goal**: Implement real API calls with mock fallbacks
+**Original goal**: Implement real API calls with mock fallbacks
+**Actual outcome (ADR-0009)**: Real API calls implemented for Twitter/X + Meta (Facebook,
+Instagram); the "mock fallback" was intentionally **not** built — providers fail honestly
+(`success: false`) rather than fabricating data. LinkedIn/TikTok/YouTube gated `unavailable`.
 
 ### Phase 3: Mock Data Quality (Low Priority)
 ```bash
@@ -241,12 +267,15 @@ function generateMockMetrics() {
 
 ### ⚠️ **Needs Attention**
 - Two AI endpoints bypass fallback system
-- Social provider analytics always use mocks
+- ~~Social provider analytics always use mocks~~ — ✅ RESOLVED (ADR-0009): mock analytics
+  removed; providers fail honestly instead of fabricating
 - Inconsistent mock data quality across endpoints
 
 ### 🔴 **Critical Issues**
 - `simpleAIService` will fail without proper error handling
-- No real social media analytics despite API key availability
+- ~~No real social media analytics despite API key availability~~ — ✅ RESOLVED (ADR-0009):
+  providers call the real analytics APIs; on failure they return `success: false` rather than
+  fabricated data (live results require configured credentials + platform approval)
 - Mixed expectations for real vs mock data
 
 ---
@@ -277,7 +306,7 @@ MOCK_DATA_QUALITY=high
 
 ---
 
-**Last Updated**: October 15, 2025
-**Next Review**: When implementing real social media API integrations
+**Last Updated**: July 4, 2026 (ADR-0009 social-provider mock-analytics items marked resolved)
+**Next Review**: When the gated platforms (LinkedIn/TikTok/YouTube) reach their completion phases
 **Maintainer**: Development Team
-**Status**: 🟡 Active Monitoring Required
+**Status**: 🟡 Active Monitoring Required (AI-service `simpleAIService` items still open; social-provider mock analytics resolved)

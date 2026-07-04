@@ -1,15 +1,24 @@
+import crypto from 'crypto'
 import { BaseSocialMediaProvider } from './base-provider'
-import { 
-  Platform, 
-  APIResponse, 
-  SocialAccount, 
-  PostOptions, 
+import {
+  Platform,
+  APIResponse,
+  SocialAccount,
+  PostOptions,
   PublishedPost,
   UserProfile,
   MediaItem,
   AnalyticsData,
+  InboxReplyTarget,
   ValidationError
 } from './types'
+// PKCE verifier persistence (ADR-0009 Phase 0.6 / 1.1): verifiers are stored in
+// Redis keyed by the OAuth `state` with a 10-minute TTL, then read back during
+// token exchange. Provided by src/lib/social/pkce-store.ts.
+import { storePkceVerifier, getPkceVerifier } from '@/lib/social/pkce-store'
+// Real media upload (ADR-0009 Phase 1.2): source bytes from the ADR-0007 storage
+// layer so the chunked v1.1 upload sends real data — never a fabricated media id.
+import { resolveMediaBytes } from './media-bytes'
 
 interface TwitterConfig {
   clientId: string
@@ -85,31 +94,58 @@ export class TwitterProvider extends BaseSocialMediaProvider {
     this.bearerToken = config.bearerToken
   }
   
-  getAuthUrl(redirectUri: string, scopes: string[] = ['tweet.read', 'tweet.write', 'users.read', 'offline.access']): string {
+  getAuthUrl(
+    redirectUri: string,
+    scopes: string[] = ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+    state?: string
+  ): string {
+    // ADR-0009: use the caller's HMAC-signed `state` when present so a SINGLE
+    // state round-trips — the callback both verifies it (recovering
+    // workspaceId/userId) AND finds the PKCE verifier keyed by it. Minting a
+    // second state here (the old bug) split those two needs across two
+    // different, conflicting `state` values and broke token exchange. Only
+    // stateless callers fall back to a self-minted nonce.
+    const oauthState = state ?? this.generateState()
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.clientId,
       redirect_uri: redirectUri,
       scope: scopes.join(' '),
-      state: this.generateState(),
+      state: oauthState,
       code_challenge_method: 'S256',
-      code_challenge: this.generateCodeChallenge()
+      code_challenge: this.generateCodeChallenge(oauthState)
     })
-    
+
     return `https://twitter.com/i/oauth2/authorize?${params.toString()}`
   }
   
-  async exchangeCodeForToken(code: string, redirectUri: string): Promise<APIResponse<SocialAccount>> {
+  async exchangeCodeForToken(code: string, redirectUri: string, state?: string): Promise<APIResponse<SocialAccount>> {
     const tokenUrl = 'https://api.twitter.com/2/oauth2/token'
-    
+
+    // PKCE: recover the verifier persisted (keyed by the OAuth `state`) when the
+    // authorization URL was minted. Without it we cannot satisfy Twitter's S256
+    // PKCE requirement — fail honestly rather than sending an invalid grant.
+    const codeVerifier = state ? await this.getStoredCodeVerifier(state) : null
+    if (!codeVerifier) {
+      return {
+        success: false,
+        error: {
+          code: 'PKCE_VERIFIER_MISSING',
+          message:
+            'PKCE code_verifier not found for this OAuth state (missing state, or the ' +
+            '10-minute TTL expired). Restart the connect flow.'
+        }
+      }
+    }
+
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: this.clientId,
       code,
       redirect_uri: redirectUri,
-      code_verifier: this.getStoredCodeVerifier() // In real implementation, retrieve from secure storage
+      code_verifier: codeVerifier
     })
-    
+
     try {
       const response = await this.makeRequest<{
         access_token: string
@@ -370,6 +406,66 @@ export class TwitterProvider extends BaseSocialMediaProvider {
     }
   }
   
+  /**
+   * Reply to an ingested inbox item by posting a reply tweet (X API v2
+   * POST /2/tweets with `reply.in_reply_to_tweet_id`). Without valid credentials
+   * the underlying request fails honestly (4xx) and this returns success:false —
+   * never a fabricated success (ADR-0009 Phase 1.5).
+   */
+  async replyToItem(
+    account: SocialAccount,
+    item: InboxReplyTarget,
+    text: string
+  ): Promise<APIResponse<{ id: string }>> {
+    if (!item.providerItemId) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_TARGET',
+          message: 'No target tweet id (providerItemId) to reply to'
+        }
+      }
+    }
+
+    try {
+      const response = await this.makeRequest<{
+        data: { id: string; text: string }
+      }>('/tweets', {
+        method: 'POST',
+        body: JSON.stringify({
+          text,
+          reply: { in_reply_to_tweet_id: item.providerItemId }
+        })
+      }, account)
+
+      if (!response.success || !response.data?.data) {
+        return {
+          success: false,
+          error: response.error || {
+            code: 'REPLY_FAILED',
+            message: 'Failed to post reply tweet'
+          },
+          rateLimit: response.rateLimit
+        }
+      }
+
+      return {
+        success: true,
+        data: { id: response.data.data.id },
+        rateLimit: response.rateLimit
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'REPLY_FAILED',
+          message: error instanceof Error ? error.message : 'Failed to post reply tweet',
+          details: error
+        }
+      }
+    }
+  }
+
   async deletePost(account: SocialAccount, postId: string): Promise<APIResponse<boolean>> {
     try {
       const response = await this.makeRequest<{
@@ -476,28 +572,179 @@ export class TwitterProvider extends BaseSocialMediaProvider {
     }
   }
   
+  /**
+   * Real X/Twitter media upload via the v1.1 chunked `media/upload` protocol
+   * (INIT → APPEND(s) → FINALIZE, plus a processing-status poll for video/GIF).
+   * Bytes are sourced from the ADR-0007 storage layer (`resolveMediaBytes`).
+   *
+   * HONESTY (ADR-0009): this NEVER returns a fabricated media id — the previous
+   * `mock_media_...` stub is gone. Without a valid access token, without real
+   * bytes, or on any API error, it returns `success:false` with a clear message.
+   * Live verification against the real endpoint is DEFERRED until X API
+   * credentials exist; the code is written to the documented v1.1 contract.
+   */
   async uploadMedia(account: SocialAccount, media: MediaItem): Promise<APIResponse<{ mediaId: string }>> {
+    if (!account.accessToken) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_CREDENTIALS',
+          message: 'Twitter media upload requires a connected account access token.'
+        }
+      }
+    }
+
     try {
-      // Twitter uses v1.1 API for media upload
-      const uploadUrl = 'https://upload.twitter.com/1.1/media/upload.json'
-      
-      // For simplicity, we'll simulate the upload process
-      // In a real implementation, you'd handle the actual file upload
-      const mockMediaId = `mock_media_${Date.now()}_${Math.random().toString(36).substring(7)}`
-      
+      // Read the real bytes (throws honestly if they cannot be resolved).
+      const { buffer, mimeType } = await resolveMediaBytes(media)
+      const mediaId = await this.uploadMediaChunked(
+        account.accessToken,
+        buffer,
+        mimeType,
+        media.type
+      )
       return {
         success: true,
-        data: { mediaId: mockMediaId }
+        data: { mediaId }
       }
     } catch (error) {
       return {
         success: false,
         error: {
           code: 'MEDIA_UPLOAD_FAILED',
-          message: 'Failed to upload media',
+          message: error instanceof Error ? error.message : 'Failed to upload media',
           details: error
         }
       }
+    }
+  }
+
+  /** X media_category for the chunked upload INIT command. */
+  private twitterMediaCategory(mimeType: string, type: MediaItem['type']): string {
+    if (type === 'gif' || mimeType === 'image/gif') return 'tweet_gif'
+    if (type === 'video' || mimeType.startsWith('video/')) return 'tweet_video'
+    return 'tweet_image'
+  }
+
+  /**
+   * Chunked v1.1 media upload. Uses the account's OAuth2 user-context bearer
+   * token (scope `media.write`). Throws on any non-2xx so `uploadMedia` maps it
+   * to an honest failure. Returns the `media_id_string` on success.
+   */
+  private async uploadMediaChunked(
+    accessToken: string,
+    buffer: Buffer,
+    mimeType: string,
+    type: MediaItem['type']
+  ): Promise<string> {
+    const UPLOAD_URL = 'https://upload.twitter.com/1.1/media/upload.json'
+    const authHeader = { Authorization: `Bearer ${accessToken}` }
+    const totalBytes = buffer.byteLength
+    if (totalBytes === 0) {
+      throw new Error('Media is empty (0 bytes); nothing to upload')
+    }
+    const category = this.twitterMediaCategory(mimeType, type)
+
+    const safeText = async (res: Response): Promise<string> => {
+      try {
+        return (await res.text()).slice(0, 500)
+      } catch {
+        return ''
+      }
+    }
+
+    // INIT — reserve a media id and declare total size + type.
+    const initBody = new URLSearchParams({
+      command: 'INIT',
+      total_bytes: String(totalBytes),
+      media_type: mimeType,
+      media_category: category
+    })
+    const initRes = await fetch(UPLOAD_URL, {
+      method: 'POST',
+      headers: { ...authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: initBody.toString()
+    })
+    if (!initRes.ok) {
+      throw new Error(`Twitter media INIT failed: HTTP ${initRes.status} ${await safeText(initRes)}`)
+    }
+    const initJson = (await initRes.json()) as { media_id_string?: string }
+    const mediaId = initJson.media_id_string
+    if (!mediaId) {
+      throw new Error('Twitter media INIT returned no media_id_string')
+    }
+
+    // APPEND — upload the bytes in ordered chunks (<= 5MB each per X limits).
+    const CHUNK_SIZE = 5 * 1024 * 1024
+    let segmentIndex = 0
+    for (let offset = 0; offset < totalBytes; offset += CHUNK_SIZE) {
+      const chunk = buffer.subarray(offset, Math.min(offset + CHUNK_SIZE, totalBytes))
+      const form = new FormData()
+      form.append('command', 'APPEND')
+      form.append('media_id', mediaId)
+      form.append('segment_index', String(segmentIndex))
+      form.append('media', new Blob([chunk], { type: 'application/octet-stream' }))
+      const appendRes = await fetch(UPLOAD_URL, { method: 'POST', headers: authHeader, body: form })
+      if (!appendRes.ok) {
+        throw new Error(
+          `Twitter media APPEND (segment ${segmentIndex}) failed: HTTP ${appendRes.status} ${await safeText(appendRes)}`
+        )
+      }
+      segmentIndex++
+    }
+
+    // FINALIZE — assemble the chunks; may kick off async processing for video/GIF.
+    const finalizeBody = new URLSearchParams({ command: 'FINALIZE', media_id: mediaId })
+    const finalizeRes = await fetch(UPLOAD_URL, {
+      method: 'POST',
+      headers: { ...authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: finalizeBody.toString()
+    })
+    if (!finalizeRes.ok) {
+      throw new Error(`Twitter media FINALIZE failed: HTTP ${finalizeRes.status} ${await safeText(finalizeRes)}`)
+    }
+    const finalizeJson = (await finalizeRes.json()) as {
+      processing_info?: { state?: string; check_after_secs?: number; error?: { message?: string } }
+    }
+
+    // Async processing (typically video/GIF): poll STATUS until succeeded/failed.
+    if (finalizeJson.processing_info) {
+      await this.pollMediaProcessing(UPLOAD_URL, authHeader, mediaId, finalizeJson.processing_info, safeText)
+    }
+
+    return mediaId
+  }
+
+  /** Poll v1.1 media/upload STATUS until processing succeeds; throw on failure/timeout. */
+  private async pollMediaProcessing(
+    uploadUrl: string,
+    authHeader: { Authorization: string },
+    mediaId: string,
+    initialInfo: { state?: string; check_after_secs?: number; error?: { message?: string } },
+    safeText: (res: Response) => Promise<string>
+  ): Promise<void> {
+    let info = initialInfo
+    const MAX_POLLS = 20
+    for (let attempt = 0; info && (info.state === 'pending' || info.state === 'in_progress'); attempt++) {
+      if (attempt >= MAX_POLLS) {
+        throw new Error(`Twitter media processing did not complete after ${MAX_POLLS} polls (media_id ${mediaId})`)
+      }
+      const waitMs = Math.max(1, info.check_after_secs ?? 1) * 1000
+      await this.wait(waitMs)
+      const statusRes = await fetch(
+        `${uploadUrl}?command=STATUS&media_id=${encodeURIComponent(mediaId)}`,
+        { method: 'GET', headers: authHeader }
+      )
+      if (!statusRes.ok) {
+        throw new Error(`Twitter media STATUS failed: HTTP ${statusRes.status} ${await safeText(statusRes)}`)
+      }
+      const statusJson = (await statusRes.json()) as {
+        processing_info?: { state?: string; check_after_secs?: number; error?: { message?: string } }
+      }
+      info = statusJson.processing_info ?? { state: 'succeeded' }
+    }
+    if (info && info.state === 'failed') {
+      throw new Error(`Twitter media processing failed: ${info.error?.message ?? 'unknown error'}`)
     }
   }
   
@@ -506,29 +753,117 @@ export class TwitterProvider extends BaseSocialMediaProvider {
     endDate: Date
     metrics?: string[]
   }): Promise<APIResponse<AnalyticsData>> {
-    // Twitter Analytics API is quite limited and mostly requires special access
-    // This is a mock implementation
-    return {
-      success: true,
-      data: {
-        period: {
-          start: options.startDate,
-          end: options.endDate
+    // Real X/Twitter API v2 analytics: fetch the account's recent tweets and
+    // aggregate their public_metrics. NEVER fabricate data — on missing creds
+    // or any API failure this returns { success: false } so callers can never
+    // mistake fiction for real metrics (ADR-0009 honesty-over-coverage rule).
+    if (!account.accessToken) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_CREDENTIALS',
+          message: 'Twitter analytics unavailable: account has no access token. Connect the account first.'
+        }
+      }
+    }
+
+    if (!account.platformId) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_ACCOUNT_ID',
+          message: 'Twitter analytics unavailable: account is missing its platform user id.'
+        }
+      }
+    }
+
+    try {
+      const params: Record<string, any> = {
+        'tweet.fields': 'created_at,public_metrics',
+        max_results: 100,
+        start_time: options.startDate.toISOString(),
+        end_time: options.endDate.toISOString()
+      }
+
+      const queryString = this.buildQueryParams(params)
+      const response = await this.makeRequest<{
+        data?: TwitterTweet[]
+        meta?: { result_count: number }
+      }>(`/users/${account.platformId}/tweets?${queryString}`, {
+        method: 'GET'
+      }, account)
+
+      if (!response.success) {
+        return {
+          success: false,
+          error: response.error || {
+            code: 'ANALYTICS_FETCH_FAILED',
+            message: 'Twitter analytics request failed'
+          },
+          rateLimit: response.rateLimit
+        }
+      }
+
+      const tweets = response.data?.data ?? []
+
+      const aggregate = {
+        impressions: 0,
+        engagements: 0,
+        likes: 0,
+        shares: 0,
+        comments: 0,
+        views: 0,
+        reach: 0
+      }
+
+      const perPost = tweets.map(tweet => {
+        const m = tweet.public_metrics
+        const likes = m?.like_count ?? 0
+        const shares = (m?.retweet_count ?? 0) + (m?.quote_count ?? 0)
+        const comments = m?.reply_count ?? 0
+        const impressions = m?.impression_count ?? 0
+        const engagement = likes + shares + comments
+
+        aggregate.likes += likes
+        aggregate.shares += shares
+        aggregate.comments += comments
+        aggregate.engagements += engagement
+        aggregate.impressions += impressions
+        aggregate.views += impressions
+
+        return { id: tweet.id, engagement, impressions }
+      })
+
+      // Twitter has no public follower-reach metric per tweet; impressions is
+      // the closest honest proxy and is only populated when the token tier
+      // grants impression_count. Leave it as the summed real value (0 if the
+      // tier does not return it) rather than inventing a number.
+      aggregate.reach = aggregate.impressions
+
+      const topPosts = perPost
+        .sort((a, b) => b.engagement - a.engagement)
+        .slice(0, 5)
+
+      return {
+        success: true,
+        data: {
+          period: {
+            start: options.startDate,
+            end: options.endDate
+          },
+          metrics: aggregate,
+          topPosts
         },
-        metrics: {
-          impressions: Math.floor(Math.random() * 50000) + 10000,
-          engagements: Math.floor(Math.random() * 5000) + 1000,
-          likes: Math.floor(Math.random() * 3000) + 500,
-          shares: Math.floor(Math.random() * 1000) + 100,
-          comments: Math.floor(Math.random() * 500) + 50,
-          views: Math.floor(Math.random() * 75000) + 15000,
-          reach: Math.floor(Math.random() * 40000) + 8000
-        },
-        topPosts: [
-          { id: 'tweet1', engagement: 450, impressions: 12000 },
-          { id: 'tweet2', engagement: 380, impressions: 9500 },
-          { id: 'tweet3', engagement: 290, impressions: 7800 }
-        ]
+        rateLimit: response.rateLimit
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'ANALYTICS_FETCH_FAILED',
+          message: error instanceof Error ? error.message : 'Failed to fetch Twitter analytics',
+          details: error
+        }
       }
     }
   }
@@ -624,14 +959,29 @@ export class TwitterProvider extends BaseSocialMediaProvider {
     return mediaIds
   }
   
-  private generateCodeChallenge(): string {
-    // In a real implementation, you'd generate a proper PKCE code challenge
-    return 'mock_code_challenge'
+  /**
+   * Real S256 PKCE (RFC 7636). Generates a cryptographically random verifier,
+   * derives `challenge = base64url(sha256(verifier))`, and persists the verifier
+   * keyed by the OAuth `state` (10-minute TTL, handled by the pkce-store) so the
+   * callback can read it back at token exchange. Returns the challenge for the
+   * authorization URL.
+   *
+   * `getAuthUrl` is synchronous per the SocialMediaProvider contract, so the
+   * Redis write cannot be awaited here; the human OAuth round-trip (seconds) far
+   * exceeds the write latency, and any write error is surfaced via `.catch`.
+   */
+  private generateCodeChallenge(state: string): string {
+    const verifier = crypto.randomBytes(32).toString('base64url')
+    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url')
+    void storePkceVerifier(state, verifier).catch((err) => {
+      console.error('[twitter-pkce] failed to persist PKCE verifier for state', err)
+    })
+    return challenge
   }
-  
-  private getStoredCodeVerifier(): string {
-    // In a real implementation, you'd retrieve the stored code verifier
-    return 'mock_code_verifier'
+
+  /** Read back the PKCE verifier stored (keyed by `state`) when the auth URL was minted. */
+  private async getStoredCodeVerifier(state: string): Promise<string | null> {
+    return getPkceVerifier(state)
   }
   
   protected getMaxTextLength(): number {

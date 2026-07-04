@@ -53,12 +53,17 @@ export async function GET(request: NextRequest) {
     const provider = stateCheck.payload.provider as Platform
 
     try {
-      // Exchange authorization code for access token
+      // Exchange authorization code for access token.
+      // ADR-0009: pass the same signed `state` we just verified so PKCE
+      // providers (Twitter/X) can recover the code_verifier stored keyed by it.
+      // This is the SINGLE state that round-tripped — no longer split from the
+      // PKCE key by a second appended state.
       const redirectUri = `${process.env.NEXTAUTH_URL}/api/accounts/callback`
       const tokenResult = await socialMediaManager.exchangeCodeForToken(
         provider,
         code,
-        redirectUri
+        redirectUri,
+        state
       )
 
       if (!tokenResult.success || !tokenResult.data) {

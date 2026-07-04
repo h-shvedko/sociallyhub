@@ -116,6 +116,23 @@ export interface PublishedPost {
   error?: string
 }
 
+/**
+ * Target of an outbound inbox reply (ADR-0009 Phase 1.5 / 2.4).
+ *
+ * Carries the platform-side identifiers a provider needs to attach a reply to the
+ * original comment / mention / message. Deliberately decoupled from the Prisma
+ * `InboxItem` row so the provider layer stays free of DB types — the caller
+ * (`/api/inbox/[id]/reply`) maps the row onto this shape.
+ */
+export interface InboxReplyTarget {
+  /** The provider's ID for the item being replied to (comment/tweet/message id). */
+  providerItemId: string
+  /** Thread/conversation ID from the platform, when available. */
+  providerThreadId?: string | null
+  /** The kind of inbox item — mirrors the Prisma `InboxItemType` (COMMENT, MENTION, …). */
+  type?: string
+}
+
 export interface UserProfile {
   id: string
   username: string
@@ -183,9 +200,14 @@ export interface SocialMediaProvider {
   platform: Platform
   name: string
   
-  // Authentication
-  getAuthUrl(redirectUri: string, scopes?: string[]): string
-  exchangeCodeForToken(code: string, redirectUri: string): Promise<APIResponse<SocialAccount>>
+  // Authentication.
+  // `state` (ADR-0009): when supplied by the connect route it is the single,
+  // HMAC-signed OAuth state the provider MUST embed in the authorization URL
+  // (and, for PKCE providers, key the code_verifier by) so exactly ONE state
+  // round-trips to the callback. `exchangeCodeForToken` receives that same
+  // state back so PKCE providers can recover the stored verifier.
+  getAuthUrl(redirectUri: string, scopes?: string[], state?: string): string
+  exchangeCodeForToken(code: string, redirectUri: string, state?: string): Promise<APIResponse<SocialAccount>>
   refreshAccessToken(account: SocialAccount): Promise<APIResponse<SocialAccount>>
   
   // Account Management
@@ -225,6 +247,9 @@ export interface SocialMediaProvider {
   // Engagement
   getComments(account: SocialAccount, postId: string): Promise<APIResponse<any[]>>
   replyToComment(account: SocialAccount, commentId: string, text: string): Promise<APIResponse<any>>
+  // Reply to an ingested inbox item (comment/mention/message). Providers that
+  // cannot yet post replies return `success: false` — never a fabricated success.
+  replyToItem(account: SocialAccount, item: InboxReplyTarget, text: string): Promise<APIResponse<{ id: string }>>
   
   // Rate Limiting
   getRateLimit(account: SocialAccount): Promise<APIResponse<RateLimitInfo>>

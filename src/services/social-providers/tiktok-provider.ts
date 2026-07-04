@@ -92,13 +92,15 @@ export class TikTokProvider extends BaseSocialMediaProvider {
     'video.list',
     'video.upload',
     'user.info.stats'
-  ]): string {
+  ], state?: string): string {
     const params = new URLSearchParams({
       client_key: this.clientKey,
       response_type: 'code',
       scope: scopes.join(','),
       redirect_uri: redirectUri,
-      state: this.generateState()
+      // ADR-0009: embed the caller's signed state when provided so a single
+      // state param round-trips to the callback for verification.
+      state: state ?? this.generateState()
     })
     
     return `https://www.tiktok.com/auth/authorize/?${params.toString()}`
@@ -498,26 +500,20 @@ export class TikTokProvider extends BaseSocialMediaProvider {
     }
   }
   
-  async getAnalytics(account: SocialAccount, options: {
+  async getAnalytics(_account: SocialAccount, _options: {
     startDate: Date
     endDate: Date
     metrics?: string[]
   }): Promise<APIResponse<AnalyticsData>> {
-    try {
-      // TikTok analytics require additional permissions and have limited availability
-      // This returns mock data for demonstration
-      return {
-        success: true,
-        data: this.generateMockAnalytics(options.startDate, options.endDate)
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: {
-          code: 'ANALYTICS_FETCH_FAILED',
-          message: 'Failed to fetch TikTok analytics',
-          details: error
-        }
+    // Honesty over coverage (ADR-0009): TikTok is a gated platform in the
+    // depth-first plan (Twitter/X + Meta first). Its analytics require extra
+    // permissions/audit that are not yet wired up, so we FAIL HONESTLY rather
+    // than fabricate metrics.
+    return {
+      success: false,
+      error: {
+        code: 'PLATFORM_GATED',
+        message: 'TikTok analytics are not yet available (ADR-0009 gates this platform until its completion phase).'
       }
     }
   }
@@ -572,48 +568,6 @@ export class TikTokProvider extends BaseSocialMediaProvider {
           details: error
         }
       }
-    }
-  }
-  
-  // TikTok-specific methods
-  private generateMockAnalytics(startDate: Date, endDate: Date): AnalyticsData {
-    return {
-      period: { start: startDate, end: endDate },
-      metrics: {
-        impressions: Math.floor(Math.random() * 500000) + 100000,
-        engagements: Math.floor(Math.random() * 50000) + 10000,
-        likes: Math.floor(Math.random() * 30000) + 8000,
-        shares: Math.floor(Math.random() * 10000) + 2000,
-        comments: Math.floor(Math.random() * 5000) + 1000,
-        views: Math.floor(Math.random() * 1000000) + 200000,
-        reach: Math.floor(Math.random() * 400000) + 80000
-      },
-      demographics: {
-        ageGroups: {
-          '13-17': 25,
-          '18-24': 35,
-          '25-34': 25,
-          '35-44': 10,
-          '45+': 5
-        },
-        genders: {
-          male: 48,
-          female: 50,
-          other: 2
-        },
-        locations: {
-          'United States': 30,
-          'Brazil': 12,
-          'Mexico': 10,
-          'India': 8,
-          'Other': 40
-        }
-      },
-      topPosts: [
-        { id: 'tiktok_video_1', engagement: 15000, impressions: 250000 },
-        { id: 'tiktok_video_2', engagement: 12000, impressions: 180000 },
-        { id: 'tiktok_video_3', engagement: 9500, impressions: 150000 }
-      ]
     }
   }
   

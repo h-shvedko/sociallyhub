@@ -42,7 +42,7 @@ const HEARTBEAT_REFRESH_MS = 20_000
 const SHUTDOWN_TIMEOUT_MS = 30_000
 
 /** Queues this worker hosts today (for the startup banner / logs). */
-const HOSTED_QUEUES = ['post-scheduling', 'analytics-collection', 'notification-dispatch']
+const HOSTED_QUEUES = ['post-scheduling', 'analytics-collection', 'notification-dispatch', 'inbox-sync']
 
 let heartbeatTimer: NodeJS.Timeout | null = null
 let heartbeatRedis: Redis | null = null
@@ -98,6 +98,7 @@ async function syncRepeatableJobs(): Promise<void> {
     'syncRepeatableJobs',
     'syncClientReportSchedules',
     'scheduleReconcileScheduledPosts',
+    'scheduleInboxSync',
   ]
 
   const ran: string[] = []

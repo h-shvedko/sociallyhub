@@ -1,15 +1,19 @@
 import { BaseSocialMediaProvider } from './base-provider'
-import { 
-  Platform, 
-  APIResponse, 
-  SocialAccount, 
-  PostOptions, 
+import {
+  Platform,
+  APIResponse,
+  SocialAccount,
+  PostOptions,
   PublishedPost,
   UserProfile,
   MediaItem,
   AnalyticsData,
+  InboxReplyTarget,
   ValidationError
 } from './types'
+// Real media upload (ADR-0009 Phase 2.1): source bytes from the ADR-0007 storage
+// layer so the Page /photos|/videos upload sends real data — never a fake id.
+import { resolveMediaBytes } from './media-bytes'
 
 interface FacebookConfig {
   appId: string
@@ -83,18 +87,20 @@ export class FacebookProvider extends BaseSocialMediaProvider {
   }
   
   getAuthUrl(redirectUri: string, scopes: string[] = [
-    'pages_manage_posts', 
-    'pages_read_engagement', 
+    'pages_manage_posts',
+    'pages_read_engagement',
     'pages_read_user_content',
     'pages_show_list',
     'publish_to_groups'
-  ]): string {
+  ], state?: string): string {
     const params = new URLSearchParams({
       client_id: this.appId,
       redirect_uri: redirectUri,
       scope: scopes.join(','),
       response_type: 'code',
-      state: this.generateState()
+      // ADR-0009: embed the caller's signed state so a single state param
+      // round-trips to the callback for verification (Meta uses no PKCE).
+      state: state ?? this.generateState()
     })
     
     return `https://www.facebook.com/v18.0/dialog/oauth?${params.toString()}`
@@ -369,6 +375,64 @@ export class FacebookProvider extends BaseSocialMediaProvider {
     }
   }
   
+  /**
+   * Reply to an ingested inbox item by posting a comment on the target object
+   * (Graph API POST /{object_id}/comments). Used for replying to Page-post
+   * comments and mentions. Without valid credentials the underlying request
+   * fails honestly and this returns success:false — never a fabricated success
+   * (ADR-0009 Phase 2.4).
+   */
+  async replyToItem(
+    account: SocialAccount,
+    item: InboxReplyTarget,
+    text: string
+  ): Promise<APIResponse<{ id: string }>> {
+    if (!item.providerItemId) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_TARGET',
+          message: 'No target object id (providerItemId) to reply to'
+        }
+      }
+    }
+
+    try {
+      const response = await this.makeRequest<{
+        id: string
+      }>(`/${item.providerItemId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ message: text })
+      }, account)
+
+      if (!response.success || !response.data?.id) {
+        return {
+          success: false,
+          error: response.error || {
+            code: 'REPLY_FAILED',
+            message: 'Failed to post Facebook comment reply'
+          },
+          rateLimit: response.rateLimit
+        }
+      }
+
+      return {
+        success: true,
+        data: { id: response.data.id },
+        rateLimit: response.rateLimit
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'REPLY_FAILED',
+          message: error instanceof Error ? error.message : 'Failed to post Facebook comment reply',
+          details: error
+        }
+      }
+    }
+  }
+
   async getPosts(account: SocialAccount, options?: {
     limit?: number
     cursor?: string
@@ -446,22 +510,76 @@ export class FacebookProvider extends BaseSocialMediaProvider {
     }
   }
   
+  /**
+   * Real Facebook Page media upload. Uploads the file BYTES (from the ADR-0007
+   * storage layer) as multipart `source` to the Page's `/photos` (image, with
+   * `published=false` so the returned id is a reusable `media_fbid`) or `/videos`
+   * (video) edge, using the Page access token.
+   *
+   * HONESTY (ADR-0009): NEVER returns a fabricated media id — the previous
+   * `fb_media_...` stub is gone. Without a Page token, without real bytes, or on
+   * any Graph API error, it returns `success:false` with the platform error.
+   * Live verification is DEFERRED until Meta app credentials + a Page exist; the
+   * code is written to the documented Graph API contract.
+   */
   async uploadMedia(account: SocialAccount, media: MediaItem): Promise<APIResponse<{ mediaId: string }>> {
     try {
-      // Facebook handles media upload differently depending on the context
-      // For simplicity, we'll return a mock ID that would be used in actual posting
-      const mockMediaId = `fb_media_${Date.now()}_${Math.random().toString(36).substring(7)}`
-      
+      const pageId = this.getDefaultPageId(account)
+      const pageToken = this.getTargetAccessToken(account, pageId)
+      if (!pageToken) {
+        return {
+          success: false,
+          error: {
+            code: 'MISSING_CREDENTIALS',
+            message: 'Facebook media upload requires a Page access token; connect a Page first.'
+          }
+        }
+      }
+
+      // Read the real bytes (throws honestly if they cannot be resolved).
+      const { buffer, mimeType } = await resolveMediaBytes(media)
+      const isVideo = media.type === 'video' || mimeType.startsWith('video/')
+      const endpoint = `${this.baseURL}/${pageId}/${isVideo ? 'videos' : 'photos'}`
+
+      const form = new FormData()
+      form.append('access_token', pageToken)
+      // Unpublished upload → the returned id is reusable as a media_fbid at post time.
+      form.append('published', 'false')
+      if (!isVideo && media.altText) {
+        form.append('alt_text_custom', media.altText)
+      }
+      form.append(
+        'source',
+        new Blob([buffer], { type: mimeType }),
+        isVideo ? 'upload.mp4' : 'upload'
+      )
+
+      const res = await fetch(endpoint, { method: 'POST', body: form })
+      const json = (await res.json().catch(() => null)) as
+        | { id?: string; error?: { message?: string } }
+        | null
+
+      if (!res.ok || !json?.id) {
+        return {
+          success: false,
+          error: {
+            code: 'MEDIA_UPLOAD_FAILED',
+            message: json?.error?.message || `Facebook media upload failed: HTTP ${res.status}`,
+            details: json
+          }
+        }
+      }
+
       return {
         success: true,
-        data: { mediaId: mockMediaId }
+        data: { mediaId: json.id }
       }
     } catch (error) {
       return {
         success: false,
         error: {
           code: 'MEDIA_UPLOAD_FAILED',
-          message: 'Failed to upload media to Facebook',
+          message: error instanceof Error ? error.message : 'Failed to upload media to Facebook',
           details: error
         }
       }
@@ -506,13 +624,19 @@ export class FacebookProvider extends BaseSocialMediaProvider {
       }, account)
       
       if (!response.success || !response.data?.data) {
-        // Return mock data if insights aren't available
+        // Honesty over coverage (ADR-0009): never fabricate analytics. When the
+        // Insights API is unavailable, surface the real failure so callers can
+        // never mistake mock data for real metrics.
         return {
-          success: true,
-          data: this.generateMockAnalytics(options.startDate, options.endDate)
+          success: false,
+          error: response.error || {
+            code: 'ANALYTICS_UNAVAILABLE',
+            message: 'Facebook Insights returned no data for this page/period.'
+          },
+          rateLimit: response.rateLimit
         }
       }
-      
+
       const insightsData = response.data.data
       const analytics = this.processInsightsData(insightsData, options.startDate, options.endDate)
       
@@ -770,25 +894,6 @@ export class FacebookProvider extends BaseSocialMediaProvider {
         reach: metrics.reach || 0
       },
       topPosts: []
-    }
-  }
-  
-  private generateMockAnalytics(startDate: Date, endDate: Date): AnalyticsData {
-    return {
-      period: { start: startDate, end: endDate },
-      metrics: {
-        impressions: Math.floor(Math.random() * 100000) + 20000,
-        engagements: Math.floor(Math.random() * 10000) + 2000,
-        likes: Math.floor(Math.random() * 5000) + 1000,
-        shares: Math.floor(Math.random() * 2000) + 500,
-        comments: Math.floor(Math.random() * 1000) + 200,
-        reach: Math.floor(Math.random() * 80000) + 15000
-      },
-      topPosts: [
-        { id: 'fb_post_1', engagement: 850, impressions: 25000 },
-        { id: 'fb_post_2', engagement: 720, impressions: 18000 },
-        { id: 'fb_post_3', engagement: 650, impressions: 15000 }
-      ]
     }
   }
   

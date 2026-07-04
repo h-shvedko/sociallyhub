@@ -42,84 +42,78 @@ export async function POST(
       return NextResponse.json({ error: 'Account not found' }, { status: 404 })
     }
 
-    try {
-      // Check if account has a refresh token
-      if (!account.refreshToken) {
-        return NextResponse.json({ 
-          error: 'No refresh token available. Please reconnect the account.' 
-        }, { status: 400 })
-      }
-
-      // Try to refresh the token using the social media manager
-      const refreshResult = await socialMediaManager.refreshToken(
-        account.provider.toLowerCase() as any,
-        account.refreshToken
-      )
-
-      if (!refreshResult.success || !refreshResult.data) {
-        // Mark account as having token issues
-        await prisma.socialAccount.update({
-          where: { id: accountId },
-          data: { 
-            status: 'TOKEN_EXPIRED',
-            updatedAt: new Date()
-          }
-        })
-
-        return NextResponse.json({
-          error: 'Failed to refresh token. Please reconnect the account.',
-          needsReconnection: true
-        }, { status: 400 })
-      }
-
-      // Update the account with new tokens
-      const updatedAccount = await prisma.socialAccount.update({
-        where: { id: accountId },
-        data: {
-          accessToken: refreshResult.data.accessToken,
-          refreshToken: refreshResult.data.refreshToken || account.refreshToken,
-          tokenExpiry: refreshResult.data.expiresAt ? new Date(refreshResult.data.expiresAt) : null,
-          status: 'ACTIVE',
-          updatedAt: new Date()
-        },
-        include: {
-          client: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
-      })
-
-      console.log(`🔄 Refreshed token for ${account.displayName} (${account.provider})`)
-
+    // Fast-path: no refresh token stored → nothing to refresh with.
+    // (refreshAccount also enforces this; the early check avoids extra work and
+    // preserves the existing response.)
+    if (!account.refreshToken) {
       return NextResponse.json({
-        success: true,
-        account: {
-          ...updatedAccount,
-          // Don't expose sensitive token data
-          accessToken: undefined,
-          refreshToken: undefined
-        }
-      })
-    } catch (error) {
-      console.error('Token refresh failed:', error)
-      
-      // Mark account as having issues
+        error: 'No refresh token available. Please reconnect the account.',
+        code: 'NO_REFRESH_TOKEN',
+        needsReconnection: true
+      }, { status: 400 })
+    }
+
+    // Refresh via the DB-backed manager: it loads the account, decrypts the
+    // current tokens, resolves the workspace's provider credentials
+    // (PlatformCredentials → env), calls the provider's real refresh, and
+    // persists the ROTATED tokens ENCRYPTED (ADR-0006/0009). It returns an
+    // honest APIResponse — never a fabricated success.
+    const refreshResult = await socialMediaManager.refreshAccount(accountId)
+
+    if (!refreshResult.success) {
+      const code = refreshResult.error?.code
+      const message =
+        refreshResult.error?.message ||
+        'Failed to refresh token. Please reconnect the account.'
+
+      // Configuration/capability failures are NOT expired-token situations and
+      // must not surface as an opaque 500 — report the actionable reason.
+      if (code === 'PROVIDER_NOT_CONFIGURED') {
+        return NextResponse.json(
+          { error: message, code, needsReconnection: false },
+          { status: 400 }
+        )
+      }
+      if (code === 'PROVIDER_NOT_SUPPORTED' || code === 'REFRESH_NOT_SUPPORTED') {
+        return NextResponse.json(
+          { error: message, code, needsReconnection: true },
+          { status: 400 }
+        )
+      }
+
+      // Real token failures (no/blocked refresh token, decrypt failure, provider
+      // refused): flag the account so the UI prompts a reconnect.
       await prisma.socialAccount.update({
         where: { id: accountId },
-        data: { 
-          status: 'ERROR',
-          updatedAt: new Date()
-        }
+        data: { status: 'TOKEN_EXPIRED', updatedAt: new Date() }
       })
 
-      return NextResponse.json({
-        error: 'Token refresh failed. Please check your account connection.',
-        needsReconnection: true
-      }, { status: 500 })
+      return NextResponse.json(
+        { error: message, code, needsReconnection: true },
+        { status: 400 }
+      )
     }
+
+    // Success: refreshAccount already persisted the rotated (encrypted) tokens,
+    // tokenExpiry and status=ACTIVE. Return the sanitized account.
+    const updatedAccount = await prisma.socialAccount.findUnique({
+      where: { id: accountId },
+      include: { client: { select: { id: true, name: true } } }
+    })
+
+    console.log(`🔄 Refreshed token for ${account.displayName} (${account.provider})`)
+
+    return NextResponse.json({
+      success: true,
+      account: updatedAccount
+        ? {
+            ...updatedAccount,
+            // Don't expose sensitive token data
+            accessToken: undefined,
+            refreshToken: undefined
+          }
+        : undefined
+    })
   } catch (error) {
     console.error('Account refresh error:', error)
     return NextResponse.json(

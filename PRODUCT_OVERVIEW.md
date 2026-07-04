@@ -10,10 +10,15 @@
 
 ### 1. **Multi-Platform Social Media Management**
 
-Manage all your social media accounts from a single, intuitive dashboard:
+Manage your social media accounts from a single, intuitive dashboard:
 
-- **Supported Platforms**: Twitter, Facebook, Instagram, LinkedIn, YouTube, TikTok
-- **Unified Inbox**: Centralized hub for all social interactions across platforms
+- **Supported Platforms**: Twitter/X, Facebook, and Instagram are the platforms on the real
+  integration path (publishing, media upload, inbox, replies, and analytics). LinkedIn,
+  TikTok, and YouTube are **not yet available** — they are gated "coming soon" while their
+  integrations are completed (see ADR-0009). Connecting a real platform requires valid app
+  credentials plus platform approval (Meta App Review; a paid X API tier).
+- **Unified Inbox**: Centralized hub for social interactions (Meta webhooks + Twitter mention
+  polling on the supported platforms)
 - **Content Calendar**: Visual calendar for planning and scheduling posts across multiple accounts
 - **Multi-Account Management**: Handle unlimited social accounts with workspace isolation
 - **Real-Time Monitoring**: Track mentions, comments, and engagement as they happen
@@ -47,7 +52,9 @@ Create, execute, and optimize marketing campaigns with precision:
 Transform data into actionable insights:
 
 - **Custom Dashboards**: Drag-and-drop dashboard builder tailored to your needs
-- **Live Metrics**: Real-time performance tracking across all platforms
+- **Live Metrics**: Performance tracking on the supported platforms (Twitter/X, Facebook,
+  Instagram) — collected from the real platform APIs when credentials are configured. Metrics
+  are never fabricated: if a platform call fails, no mock numbers are substituted (ADR-0009).
 - **Professional Reports**: Automated reports in PDF, Excel, and CSV formats
 - **Engagement Analytics**: Track likes, shares, comments, and reach
 - **Audience Insights**: Understand demographics, behavior, and preferences
@@ -287,7 +294,9 @@ Real clients, real results:
 ## 🔗 Integrations
 
 ### Current Integrations
-- **Social Platforms**: Twitter, Facebook, Instagram, LinkedIn, YouTube, TikTok
+- **Social Platforms**: Twitter/X, Facebook, and Instagram on the real integration path
+  (credentials + platform approval required to go live). LinkedIn, YouTube, and TikTok are
+  gated **not yet available** (ADR-0009).
 - **Email**: SMTP integration for notifications and reports
 - **AI Services**: OpenAI for content intelligence
 - **Cloud Storage**: Local and cloud-based asset storage
@@ -323,8 +332,11 @@ Start small, grow to managing hundreds of accounts
 ### Client-Focused
 Purpose-built for agencies and service providers
 
-### Production-Ready
-Real database integration, zero mock data, enterprise-grade
+### Honest Integrations
+Real database integration, and an **honest** social-integration layer: where a platform
+operation cannot run for real (no credentials, or a gated platform), it fails clearly rather
+than returning fabricated data. Analytics no longer substitute mock numbers on failure
+(ADR-0009). Demo/simulated connections appear only when demo mode is explicitly enabled.
 
 ### Customizable
 White-label options make it truly yours

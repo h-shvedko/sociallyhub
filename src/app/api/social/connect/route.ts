@@ -44,35 +44,29 @@ async function handleConnect(request: NextRequest) {
     }
 
     try {
-      const authUrl = await socialMediaManager.getAuthUrl(
-        platform as any,
-        redirectUri,
-        getDefaultScopes(platform)
-      )
-
-      // ADR-0005 item 4: bind the OAuth `state` to this session + platform with
-      // an HMAC-signed, expiring token, and stamp it into the authorization URL
-      // (overwriting the provider's unbound placeholder state) so the provider
-      // echoes the signed value back to the callback, where we verify it.
+      // ADR-0005 item 4 / ADR-0009: bind the OAuth `state` to this session +
+      // platform FIRST, then hand it to getAuthUrl so the provider embeds it as
+      // the single `state` param (and, for Twitter/X, keys the PKCE verifier by
+      // it). Previously the provider minted its own state, keyed the PKCE
+      // verifier by that value, and we overwrote the URL's `state` afterwards —
+      // so the verifier was keyed by a discarded state and token exchange could
+      // never find it. One signed state now serves both needs.
       const signedState = signState({
         userId: session.user.id,
         provider: platform,
       })
 
-      let signedAuthUrl = authUrl
-      try {
-        const parsed = new URL(authUrl)
-        parsed.searchParams.set('state', signedState)
-        signedAuthUrl = parsed.toString()
-      } catch {
-        // If the provider returned a non-absolute URL we cannot rewrite it;
-        // the client must still send back `state` below for verification.
-      }
+      const authUrl = await socialMediaManager.getAuthUrl(
+        platform as any,
+        redirectUri,
+        getDefaultScopes(platform),
+        signedState
+      )
 
       return NextResponse.json({
         success: true,
         data: {
-          authUrl: signedAuthUrl,
+          authUrl,
           platform,
           redirectUri,
           // Also returned explicitly for clients that track state themselves;
@@ -158,10 +152,13 @@ async function handleCallback(request: NextRequest) {
     }
 
     try {
+      // ADR-0009: pass the verified signed `state` so PKCE providers (Twitter/X)
+      // can recover the code_verifier stored keyed by it.
       const result = await socialMediaManager.exchangeCodeForToken(
         platform,
         code,
-        redirectUri
+        redirectUri,
+        state
       )
 
       if (!result.success || !result.data) {

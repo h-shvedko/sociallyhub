@@ -8,6 +8,7 @@ import {
   UserProfile,
   MediaItem,
   AnalyticsData,
+  InboxReplyTarget,
   ValidationError
 } from './types'
 
@@ -80,14 +81,16 @@ export class InstagramProvider extends BaseSocialMediaProvider {
     'instagram_manage_insights',
     'pages_show_list',
     'pages_read_engagement'
-  ]): string {
+  ], state?: string): string {
     // Instagram Business API uses Facebook OAuth
     const params = new URLSearchParams({
       client_id: this.facebookAppId,
       redirect_uri: redirectUri,
       scope: scopes.join(','),
       response_type: 'code',
-      state: this.generateState()
+      // ADR-0009: embed the caller's signed state so a single state param
+      // round-trips to the callback for verification (Meta uses no PKCE).
+      state: state ?? this.generateState()
     })
     
     return `https://www.facebook.com/v18.0/dialog/oauth?${params.toString()}`
@@ -331,6 +334,63 @@ export class InstagramProvider extends BaseSocialMediaProvider {
     }
   }
   
+  /**
+   * Reply to an ingested inbox item by posting a reply on the target Instagram
+   * comment (Graph API POST /{ig-comment-id}/replies). Without valid credentials
+   * the underlying request fails honestly and this returns success:false — never
+   * a fabricated success (ADR-0009 Phase 2.4).
+   */
+  async replyToItem(
+    account: SocialAccount,
+    item: InboxReplyTarget,
+    text: string
+  ): Promise<APIResponse<{ id: string }>> {
+    if (!item.providerItemId) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_TARGET',
+          message: 'No target comment id (providerItemId) to reply to'
+        }
+      }
+    }
+
+    try {
+      const response = await this.makeRequest<{
+        id: string
+      }>(`/${item.providerItemId}/replies`, {
+        method: 'POST',
+        body: JSON.stringify({ message: text })
+      }, account)
+
+      if (!response.success || !response.data?.id) {
+        return {
+          success: false,
+          error: response.error || {
+            code: 'REPLY_FAILED',
+            message: 'Failed to post Instagram comment reply'
+          },
+          rateLimit: response.rateLimit
+        }
+      }
+
+      return {
+        success: true,
+        data: { id: response.data.id },
+        rateLimit: response.rateLimit
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'REPLY_FAILED',
+          message: error instanceof Error ? error.message : 'Failed to post Instagram comment reply',
+          details: error
+        }
+      }
+    }
+  }
+
   async getPosts(account: SocialAccount, options?: {
     limit?: number
     cursor?: string
@@ -408,26 +468,117 @@ export class InstagramProvider extends BaseSocialMediaProvider {
     }
   }
   
+  /**
+   * "Upload" media for Instagram. The IG Graph API has NO binary upload for feed
+   * media: you create a media *container* from a PUBLIC `image_url`/`video_url`
+   * that Meta fetches server-side, then publish it (at post time). So this
+   * creates the container and status-polls it, returning the container id
+   * (`creation_id`) as the media id.
+   *
+   * HONESTY (ADR-0009): NEVER returns a fabricated id — the previous
+   * `ig_media_...` stub is gone. A non-public URL (e.g. a local `/api/files/...`
+   * path Meta cannot reach) or missing credentials makes container creation fail
+   * → `success:false`. Live verification is DEFERRED until Meta credentials and a
+   * publicly-served media origin exist; the code follows the documented contract.
+   */
   async uploadMedia(account: SocialAccount, media: MediaItem): Promise<APIResponse<{ mediaId: string }>> {
     try {
-      // Instagram Business API requires media to be uploaded to Facebook first
-      // This is a simplified version - real implementation would handle file uploads
-      const mockMediaId = `ig_media_${Date.now()}_${Math.random().toString(36).substring(7)}`
-      
+      if (!account.accessToken) {
+        return {
+          success: false,
+          error: {
+            code: 'MISSING_CREDENTIALS',
+            message: 'Instagram media upload requires a connected account access token.'
+          }
+        }
+      }
+
+      const publicUrl = this.toPublicMediaUrl(media.url)
+      if (!publicUrl) {
+        return {
+          success: false,
+          error: {
+            code: 'MEDIA_URL_NOT_PUBLIC',
+            message:
+              `Instagram requires a public https media URL that Meta can fetch; ` +
+              `'${media.url}' is not publicly reachable. Serve media from a public ` +
+              `origin (set APP_PUBLIC_URL / a storage CDN) before publishing to Instagram.`
+          }
+        }
+      }
+
+      const isVideo = media.type === 'video'
+      const containerData: Record<string, unknown> = isVideo
+        ? { media_type: 'VIDEO', video_url: publicUrl }
+        : { image_url: publicUrl }
+
+      const containerResponse = await this.makeRequest<InstagramContainer>(
+        `/${account.platformId}/media`,
+        {
+          method: 'POST',
+          body: JSON.stringify(containerData)
+        },
+        account
+      )
+
+      if (!containerResponse.success || !containerResponse.data?.id) {
+        return {
+          success: false,
+          error: containerResponse.error || {
+            code: 'MEDIA_UPLOAD_FAILED',
+            message: 'Instagram media container creation failed'
+          },
+          rateLimit: containerResponse.rateLimit
+        }
+      }
+
+      const containerId = containerResponse.data.id
+      // Poll until Meta finishes ingesting the fetched media (throws on ERROR).
+      await this.waitForMediaProcessing(account, containerId)
+
       return {
         success: true,
-        data: { mediaId: mockMediaId }
+        data: { mediaId: containerId },
+        rateLimit: containerResponse.rateLimit
       }
     } catch (error) {
       return {
         success: false,
         error: {
           code: 'MEDIA_UPLOAD_FAILED',
-          message: 'Failed to upload media to Instagram',
+          message: error instanceof Error ? error.message : 'Failed to upload media to Instagram',
           details: error
         }
       }
     }
+  }
+
+  /**
+   * Resolve a MediaItem URL to a public HTTPS URL Meta can fetch, or null when it
+   * cannot be made public. Already-absolute https URLs pass through; root-relative
+   * paths are joined onto a configured public origin (APP_PUBLIC_URL /
+   * NEXT_PUBLIC_APP_URL / NEXTAUTH_URL), but localhost/loopback origins are
+   * rejected because Meta's servers cannot reach them.
+   */
+  private toPublicMediaUrl(url: string | undefined): string | null {
+    if (!url) return null
+    if (/^https:\/\//i.test(url)) return url
+
+    const base =
+      process.env.APP_PUBLIC_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXTAUTH_URL
+    if (base && url.startsWith('/')) {
+      try {
+        const abs = new URL(url, base)
+        const isHttps = abs.protocol.toLowerCase() === 'https:'
+        const isLocal = /^(localhost$|127\.|0\.0\.0\.0$|\[?::1\]?$)/i.test(abs.hostname)
+        if (isHttps && !isLocal) return abs.toString()
+      } catch {
+        /* fall through to null */
+      }
+    }
+    return null
   }
   
   async getAnalytics(account: SocialAccount, options: {
@@ -468,13 +619,19 @@ export class InstagramProvider extends BaseSocialMediaProvider {
       }, account)
       
       if (!response.success || !response.data?.data) {
-        // Return mock data if insights aren't available
+        // Honesty over coverage (ADR-0009): never fabricate analytics. When the
+        // Insights API is unavailable, surface the real failure so callers can
+        // never mistake mock data for real metrics.
         return {
-          success: true,
-          data: this.generateMockAnalytics(options.startDate, options.endDate)
+          success: false,
+          error: response.error || {
+            code: 'ANALYTICS_UNAVAILABLE',
+            message: 'Instagram Insights returned no data for this account/period.'
+          },
+          rateLimit: response.rateLimit
         }
       }
-      
+
       const insightsData = response.data.data
       const analytics = this.processInsightsData(insightsData, options.startDate, options.endDate)
       
@@ -732,25 +889,6 @@ export class InstagramProvider extends BaseSocialMediaProvider {
         clicks: metrics.clicks || 0
       },
       topPosts: []
-    }
-  }
-  
-  private generateMockAnalytics(startDate: Date, endDate: Date): AnalyticsData {
-    return {
-      period: { start: startDate, end: endDate },
-      metrics: {
-        impressions: Math.floor(Math.random() * 50000) + 10000,
-        engagements: Math.floor(Math.random() * 5000) + 1000,
-        likes: Math.floor(Math.random() * 3000) + 800,
-        shares: Math.floor(Math.random() * 500) + 100,
-        comments: Math.floor(Math.random() * 800) + 200,
-        reach: Math.floor(Math.random() * 40000) + 8000
-      },
-      topPosts: [
-        { id: 'ig_post_1', engagement: 1200, impressions: 15000 },
-        { id: 'ig_post_2', engagement: 980, impressions: 12000 },
-        { id: 'ig_post_3', engagement: 750, impressions: 9500 }
-      ]
     }
   }
   

@@ -120,13 +120,15 @@ export class LinkedInProvider extends BaseSocialMediaProvider {
     'w_member_social',
     'r_organization_social',
     'w_organization_social'
-  ]): string {
+  ], state?: string): string {
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.clientId,
       redirect_uri: redirectUri,
       scope: scopes.join(' '),
-      state: this.generateState()
+      // ADR-0009: embed the caller's signed state when provided so a single
+      // state param round-trips to the callback for verification.
+      state: state ?? this.generateState()
     })
     
     return `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
@@ -539,26 +541,20 @@ export class LinkedInProvider extends BaseSocialMediaProvider {
     }
   }
   
-  async getAnalytics(account: SocialAccount, options: {
+  async getAnalytics(_account: SocialAccount, _options: {
     startDate: Date
     endDate: Date
     metrics?: string[]
   }): Promise<APIResponse<AnalyticsData>> {
-    try {
-      // LinkedIn analytics are complex and require organization access
-      // This is a simplified version that returns mock data
-      return {
-        success: true,
-        data: this.generateMockAnalytics(options.startDate, options.endDate)
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: {
-          code: 'ANALYTICS_FETCH_FAILED',
-          message: 'Failed to fetch LinkedIn analytics',
-          details: error
-        }
+    // Honesty over coverage (ADR-0009): LinkedIn is a gated platform in the
+    // depth-first plan (Twitter/X + Meta first). Its Marketing Developer
+    // Platform analytics require organization access and app review that are
+    // not yet wired up, so we FAIL HONESTLY rather than fabricate metrics.
+    return {
+      success: false,
+      error: {
+        code: 'PLATFORM_GATED',
+        message: 'LinkedIn analytics are not yet available (ADR-0009 gates this platform until its completion phase).'
       }
     }
   }
@@ -643,47 +639,6 @@ export class LinkedInProvider extends BaseSocialMediaProvider {
     }
     
     return preparedMedia
-  }
-  
-  private generateMockAnalytics(startDate: Date, endDate: Date): AnalyticsData {
-    return {
-      period: { start: startDate, end: endDate },
-      metrics: {
-        impressions: Math.floor(Math.random() * 25000) + 5000,
-        engagements: Math.floor(Math.random() * 2500) + 500,
-        likes: Math.floor(Math.random() * 1500) + 300,
-        shares: Math.floor(Math.random() * 800) + 150,
-        comments: Math.floor(Math.random() * 400) + 80,
-        clicks: Math.floor(Math.random() * 1200) + 200,
-        reach: Math.floor(Math.random() * 20000) + 4000
-      },
-      demographics: {
-        ageGroups: {
-          '18-24': 15,
-          '25-34': 35,
-          '35-44': 25,
-          '45-54': 15,
-          '55+': 10
-        },
-        genders: {
-          male: 55,
-          female: 42,
-          other: 3
-        },
-        locations: {
-          'United States': 40,
-          'United Kingdom': 15,
-          'Canada': 10,
-          'Germany': 8,
-          'Other': 27
-        }
-      },
-      topPosts: [
-        { id: 'li_post_1', engagement: 450, impressions: 8500 },
-        { id: 'li_post_2', engagement: 380, impressions: 6800 },
-        { id: 'li_post_3', engagement: 290, impressions: 5200 }
-      ]
-    }
   }
   
   protected getMaxTextLength(): number {

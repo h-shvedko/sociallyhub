@@ -129,7 +129,7 @@ export class YouTubeProvider extends BaseSocialMediaProvider {
     'https://www.googleapis.com/auth/youtube',
     'https://www.googleapis.com/auth/youtube.readonly',
     'https://www.googleapis.com/auth/yt-analytics.readonly'
-  ]): string {
+  ], state?: string): string {
     const params = new URLSearchParams({
       client_id: this.clientId,
       redirect_uri: redirectUri,
@@ -137,7 +137,9 @@ export class YouTubeProvider extends BaseSocialMediaProvider {
       response_type: 'code',
       access_type: 'offline',
       prompt: 'consent',
-      state: this.generateState()
+      // ADR-0009: embed the caller's signed state when provided so a single
+      // state param round-trips to the callback for verification.
+      state: state ?? this.generateState()
     })
     
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
@@ -582,15 +584,17 @@ export class YouTubeProvider extends BaseSocialMediaProvider {
     }
   }
   
-  async uploadMedia(account: SocialAccount, media: MediaItem): Promise<APIResponse<{ mediaId: string }>> {
+  async uploadMedia(_account: SocialAccount, _media: MediaItem): Promise<APIResponse<{ mediaId: string }>> {
     try {
-      // YouTube video upload is complex and involves resumable uploads
-      // This is a simplified version that would need to be implemented properly
-      const mockVideoId = `yt_video_${Date.now()}_${Math.random().toString(36).substring(7)}`
-      
+      // ADR-0009: YouTube is a gated/unavailable platform. Real resumable video
+      // upload is not yet implemented, so we fail HONESTLY rather than fabricate
+      // a `yt_video_...` media id with success:true (no mock data as real).
       return {
-        success: true,
-        data: { mediaId: mockVideoId }
+        success: false,
+        error: {
+          code: 'PLATFORM_UNAVAILABLE',
+          message: 'YouTube video upload is not yet available (gated per ADR-0009).'
+        }
       }
     } catch (error) {
       return {
@@ -638,13 +642,19 @@ export class YouTubeProvider extends BaseSocialMediaProvider {
       )
       
       if (!response.success || !response.data?.rows) {
-        // Return mock data if analytics aren't available
+        // Honesty over coverage (ADR-0009): never fabricate analytics. When the
+        // YouTube Analytics API is unavailable, surface the real failure so
+        // callers can never mistake mock data for real metrics.
         return {
-          success: true,
-          data: this.generateMockAnalytics(options.startDate, options.endDate)
+          success: false,
+          error: response.error || {
+            code: 'ANALYTICS_UNAVAILABLE',
+            message: 'YouTube Analytics returned no data for this channel/period.'
+          },
+          rateLimit: response.rateLimit
         }
       }
-      
+
       const analytics = this.processAnalyticsData(response.data, options.startDate, options.endDate)
       
       return {
@@ -671,25 +681,15 @@ export class YouTubeProvider extends BaseSocialMediaProvider {
     metadata: any
   ): Promise<APIResponse<YouTubeUploadResponse>> {
     try {
-      // In a real implementation, this would handle resumable upload
-      // For now, we'll simulate the process
-      const mockResponse: YouTubeUploadResponse = {
-        id: `yt_video_${Date.now()}`,
-        snippet: {
-          channelId: account.platformId,
-          title: metadata.snippet.title,
-          description: metadata.snippet.description,
-          publishedAt: new Date().toISOString()
-        },
-        status: {
-          uploadStatus: 'uploaded',
-          privacyStatus: metadata.status.privacyStatus
-        }
-      }
-      
+      // ADR-0009: gated platform — fail honestly instead of fabricating a
+      // `yt_video_...` id with success:true. Real resumable upload lands with
+      // YouTube's completion phase.
       return {
-        success: true,
-        data: mockResponse
+        success: false,
+        error: {
+          code: 'PLATFORM_UNAVAILABLE',
+          message: 'YouTube video upload is not yet available (gated per ADR-0009).'
+        }
       }
     } catch (error) {
       return {
@@ -756,47 +756,6 @@ export class YouTubeProvider extends BaseSocialMediaProvider {
         reach: Math.floor(totals.views * 0.8) // Estimated
       },
       topPosts: []
-    }
-  }
-  
-  private generateMockAnalytics(startDate: Date, endDate: Date): AnalyticsData {
-    return {
-      period: { start: startDate, end: endDate },
-      metrics: {
-        impressions: Math.floor(Math.random() * 100000) + 20000,
-        engagements: Math.floor(Math.random() * 10000) + 2000,
-        likes: Math.floor(Math.random() * 8000) + 1500,
-        shares: Math.floor(Math.random() * 1000) + 200,
-        comments: Math.floor(Math.random() * 2000) + 400,
-        views: Math.floor(Math.random() * 150000) + 30000,
-        reach: Math.floor(Math.random() * 120000) + 25000
-      },
-      demographics: {
-        ageGroups: {
-          '13-17': 15,
-          '18-24': 25,
-          '25-34': 30,
-          '35-44': 20,
-          '45+': 10
-        },
-        genders: {
-          male: 60,
-          female: 38,
-          other: 2
-        },
-        locations: {
-          'United States': 35,
-          'India': 15,
-          'United Kingdom': 8,
-          'Canada': 7,
-          'Other': 35
-        }
-      },
-      topPosts: [
-        { id: 'youtube_video_1', engagement: 5500, impressions: 45000 },
-        { id: 'youtube_video_2', engagement: 4200, impressions: 35000 },
-        { id: 'youtube_video_3', engagement: 3800, impressions: 28000 }
-      ]
     }
   }
   
