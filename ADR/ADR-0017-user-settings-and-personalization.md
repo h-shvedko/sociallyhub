@@ -24,10 +24,20 @@
 > values; export returns 200 with **no** password field; the deletion guard chain returns
 > 400→401→**409 SOLE_OWNER** (demo protected, nothing deleted). No schema change (by design).
 > **Deferred here:** the Phase-4 incremental `formatDate` app-wide sweep; **2FA → ADR-0026**;
-> **real workspace switching → ADR-0027** (both stubs filed). In-browser interactive render was
-> not visually captured — the docker app hits a pre-existing `next-auth/react` webpack chunk quirk
-> (documented since ADR-0006) and a host dev server was not viable in this environment; the pages
-> are tsc-clean, serve server-side, and every API they call is proven.
+> **real workspace switching → ADR-0027** (both stubs filed).
+>
+> **Browser render verified (2026-07-06, follow-up).** A host `next dev` server (the docker app
+> hits a pre-existing `next-auth/react` webpack chunk quirk documented since ADR-0006; run host dev
+> with `NODE_ENV=development` and `output:'standalone'` temporarily off) confirmed the pages render
+> live as demo: settings loads real persisted data (timezone `America/New_York`), the theme buttons
+> apply **instantly app-wide via next-themes** (Dark toggled the whole shell; persisted across
+> navigation), the language picker shows only English, and the profile page shows "Member since
+> July 3, 2026" (real `User.createdAt`) with no fabricated stats. This live render **caught a real
+> bug the static gate missed** — the profile page imported `toast` from `sonner`, which is not a
+> dependency, so it threw a webpack "Module not found" Build Error (tsc did not flag the missing
+> value import). Fixed in commit `bb96207` by switching to the in-repo `useToast`/`ToastContainer`
+> (same system the settings page uses). Lesson: this repo's tsc does not reliably catch
+> missing-package imports — a real build/render check is required, per ADR-0021/0022.
 
 ## Context and Problem Statement
 
