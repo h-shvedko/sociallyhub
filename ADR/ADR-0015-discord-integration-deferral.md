@@ -1,8 +1,20 @@
 # ADR-0015: Discord Integration: Defer
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Phases 1–2 implemented 2026-07-06**; real integration (Phases 3–4) deferred
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06).** Discord is deferred and the fabricated data is **deleted** (not
+> just gated): the hardcoded fake server (`guildName 'SociallyHub Community'`, 1247 members,
+> `discord.gg/sociallyhub` invite) is gone from `discord/route.ts` (missing `workspaceId` → 400; no
+> integration → `{ integration: null }`); the `members`/`admin`/`analytics` mock routes are deleted;
+> the mock webhook senders (`sendWebhookMessage`/`sendTestWebhook`/…) are deleted (`SEND_*`/`TEST_*` →
+> 501), keeping only the real `DiscordIntegration` CRUD + `CONFIGURE_WEBHOOK` + the reusable
+> `DiscordWebhookPayload`/`DiscordEmbed` interfaces. `FEATURE_DISCORD` (a sub-flag of `FEATURE_COMMUNITY`)
+> guards the surviving routes, and the whole `/api/community/discord/**` tree is 404'd by the community
+> gate when off. **Verified:** zero `discord.gg/sociallyhub` / `demoDiscordInfo` / `1247` / `mock_*`
+> literals remain in `src`. The **real integration** (Phase 3 webhook client, Phase 4 bot features)
+> remains deferred behind the un-defer criteria.
 
 ## Context and Problem Statement
 

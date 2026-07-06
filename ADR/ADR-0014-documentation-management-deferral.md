@@ -1,8 +1,18 @@
 # ADR-0014: Documentation Management: Defer Behind Feature Flag
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Phase 0–2 implemented 2026-07-06**; Phase 3 repair (or Help-Center merge) deferred
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06).** The Documentation management layer is deferred behind
+> `FEATURE_DOCS_MANAGEMENT` (default false, shared `src/lib/config/features.ts`). The middleware 404s
+> `/api/documentation/**` (all 19 routes) when off — verified live; `src/app/dashboard/documentation/
+> layout.tsx` calls `notFound()` when off, gating the browser/viewer/manage pages (`/dashboard/
+> documentation` → 404, verified). The Documentation card in `help-center.tsx` is hidden behind
+> `NEXT_PUBLIC_FEATURE_DOCS_MANAGEMENT`. A deferral README marker sits in `src/app/api/documentation/`.
+> Phase 0 (the 15 missing `Documentation*` enums) already landed in ADR-0002. The **Phase 3 repair**
+> (auth, schema alignment, status-casing unification, seed content, real export persistence) — or,
+> per this ADR's default un-defer path, a **merge into the Help Center** — remains deferred.
 
 ## Context and Problem Statement
 

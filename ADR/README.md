@@ -4,7 +4,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 **Owner decisions binding this set (2026-07-02):** deployment standardizes on self-hosted Docker (Vercel removed) · repair Support + Admin RBAC now, defer Community / Documentation / Discord behind feature flags · Stripe billing is in scope now.
 
-**Progress: 12 of 25 ADRs implemented** (0002–0012, the entire foundation-through-support-and-admin arc). 13 remain decided-but-not-built.
+**Progress: 15 of 25 ADRs implemented** (0002–0015 — the entire foundation-through-support-and-admin arc, plus the three deferral flag-offs). 10 remain decided-but-not-built.
 
 ## Index
 
@@ -34,9 +34,9 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 |---|---|---|---|
 | [0011](ADR-0011-support-subsystem-remediation.md) | Support Subsystem Remediation | ✅ Implemented (2026-07-06) | Repaired in place: support-agents rewritten on `SupportAgent`, invalid `'REPLY'` enum fixed to `AGENT_REPLY`, real emails (Mailhog-verified: reply/contact/ticket-created), seed data (3 agents/12 tickets/1 chat), agents admin page + roster dropdown. Guest ticket access token deferred to ADR-0005 Phase 2. |
 | [0012](ADR-0012-admin-rbac-remediation.md) | Admin Dashboard & RBAC Remediation | ✅ Implemented (2026-07-06) | Platform-operator console on `isPlatformAdmin`; fixed the analytics-500 (`lastActiveAt`→`lastActivity`), deleted sso/teams routes, real `GET /api/admin/overview` stats, real user CRUD modal, bulk-ops on `TeamInvitation`+`VerificationToken` reset links (no temp passwords). SSO login flow deferred. |
-| [0013](ADR-0013-community-subsystem-deferral.md) | Community Subsystem: Defer | Accepted — not yet implemented | `FEATURE_COMMUNITY` flag (default off) enforced by new root middleware 404ing `/api/community/**`; UI entry points removed; documented repair plan + un-defer criteria. |
-| [0014](ADR-0014-documentation-management-deferral.md) | Documentation Management: Defer | Accepted — not yet implemented | `FEATURE_DOCUMENTATION` flag (default off) over the whole docs layer; missing enums already fixed in 0002; default un-defer path is merging docs into the Help Center. |
-| [0015](ADR-0015-discord-integration-deferral.md) | Discord Integration: Defer | Accepted — not yet implemented | `FEATURE_DISCORD` flag nested under Community's; delete the hardcoded demo server + mock leaf routes; keep the config CRUD; phased real plan starts with a notifications webhook slice. |
+| [0013](ADR-0013-community-subsystem-deferral.md) | Community Subsystem: Defer | ✅ Deferral implemented (2026-07-06) | `FEATURE_COMMUNITY` flag (default off) enforced by the shared middleware 404ing `/api/community/**` (verified); UI entry points hidden; repair backlog deferred behind un-defer criteria. |
+| [0014](ADR-0014-documentation-management-deferral.md) | Documentation Management: Defer | ✅ Deferral implemented (2026-07-06) | `FEATURE_DOCS_MANAGEMENT` flag (default off) 404s `/api/documentation/**` + a `layout.tsx` guard on the docs pages; missing enums already fixed in 0002; default un-defer path is merging docs into the Help Center. |
+| [0015](ADR-0015-discord-integration-deferral.md) | Discord Integration: Defer | ✅ Deferral + mock deletion implemented (2026-07-06) | `FEATURE_DISCORD` flag nested under Community's; the hardcoded fake server + mock leaf routes + mock webhook senders **deleted** (zero fabricated data in src); kept the config CRUD + reusable payload interfaces; real integration deferred. |
 
 ### Settings, AI, growth — not yet implemented
 | ADR | Title | Status | Decision in one line |
@@ -72,7 +72,7 @@ Steps 1–6 below are **done**. What's left starts at step 7.
 2. ~~**Security core** — ADR-0006, ADR-0004, ADR-0005.~~ ✅ Done.
 3. ~~**Make the product real** — ADR-0008 (worker/publishing), ADR-0007 (storage), ADR-0009 (Twitter/X + Meta foundations), ADR-0010 (notifications).~~ ✅ Done (ADR-0009's live-platform verification remains external-blocked).
 4. ~~**Repairs** — ADR-0011 (support), ADR-0012 (admin).~~ ✅ Done.
-5. **Shrink the surface (cheap, parallel, not yet started)** — the flag-off mechanics of ADR-0013/0014/0015 and the deletion phases of ADR-0024. Less code to secure, test, and repair going forward.
+5. ~~**Shrink the surface** — the flag-off mechanics of ADR-0013/0014/0015.~~ ✅ Done (the deletion phases of ADR-0024 remain).
 6. **Honest pipeline & gates (not yet started)** — ADR-0022 and ADR-0021, so CI protects all subsequent work.
 7. **Settings & growth (not yet started)** — ADR-0016, ADR-0017, ADR-0025 (seeding/demo mode), then ADR-0019 (billing — can run in parallel with anything after step 1), ADR-0018 (AI), ADR-0020 (client portal), ADR-0023 (observability, incremental throughout).
 

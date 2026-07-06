@@ -1,8 +1,19 @@
 # ADR-0013: Community Subsystem: Defer Behind Feature Flag
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Phase 1 (deferral) implemented 2026-07-06**; Phase 3 repair backlog deferred
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06).** The Community subsystem is deferred. Shared flag module
+> `src/lib/config/features.ts` (`FEATURE_COMMUNITY`, default false, edge-safe) enforced by the
+> existing `src/middleware.ts`: `/api/community/**` (all 36 routes) returns JSON 404 when the flag is
+> off — verified live. UI entry points hidden: the forum / feature-request buttons and the
+> `CommunityIntegration` mount in `help-center.tsx` gate on `NEXT_PUBLIC_FEATURE_COMMUNITY` (default
+> hidden); the admin-sidebar Community group was already removed (ADR-0011/0012). A deferral README
+> marker sits in `src/app/api/community/`. Phase 2 (schema validity) already landed in ADR-0002. The
+> **Phase 3 repair backlog** (schema-mismatch writes, invalid enum values, `prisma.communityForumComment`,
+> missing forum reply/vote endpoints, the whole public forum UI, mock metrics) remains deferred behind
+> the un-defer criteria in this ADR.
 
 ## Context and Problem Statement
 
