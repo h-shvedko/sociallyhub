@@ -1,8 +1,33 @@
 # ADR-0017: User Settings, Personalization, and i18n Scope
 
 - **Date:** 2026-07-02
-- **Status:** Proposed
+- **Status:** Accepted — **Implemented 2026-07-06** (A2+B2+C2+D3+E4; Phase 4 app-wide `formatDate` sweep deferred as designed). *Promoted from Proposed on implementation + live verification.*
 - **Deciders:** Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06, commit `4eff35a`).** Phases 1–3 shipped and the
+> backend was live-verified against an authenticated demo session. **Mounted the stack:**
+> next-themes `ThemeProvider` + `SettingsProvider` in `providers.tsx`; the context now
+> delegates theme *application* to next-themes' `setTheme` (DB stays authoritative, synced
+> on load + save) and keeps `--font-scale`/`compact-mode` (real CSS added to `globals.css`);
+> `chart-components.tsx`'s `useTheme()` resolves for free. **Settings page** rewritten onto
+> `useSettings()` (schema-correct fields, `TIMEZONES` select, real 16×3 notification matrix +
+> global/digest/DND, working Save; 2FA toggle + `showAvatars` removed). **PUT /api/user/settings**
+> hardened with per-field value validation (enums, `isValidTimezone`, boolean checks → 400).
+> **GDPR:** new `GET/PUT /api/user/profile` (name/image only), `GET|POST /api/user/export`
+> (user-scoped, no password/2FA leakage), `DELETE /api/user/account` (bcrypt re-auth + typed
+> `DELETE` confirm + sole-owner guard + solo-workspace pre-delete + honest P2003 + idempotent +
+> `TODO(ADR-0019)` Stripe hook). **Profile page** shows real `createdAt`, no fabricated stats.
+> **i18n** cut to `en` (static dictionaries only; runtime OpenAI MT removed; `translation-service`
+> moved offline behind `scripts/i18n-generate.ts` + `i18n:generate`). **Deleted** the mock
+> `/dashboard/workspace` switcher + its header entry. *Proven live:* profile PUT ignores `phone`
+> (no column); settings validation rejects bad theme/timezone/non-boolean (400) and persists valid
+> values; export returns 200 with **no** password field; the deletion guard chain returns
+> 400→401→**409 SOLE_OWNER** (demo protected, nothing deleted). No schema change (by design).
+> **Deferred here:** the Phase-4 incremental `formatDate` app-wide sweep; **2FA → ADR-0026**;
+> **real workspace switching → ADR-0027** (both stubs filed). In-browser interactive render was
+> not visually captured — the docker app hits a pre-existing `next-auth/react` webpack chunk quirk
+> (documented since ADR-0006) and a host dev server was not viable in this environment; the pages
+> are tsc-clean, serve server-side, and every API they call is proven.
 
 ## Context and Problem Statement
 

@@ -4,7 +4,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 **Owner decisions binding this set (2026-07-02):** deployment standardizes on self-hosted Docker (Vercel removed) · repair Support + Admin RBAC now, defer Community / Documentation / Discord behind feature flags · Stripe billing is in scope now.
 
-**Progress: 15 of the 24 decision ADRs implemented** (0002–0016 — the entire foundation → security → pipeline → support/admin arc, the three deferral flag-offs, plus ADR-0016's real admin settings/backups). The remaining 9 (0017–0025) are decided-but-not-built or still proposed. ADR-0001 is the record-keeping process itself (always in effect).
+**Progress: 16 of the 24 decision ADRs implemented** (0002–0017 — the entire foundation → security → pipeline → support/admin arc, the three deferral flag-offs, ADR-0016's real admin settings/backups, and ADR-0017's user settings/personalization). The remaining 8 (0018–0025) are decided-but-not-built or still proposed. ADR-0001 is the record-keeping process itself (always in effect); ADR-0026/0027 are follow-up stubs filed from ADR-0017.
 
 ## Index
 
@@ -42,7 +42,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | ADR | Title | Status | Decision in one line |
 |---|---|---|---|
 | [0016](ADR-0016-admin-settings-configuration.md) | System Settings: Real Operations over Simulations | ✅ Implemented (2026-07-06) | Real `pg_dump` backups on the worker (verified: real file + matching SHA-256 + COMPLETED record); real flag prerequisite check; deleted the fake audit/optimize/test endpoints (410); dropped `BrandingConfiguration`; rebuilt hub + 5 pages. |
-| [0017](ADR-0017-user-settings-and-personalization.md) | User Settings, Personalization & i18n Scope | Proposed | Mount `SettingsProvider` (theme via next-themes); rewrite `/dashboard/settings` onto the real APIs; implement GDPR export + deletion now; defer 2FA; cut locale picker to `en` until translations exist. |
+| [0017](ADR-0017-user-settings-and-personalization.md) | User Settings, Personalization & i18n Scope | ✅ Implemented (2026-07-06) | Mounted `SettingsProvider`+next-themes; rewrote `/dashboard/settings` + `/dashboard/profile` onto the real APIs; added GDPR export + account-deletion (verified: re-auth→sole-owner-guard chain) + settings-PUT validation; cut i18n to `en`; deleted the mock workspace switcher. 2FA→ADR-0026, switching→ADR-0027. |
 | [0018](ADR-0018-ai-features-strategy.md) | AI Features: Honest Availability & Mounting | Proposed | 503 `AI_UNAVAILABLE` without a key (mock only in demo mode, flagged as simulated); unify all 13 routes on `aiService` with configurable model; per-workspace quotas; mount the orphaned AI/audience UIs. |
 | [0019](ADR-0019-billing-and-subscriptions.md) | Billing & Subscriptions with Stripe | Accepted — not yet implemented | Stripe Checkout + Billing Portal; workspace-level subscriptions in new `Subscription`/`StripeEvent` models; code-defined Free/Pro/Business tiers enforced via one entitlements helper; 14-day no-card trial. |
 | [0020](ADR-0020-client-portal-and-report-sharing.md) | Client Portal & Shareable Reports | Proposed | Phased: tokenized snapshot report share links first (`ReportShareLink`, hashed tokens, optional password); then a real CLIENT_VIEWER portal with an explicit read-only allowlist. |
@@ -55,6 +55,12 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | [0023](ADR-0023-observability-and-monitoring.md) | Observability: Real Metrics, Logging & Health | Proposed | prom-client singleton at `/api/metrics`; repair the Prometheus/Grafana/Loki compose stack; real readiness checks; replace every Math.random metric endpoint with real sources or remove it. |
 | [0024](ADR-0024-codebase-hygiene.md) | Codebase Hygiene & Dead Code Removal | Accepted — not yet implemented | Delete (not quarantine) all verified-dead files/routes/deps/models in blast-radius order with zero-import re-verification; docs consolidated (CLAUDE.md Current State + ADRs canonical); knip gate in CI. |
 | [0025](ADR-0025-seeding-and-demo-mode.md) | Seeding Strategy & Explicit Demo Mode | Proposed | One `DEMO_MODE` flag through one server-only helper with an enumerated registry of demo behaviors; tiered modular seeders (minimal/demo/test), prod-runnable minimal seed, generated credentials. |
+
+### Follow-up ADRs filed from implementation
+| ADR | Title | Status | Decision in one line |
+|---|---|---|---|
+| [0026](ADR-0026-two-factor-authentication.md) | Two-Factor Authentication (TOTP) | Proposed (stub) | Deferred from ADR-0017 B2: real TOTP with ADR-0006-encrypted secret storage, backup codes, enrollment QR, and a NextAuth challenge step — replacing the removed dead 2FA toggle. |
+| [0027](ADR-0027-workspace-switching.md) | Workspace Switching (Session-Scoped Active Workspace) | Proposed (stub) | Deferred from ADR-0017 E4: introduce a session-scoped active workspace on ADR-0004's helpers + a real switch/create flow, restoring the capability the deleted mock page pretended to have. |
 
 ## Status legend
 
