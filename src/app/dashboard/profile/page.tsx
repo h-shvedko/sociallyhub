@@ -2,7 +2,6 @@
 
 import { useSession } from "next-auth/react"
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,6 +9,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { CalendarDays } from "lucide-react"
+// Use the in-repo toast system (same as the settings page). `sonner` is NOT a
+// dependency — importing it broke the profile page's build (ADR-0017 fix).
+import { useToast } from "@/hooks/use-toast"
+import { ToastContainer } from "@/components/ui/toast"
 
 interface Profile {
   name: string | null
@@ -20,6 +23,7 @@ interface Profile {
 
 export default function ProfilePage() {
   const { data: session, update: updateSession } = useSession()
+  const { toasts, toast, removeToast } = useToast()
 
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -218,6 +222,8 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }
