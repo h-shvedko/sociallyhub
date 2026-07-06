@@ -9,13 +9,7 @@ export async function GET(request: NextRequest) {
     await requirePlatformAdmin()
 
     const { searchParams } = new URL(request.url)
-    const range = searchParams.get('range') || '30d'
     const category = searchParams.get('category') || ''
-
-    // Calculate date range
-    const now = new Date()
-    const daysAgo = range === '7d' ? 7 : range === '30d' ? 30 : 90
-    const startDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000))
 
     // Build where clause for FAQs
     const where: any = {}
@@ -128,16 +122,6 @@ export async function GET(request: NextRequest) {
       return acc
     }, { helpful: 0, neutral: 0, notHelpful: 0, noRating: 0 })
 
-    // Generate mock trend data for demonstration
-    const viewsTrend = Array.from({ length: daysAgo }, (_, i) => {
-      const date = new Date(startDate.getTime() + (i * 24 * 60 * 60 * 1000))
-      return {
-        date: date.toISOString().split('T')[0],
-        views: Math.floor(Math.random() * 100) + 20,
-        interactions: Math.floor(Math.random() * 30) + 5
-      }
-    })
-
     // Calculate average helpfulness rate
     const totalHelpfulVotes = totalVotes._sum.helpfulVotes || 0
     const totalNotHelpfulVotes = totalVotes._sum.notHelpfulVotes || 0
@@ -162,15 +146,6 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Mock search frequency data
-    const searchFrequency = [
-      { query: 'how to login', frequency: 234, faqMatches: 3 },
-      { query: 'password reset', frequency: 189, faqMatches: 2 },
-      { query: 'billing questions', frequency: 156, faqMatches: 5 },
-      { query: 'account settings', frequency: 134, faqMatches: 4 },
-      { query: 'team management', frequency: 98, faqMatches: 3 }
-    ]
-
     return NextResponse.json({
       overview: {
         totalFaqs,
@@ -180,12 +155,16 @@ export async function GET(request: NextRequest) {
         totalVotes: totalAllVotes
       },
       trends: {
-        viewsTrend,
+        // No per-day FAQ view/interaction events are recorded yet, and search
+        // queries are not tracked — these are empty rather than fabricated
+        // (ADR-0016: no fabricated data). They can be populated once real
+        // event tracking exists.
+        viewsTrend: [],
         categoryDistribution,
         helpfulnessDistribution
       },
       topPerforming: topFaqsWithRate,
-      searchFrequency,
+      searchFrequency: [],
       insights: {
         mostViewedCategory: categoryDistribution.length > 0
           ? categoryDistribution.sort((a, b) => b.views - a.views)[0]?.categoryName

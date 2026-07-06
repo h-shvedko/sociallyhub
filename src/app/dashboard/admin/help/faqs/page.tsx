@@ -13,7 +13,6 @@ import {
   Download,
   Upload,
   BarChart3,
-  Wand2,
   RefreshCw,
   Settings,
   FileText,
@@ -24,7 +23,6 @@ import FAQEditor from '@/components/admin/help/faq/FAQEditor'
 import FAQAnalytics from '@/components/admin/help/faq/FAQAnalytics'
 import FAQImportExport from '@/components/admin/help/faq/FAQImportExport'
 import FAQTemplates from '@/components/admin/help/faq/FAQTemplates'
-import FAQAutoGeneration from '@/components/admin/help/faq/FAQAutoGeneration'
 
 interface FAQ {
   id: string
@@ -80,7 +78,6 @@ export default function FAQManagementPage() {
   const [editingFaq, setEditingFaq] = useState<FAQ | null>(null)
   const [showImportExport, setShowImportExport] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [showAutoGeneration, setShowAutoGeneration] = useState(false)
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -245,14 +242,6 @@ export default function FAQManagementPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowAutoGeneration(true)}
-          >
-            <Wand2 className="h-4 w-4 mr-2" />
-            Auto-Generate
-          </Button>
-
           <Button
             variant="outline"
             onClick={() => setShowTemplates(true)}
@@ -508,14 +497,6 @@ export default function FAQManagementPage() {
         />
       )}
 
-      {showAutoGeneration && (
-        <FAQAutoGeneration
-          isOpen={showAutoGeneration}
-          onClose={() => setShowAutoGeneration(false)}
-          categories={categories}
-          onAcceptSuggestions={fetchFAQs}
-        />
-      )}
     </div>
   )
 }

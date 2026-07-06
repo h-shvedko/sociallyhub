@@ -614,7 +614,7 @@ async function getCommunityHealth(workspaceId: string, startDate: Date) {
   const [
     activeUsers,
     totalUsers,
-    unresolved reports,
+    unresolvedReports,
     avgPostQuality,
     moderationBacklog,
     spamDetectionRate

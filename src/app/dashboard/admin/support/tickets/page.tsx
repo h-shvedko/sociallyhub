@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -108,7 +108,10 @@ const STATUS_COLORS = {
   CLOSED: 'bg-gray-100 text-gray-800'
 }
 
-export default function AdminTicketsPage() {
+// Split + Suspense-wrapped because this component calls useSearchParams(),
+// which Next 15 requires under a Suspense boundary for prerendering -
+// otherwise `next build` fails with a CSR-bailout error (ADR-0024).
+function AdminTicketsContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -720,5 +723,13 @@ export default function AdminTicketsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function AdminTicketsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh] text-muted-foreground">Loading...</div>}>
+      <AdminTicketsContent />
+    </Suspense>
   )
 }

@@ -229,6 +229,12 @@ export async function GET(request: NextRequest) {
         }
       })
 
+      // Sort by the computed relevance score when relevance sorting is requested
+      // (the DB orderBy above is only a coarse pre-ranking)
+      if (sortBy === 'relevance') {
+        articlesWithHighlights.sort((a, b) => b.relevanceScore - a.relevanceScore)
+      }
+
       results.articles = articlesWithHighlights
       totalResults += articles.length
     }
@@ -307,6 +313,11 @@ export async function GET(request: NextRequest) {
           relevanceScore: calculateRelevanceScore(faq, trimmedQuery)
         }
       })
+
+      // Sort by the computed relevance score when relevance sorting is requested
+      if (sortBy === 'relevance') {
+        faqsWithHighlights.sort((a, b) => b.relevanceScore - a.relevanceScore)
+      }
 
       results.faqs = faqsWithHighlights
       totalResults += faqs.length

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
@@ -68,7 +68,10 @@ const statusStyles = {
   ARCHIVED: { color: "bg-yellow-100 text-yellow-800", icon: Archive }
 }
 
-export default function PostsPage() {
+// Split + Suspense-wrapped because this component calls useSearchParams(),
+// which Next 15 requires under a Suspense boundary for prerendering -
+// otherwise `next build` fails with a CSR-bailout error (ADR-0024).
+function PostsContent() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
   const [activeTab, setActiveTab] = useState("all")
@@ -691,5 +694,13 @@ export default function PostsPage() {
         onClose={() => setPreviewPost(null)}
       />
     </div>
+  )
+}
+
+export default function PostsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh] text-muted-foreground">Loading...</div>}>
+      <PostsContent />
+    </Suspense>
   )
 }

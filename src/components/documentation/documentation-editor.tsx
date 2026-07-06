@@ -40,7 +40,8 @@ import {
   ChevronRight,
   AlertTriangle
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { useToast } from '@/hooks/use-toast'
+import { ToastContainer } from '@/components/ui/toast'
 
 interface DocumentationSection {
   id: string
@@ -119,6 +120,7 @@ const VISIBILITY_OPTIONS = [
 
 export default function DocumentationEditor({ pageId, mode = 'create', onSave, onCancel }: DocumentationEditorProps) {
   const router = useRouter()
+  const { toasts, toast, removeToast } = useToast()
 
   // Page state
   const [page, setPage] = useState<DocumentationPage>({
@@ -927,6 +929,7 @@ export default function DocumentationEditor({ pageId, mode = 'create', onSave, o
           </TabsContent>
         </Tabs>
       )}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }

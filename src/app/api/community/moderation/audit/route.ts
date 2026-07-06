@@ -54,7 +54,7 @@ interface DataIntegrityCheck {
     entityId: string
     description: string
     severity: 'LOW' | 'MEDIUM' | 'HIGH'
-    recommended Action: string
+    recommendedAction: string
   }[]
   checkedAt: Date
 }

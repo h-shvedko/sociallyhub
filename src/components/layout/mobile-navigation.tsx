@@ -21,7 +21,6 @@ import {
   Settings,
   HelpCircle,
   Zap,
-  Palette,
   Menu,
   X,
   ChevronRight,
@@ -46,7 +45,6 @@ const system = [
   { name: "Accounts", href: "/dashboard/accounts", icon: Zap, color: "text-yellow-600" },
   { name: "Team", href: "/dashboard/team", icon: Users, color: "text-violet-600" },
   { name: "Settings", href: "/dashboard/settings", icon: Settings, color: "text-slate-600" },
-  { name: "Material Showcase", href: "/dashboard/showcase", icon: Palette, color: "text-rose-600" },
   { name: "Help", href: "/dashboard/help", icon: HelpCircle, color: "text-teal-600" },
 ]
 

@@ -1,5 +1,7 @@
 "use client"
 
+
+import { Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -13,7 +15,10 @@ const errorMessages: Record<string, string> = {
   Default: "An error occurred during authentication.",
 }
 
-export default function AuthErrorPage() {
+// Split + Suspense-wrapped because this component calls useSearchParams(),
+// which Next 15 requires under a Suspense boundary for prerendering -
+// otherwise `next build` fails with a CSR-bailout error (ADR-0024).
+function AuthErrorContent() {
   const searchParams = useSearchParams()
   const error = searchParams.get("error")
   
@@ -65,5 +70,13 @@ export default function AuthErrorPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh] text-muted-foreground">Loading...</div>}>
+      <AuthErrorContent />
+    </Suspense>
   )
 }

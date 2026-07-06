@@ -55,3 +55,6 @@ test-results/
 
 # k8s real secrets (ADR-0006) — only k8s/secrets.example.yaml is committed
 k8s/secrets.yaml
+
+# runtime logs (ADR-0024)
+logs/

@@ -18,7 +18,6 @@ import {
   Settings,
   HelpCircle,
   Zap,
-  Palette,
   Bot,
   Shield,
 } from "lucide-react"
@@ -43,7 +42,6 @@ const system = [
   { name: "Accounts", href: "/dashboard/accounts", icon: Zap },
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
-  { name: "Material Showcase", href: "/dashboard/showcase", icon: Palette },
   { name: "Help", href: "/dashboard/help", icon: HelpCircle },
   { name: "Admin", href: "/dashboard/admin", icon: Shield },
 ]

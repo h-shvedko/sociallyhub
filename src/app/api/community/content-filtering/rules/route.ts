@@ -270,7 +270,9 @@ const RULE_TEMPLATES = {
 }
 
 // GET /api/community/content-filtering/rules/templates - Get rule templates
-export async function GET_TEMPLATES(request: NextRequest) {
+// ADR-0024: GET_TEMPLATES is not a valid route export (Next rejects non-HTTP exports
+// from route files); demoted to private pending the ADR-0013 un-defer repair.
+async function _deferred_GET_TEMPLATES(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {

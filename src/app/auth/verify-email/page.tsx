@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, CheckCircle, XCircle, Mail, ArrowRight } from "lucide-react"
 import { signIn } from "next-auth/react"
 
-export default function VerifyEmailPage() {
+// Split + Suspense-wrapped because this component calls useSearchParams(),
+// which Next 15 requires under a Suspense boundary for prerendering -
+// otherwise `next build` fails with a CSR-bailout error (ADR-0024).
+function VerifyEmailContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
   const [userData, setUserData] = useState<{ id: string; email: string; name: string } | null>(null)
@@ -208,5 +211,13 @@ export default function VerifyEmailPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[40vh] text-muted-foreground">Loading...</div>}>
+      <VerifyEmailContent />
+    </Suspense>
   )
 }

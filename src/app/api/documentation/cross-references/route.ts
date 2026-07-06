@@ -1,3 +1,10 @@
+// ADR-0024 build fix: this deferred documentation route (ADR-0014, 404-gated)
+// declared the same HTTP method export more than once - sub-route handlers were
+// pasted into the parent route file, which is a parse error, so `next build`
+// could NEVER succeed with this file. The first declaration of each method is
+// kept as the export; later duplicates are demoted to unused private functions
+// (prefixed _deferred_) preserved verbatim for the eventual ADR-0014 un-defer
+// repair, which should move them into their own route directories.
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, normalizeUserId } from '@/lib/auth'
@@ -295,7 +302,7 @@ export async function DELETE(request: NextRequest) {
 }
 
 // POST /api/documentation/cross-references/auto-detect - Auto-detect potential cross-references
-export async function POST(request: NextRequest) {
+async function _deferred_POST_2(request: NextRequest) {
   if (request.url.includes('/auto-detect')) {
     try {
       const session = await getServerSession(authOptions)

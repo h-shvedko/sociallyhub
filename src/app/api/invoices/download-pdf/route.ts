@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, normalizeUserId } from '@/lib/auth'
-import puppeteer from 'puppeteer'
+// NOTE (ADR-0024): the former `import puppeteer from 'puppeteer'` was a DEAD
+// import — nothing in this route uses it (the route honestly returns print-ready
+// HTML, see the comment below). puppeteer is not a declared dependency and would
+// pull a ~300 MB Chromium into every install; if true server-side PDF generation
+// is ever built, re-add it deliberately with its own ADR consideration.
 
 export async function POST(request: NextRequest) {
   try {

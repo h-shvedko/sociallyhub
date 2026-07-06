@@ -171,8 +171,14 @@ export function withApiAuth<
 >(
   handler: ApiHandler<P>,
   config: WithApiAuthConfig
-): (request: NextRequest, routeContext?: NextRouteContext<P>) => Promise<NextResponse> {
-  return async (request, routeContext) => {
+  // The context parameter takes a DEFAULT VALUE instead of being optional
+  // (`routeContext?:`): Next 15.5's generated route validators reject an
+  // exported handler whose second-param type includes `| undefined`
+  // ("ParamCheck<RouteContext>" errors on every wrapped dynamic route).
+  // A default keeps call sites (tests) that omit it working while the
+  // declared parameter type stays non-optional. (ADR-0024 build-gate fix.)
+): (request: NextRequest, routeContext: NextRouteContext<P>) => Promise<NextResponse> {
+  return async (request, routeContext = {}) => {
     try {
       const params = ((await routeContext?.params) ?? {}) as P
       const ctx: ApiHandlerContext<P> = { params }

@@ -33,7 +33,8 @@ import {
   TrendingUp,
   BarChart3
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { useToast } from '@/hooks/use-toast'
+import { ToastContainer } from '@/components/ui/toast'
 import DocumentationEditor from '@/components/documentation/documentation-editor'
 
 interface DocumentationPage {
@@ -95,6 +96,7 @@ const VISIBILITY_CONFIG = {
 
 export default function DocumentationManagePage() {
   const router = useRouter()
+  const { toasts, toast, removeToast } = useToast()
 
   // State
   const [pages, setPages] = useState<DocumentationPage[]>([])
@@ -501,6 +503,7 @@ export default function DocumentationManagePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }

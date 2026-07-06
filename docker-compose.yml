@@ -73,11 +73,18 @@ services:
       - ./src:/app/src
       - ./public:/app/public
       - ./prisma:/app/prisma
-      - ./next.config.ts:/app/next.config.ts
+      - ./next.config.js:/app/next.config.js
       - ./tailwind.config.ts:/app/tailwind.config.ts
       - ./tsconfig.json:/app/tsconfig.json
       - ./components.json:/app/components.json
       - ./.env.local:/app/.env.local
+      # package manifests bind-mounted so `docker compose exec app npm install`
+      # sees the CURRENT dependency list — without these the container installs
+      # from the stale image-baked package.json and new deps never land in the
+      # shared node_modules volume (ADR-0024 gotcha, same class as the former
+      # next.config.ts dangling mount).
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
       - next_cache:/app/.next
       # Backup artifacts (ADR-0016) — shared with the worker service.
       - backups:/app/backups
@@ -126,6 +133,9 @@ services:
       - ./prisma:/app/prisma
       - ./tsconfig.json:/app/tsconfig.json
       - ./.env.local:/app/.env.local
+      # Current package manifests (see the app service comment — ADR-0024).
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
       # Backup artifacts (ADR-0016) — shared with the app service.
       - backups:/app/backups
       # Share node_modules with `app` (populated from the image on first mount).

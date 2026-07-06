@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { signIn, getSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
@@ -13,7 +13,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Mail, Lock, Eye, EyeOff, CheckCircle } from "lucide-react"
 import { isDemoMode, getDemoCredentialsMessage } from "@/lib/config/demo"
 
-export default function SignInPage() {
+// The form is split out because it calls useSearchParams(), which Next 15
+// requires to sit under a Suspense boundary for prerendering — without it,
+// `next build` fails on "/auth/signin" with a CSR-bailout error (ADR-0024).
+function SignInForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -275,5 +278,18 @@ export default function SignInPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <SignInForm />
+    </Suspense>
   )
 }
