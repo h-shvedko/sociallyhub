@@ -1,8 +1,21 @@
 # ADR-0011: Support Subsystem Remediation (Tickets, Chat, Agents)
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-06** (guest ticket token deferred to ADR-0005 Phase 2)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06).** Support works end-to-end. `/api/admin/support-agents`
+> rewritten on the canonical `SupportAgent` model (GET roster / POST create-reactivate / PATCH
+> activate-deactivate) — the `prisma.role` paradigm deleted. The invalid `updateType 'REPLY'` fixed to
+> `AGENT_REPLY` (plus 5 more invalid `TicketUpdateType` literals in the tickets/bulk routes);
+> `firstResponseAt` set on first agent reply. Real emails via `emailService` + `notifyUser` (agent
+> reply, contact confirmation, ticket-created) — verified in Mailhog. Honest analytics (satisfaction →
+> null). Seed data added (`src/lib/seeders/support-seeder.ts`: 3 agents, 12 tickets incl. SLA-breached/
+> guest/resolved-with-timeline, 1 chat). New `/dashboard/admin/support/agents` page + an agent-roster
+> dropdown in the ticket-assignment control. The guest auth hole (ADR-0005) and private attachments
+> (ADR-0007) were already closed. **Verified live:** agent reply writes `AGENT_REPLY` + emails the
+> requester + resolves; roster returns 3 seeded agents. **Deferred:** the guest ticket access token
+> (ADR-0005 Phase 2) and real satisfaction metrics.
 
 ## Context and Problem Statement
 

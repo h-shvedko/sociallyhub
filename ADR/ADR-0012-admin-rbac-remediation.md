@@ -1,8 +1,22 @@
 # ADR-0012: Admin Dashboard and RBAC Subsystem Remediation
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-06** (SSO login flow + reset-password consumer page deferred)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06).** The admin console is truthful. The authorization gate
+> (`isPlatformAdmin` + `requirePlatformAdmin`) and the RBAC-model cut landed earlier (ADR-0004); this
+> completes the route/UI repairs: fixed the `/api/admin/analytics/users` 500 (`UserSession.lastActiveAt`
+> → the real `lastActivity`/`startTime`); deleted `/api/admin/sso/**` + `/api/admin/teams/**` and
+> flag-gated the SSO page; real admin overview via `GET /api/admin/overview` (real user/workspace/
+> open-ticket counts + recent `AuditLog`, replacing "1,234 users / 23 open tickets"); real user
+> create/edit/delete modal in `users/administration`; bulk-operations reduced to the v1 op set with
+> `TeamInvitation` invites + `VerificationToken` reset links (no temp passwords in responses) and a real
+> user picker (no `demo-user-1/2/3` fabrication); `audit-logs` CSV export; `workspaces` route reduced to
+> real fields; sidebar dead links pruned. **Verified live:** analytics/users → 200; overview counts
+> match the DB (51 users / 16 workspaces / 7 open tickets); sso + teams routes → 404. No schema change.
+> **Deferred:** a real SSO login flow and the `/auth/reset-password` consumer page for the emailed
+> reset link.
 
 ## Context and Problem Statement
 
