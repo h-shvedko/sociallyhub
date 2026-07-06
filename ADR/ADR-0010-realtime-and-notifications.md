@@ -1,8 +1,28 @@
 # ADR-0010: Realtime Transport and Notification Delivery
 
 - Date: 2026-07-02
-- Status: Proposed
+- Status: Proposed — **Implemented 2026-07-04** (live browser web-push + nginx SSE tuning deferred)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-04).** Delivered all four phases: **SSE transport** over Redis
+> pub/sub (`GET /api/notifications/stream` + `src/lib/notifications/realtime.ts` `publishToUser`),
+> replacing the dead socket.io client; **persist-first `notifyUser`** (`src/lib/notifications/notify.ts`)
+> — create the `Notification` row, then Redis nudge for SSE, then a best-effort dispatch job, so in-app
+> works even if the worker is down; **DB-backed API** — `/api/notifications` (+ read/archive/read-all)
+> rewritten on the real model (mock array + in-memory preferences route deleted); **fixed dispatch
+> worker** (nonexistent `storeNotification()` → `publishToUser` + `deliveredAt`, real recipient email,
+> DB `NotificationPreferences` gating, SMS cut); **web-push** — migration `0010` adds
+> `NotificationType` values + a `PushSubscription` model, `/api/notifications/push-subscription`
+> persists it, `push-service` loads from Prisma with VAPID + 410-pruning, `public/sw.js` service
+> worker; **UI** — header bell mounts NotificationCenter with a real unread badge, `use-notifications`
+> uses `EventSource` + poll fallback; **producers** wired (post-scheduling, inbox assignment, team
+> invite, report completion); **cleanup** — `websocket-manager.ts` + `sms-service.ts` deleted,
+> `fastify`/`@fastify/cors`/`socket.io-client` deps removed, `SMTP_PASS` → `SMTP_PASSWORD` in the four
+> mailer routes. **Verified live:** an open SSE stream RECEIVED a `notifyUser` event in real time while
+> the `Notification` row was persisted first; the API returns real rows with unread stats;
+> push-subscription POST/DELETE persists/removes rows; worker builds + boots; migration additive;
+> `prisma validate` green. **Deferred:** real browser web-push delivery (needs a live browser
+> subscription — DB persistence + VAPID + pruning are done) and nginx SSE keepalive tuning (ADR-0022).
 
 ## Context and Problem Statement
 
