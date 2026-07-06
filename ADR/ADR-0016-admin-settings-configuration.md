@@ -1,8 +1,34 @@
 # ADR-0016: System Settings & Configuration: Real Operations over Simulations
 
 - Date: 2026-07-02
-- Status: Proposed
+- Status: Accepted — **Implemented 2026-07-06** (Option C: honest v1, real core, cut the theater). *Promoted from Proposed on implementation + live verification.*
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06, commit `57370e5`).** Option C shipped and was
+> live-verified. **Real backups:** a `backup-execution` BullMQ queue on the ADR-0008
+> worker runs `pg_dump -Fc`/`tar` via `spawn` (never a shell), streams a real SHA-256,
+> and records the true size/checksum/duration/retention on `BackupRecord`; a failed
+> dump is recorded `FAILED` with the real stderr and the job still succeeds;
+> `INCREMENTAL`/`DIFFERENTIAL` fail honestly. Restore is platform-admin + typed
+> confirmation, verifies the checksum, and takes a pre-restore safety snapshot before
+> `pg_restore`. A 5-min repeatable tick dispatches due configs and enforces retention.
+> *Proven live:* an enqueued job produced a real 1.57 MB `.dump` (`pg_restore --list`:
+> 1112 TOC entries), the row went `IN_PROGRESS → COMPLETED` with `fileSize=1572304` and
+> a checksum that **exactly matches** the file's `sha256`. **Flags:** a real prerequisite
+> check (`src/lib/feature-flags/db.ts`, fails closed `PREREQUISITE_NOT_MET`/`PREREQUISITE_CYCLE`)
+> replaces the "assume prerequisites are met" stub — *proven live* (prereq OFF → dependent
+> off; prereq ON → on). **De-lie:** `performance/optimize` (the dangerous fabricated-analysis
+> writer), `security/audit`, and `integrations/[id]/test` now return **410**; the hardcoded
+> `uptime:'99.9%'` is gone (→ ADR-0023). **Schema/UI/docker:** `BrandingConfiguration` dropped
+> via migration `20260706141523_0016_settings_real_ops`; 3 inert placeholder flags + a default
+> inactive backup config seeded; the hub rebuilt to 6 real cards + the 5 missing pages built;
+> `Dockerfile.dev` gains `postgresql-client`, compose mounts a `backups` volume + `BACKUP_DIR`.
+> **Deviations:** a correct self-contained cron evaluator is used instead of adding `cron-parser`
+> (no new dep/rebuild); `CONFIGURATION_ONLY`/`FULL` are honest full DB dumps for v1; the
+> Phase-1 auth gates + integration-credential encryption were already delivered by
+> ADR-0003/0004/0006. Also fixed a pre-existing BullMQ bug: custom job ids containing `:`
+> are rejected, which had silently broken every publish/reconcile enqueue (`publishJobId` +
+> backup job ids now use `-`).
 
 ## Context and Problem Statement
 

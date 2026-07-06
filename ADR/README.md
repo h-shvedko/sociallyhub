@@ -4,7 +4,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 **Owner decisions binding this set (2026-07-02):** deployment standardizes on self-hosted Docker (Vercel removed) · repair Support + Admin RBAC now, defer Community / Documentation / Discord behind feature flags · Stripe billing is in scope now.
 
-**Progress: 14 of the 24 decision ADRs implemented** (0002–0015 — the entire foundation → security → pipeline → support/admin arc, plus the three deferral flag-offs). The remaining 10 (0016–0025) are decided-but-not-built or still proposed. ADR-0001 is the record-keeping process itself (always in effect).
+**Progress: 15 of the 24 decision ADRs implemented** (0002–0016 — the entire foundation → security → pipeline → support/admin arc, the three deferral flag-offs, plus ADR-0016's real admin settings/backups). The remaining 9 (0017–0025) are decided-but-not-built or still proposed. ADR-0001 is the record-keeping process itself (always in effect).
 
 ## Index
 
@@ -41,7 +41,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 ### Settings, AI, growth — not yet implemented
 | ADR | Title | Status | Decision in one line |
 |---|---|---|---|
-| [0016](ADR-0016-admin-settings-configuration.md) | System Settings: Real Operations over Simulations | Proposed | Keep and make real five categories (real pg_dump backups on the worker, feature flags as the standard system, email templates, integrations, system config); delete the fake audit/optimize/test action endpoints. |
+| [0016](ADR-0016-admin-settings-configuration.md) | System Settings: Real Operations over Simulations | ✅ Implemented (2026-07-06) | Real `pg_dump` backups on the worker (verified: real file + matching SHA-256 + COMPLETED record); real flag prerequisite check; deleted the fake audit/optimize/test endpoints (410); dropped `BrandingConfiguration`; rebuilt hub + 5 pages. |
 | [0017](ADR-0017-user-settings-and-personalization.md) | User Settings, Personalization & i18n Scope | Proposed | Mount `SettingsProvider` (theme via next-themes); rewrite `/dashboard/settings` onto the real APIs; implement GDPR export + deletion now; defer 2FA; cut locale picker to `en` until translations exist. |
 | [0018](ADR-0018-ai-features-strategy.md) | AI Features: Honest Availability & Mounting | Proposed | 503 `AI_UNAVAILABLE` without a key (mock only in demo mode, flagged as simulated); unify all 13 routes on `aiService` with configurable model; per-workspace quotas; mount the orphaned AI/audience UIs. |
 | [0019](ADR-0019-billing-and-subscriptions.md) | Billing & Subscriptions with Stripe | Accepted — not yet implemented | Stripe Checkout + Billing Portal; workspace-level subscriptions in new `Subscription`/`StripeEvent` models; code-defined Free/Pro/Business tiers enforced via one entitlements helper; 14-day no-card trial. |
