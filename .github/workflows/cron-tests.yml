@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '18'
+  NODE_VERSION: '20'
   NEXTAUTH_URL: http://localhost:3099
   NEXTAUTH_SECRET: test-secret-for-cron
   DATABASE_URL: postgresql://sociallyhub:password@localhost:5432/sociallyhub_test
@@ -65,11 +65,14 @@ jobs:
           npx prisma migrate deploy
           npx prisma generate
 
+      - name: Seed test database
+        run: npm run db:seed
+
       - name: Run all tests
         run: npm run test:all
 
       - name: Upload comprehensive test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: comprehensive-test-results
@@ -163,7 +166,7 @@ jobs:
         run: npm audit --json > audit.json || true
 
       - name: Upload dependency reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dependency-reports
           path: |
@@ -230,7 +233,7 @@ jobs:
         run: npx playwright test --project=${{ matrix.browser }}
 
       - name: Upload browser-specific results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ${{ matrix.browser }}-test-results

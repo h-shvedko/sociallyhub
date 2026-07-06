@@ -12,7 +12,7 @@ RUN apk add --no-cache dumb-init curl postgresql-client
 WORKDIR /app
 
 # Copy package files first
-COPY package*.json ./
+COPY package*.json .npmrc ./
 
 # Install all dependencies (including dev dependencies for development)
 # Force clean install to ensure all modules are properly installed

@@ -2,9 +2,27 @@ import { OpenAI } from 'openai'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// LAZY client (ADR-0022 build fix): constructing OpenAI at module scope
+// throws when OPENAI_API_KEY is unset, which killed `next build` page-data
+// collection in key-less environments (Docker image build, CI). The Proxy
+// defers construction to first USE; call sites are unchanged. Honest
+// unavailability policy is ADR-0018 scope.
+let _openaiClient: OpenAI | null = null
+function _getOpenAI(): OpenAI {
+  if (!_openaiClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is not set — AI features are unavailable')
+    }
+    _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  }
+  return _openaiClient
+}
+const openai = new Proxy({} as OpenAI, {
+  get(_t, prop) {
+    const c = _getOpenAI() as unknown as Record<PropertyKey, unknown>
+    const v = c[prop]
+    return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(c) : v
+  },
 })
 
 // Sentiment analysis result schema

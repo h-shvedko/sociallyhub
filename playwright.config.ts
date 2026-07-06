@@ -110,7 +110,11 @@ export default defineConfig({
   globalSetup: require.resolve('./e2e/global-setup.ts'),
   globalTeardown: require.resolve('./e2e/global-teardown.ts'),
 
-  /* Run your local dev server before starting the tests */
+  /* Server strategy (ADR-0022):
+   * - Locally: auto-start the dev server below.
+   * - CI: the server is EXTERNAL — the e2e job boots the production image via
+   *   docker-compose.ci.yml and points tests at it with PLAYWRIGHT_BASE_URL
+   *   (consumed by use.baseURL above), so no webServer is started here. */
   webServer: process.env.CI ? undefined : {
     command: 'npm run dev',
     port: 3099,

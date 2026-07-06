@@ -12,24 +12,21 @@ RUN apk update && apk upgrade && \
 # Set working directory
 WORKDIR /app
 
-# Install dependencies only when needed
-FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
-
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production --frozen-lockfile && npm cache clean --force
+# NOTE (ADR-0022): the former `deps` stage (npm ci --only=production) was DELETED.
+# Its output fed nothing — the runner consumes Next.js *standalone* output, which
+# ships its own traced node_modules — and `--only=production` is deprecated npm
+# syntax. One less full install per build.
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 
-# Full install INCLUDING devDependencies. The `deps` stage above is prod-only
-# (it feeds the runtime), but the build needs dev tooling: typescript/tailwind
-# for `next build` and esbuild for the worker bundle (ADR-0008). Installed
-# before NODE_ENV=production so npm does not omit devDependencies. Copying only
-# the manifests first keeps this layer cached across source-only changes.
-COPY package.json package-lock.json* ./
+# Full install INCLUDING devDependencies: the build needs dev tooling —
+# typescript/tailwind for `next build` and esbuild for the worker bundle
+# (ADR-0008). Installed before NODE_ENV=production so npm does not omit
+# devDependencies. Copying only the manifests first keeps this layer cached
+# across source-only changes.
+COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --include=dev
 
 COPY . .
@@ -50,8 +47,27 @@ RUN npm run build
 # native deps are kept external and resolved from node_modules at runtime.
 RUN npm run build:worker
 
+# Self-contained Prisma CLI for the offline `migrate deploy` one-shot
+# (ADR-0022): copying node_modules/prisma alone is NOT enough — the v6 CLI
+# has its own runtime dependency closure (~33 packages, e.g. `effect` via
+# @prisma/config) that Next's standalone tracing never includes, so it dies
+# with "Cannot find module 'effect'". Instead, install the EXACT version from
+# this build's node_modules into an isolated prefix; npm resolves the full
+# closure. Network is available at image-build time (same as npm ci above).
+RUN PRISMA_VERSION=$(node -p "require('prisma/package.json').version") && \
+    npm install --prefix /prisma-cli --no-save --omit=dev "prisma@${PRISMA_VERSION}" && \
+    node /prisma-cli/node_modules/prisma/build/index.js --version
+
 # Production image, copy all the files and run next
 FROM base AS runner
+
+# postgresql client tools (pg_dump / pg_restore) so the ADR-0016 backup worker
+# can run real backups in prod (parity with Dockerfile.dev). NOTE: node:20-alpine
+# is Alpine 3.23+, which does NOT ship a `postgresql15-client` package — the
+# unpinned `postgresql-client` meta resolves to the current major (v18). A newer
+# client dumping/restoring the postgres:15 server is supported (pg_dump is
+# backward-compatible with older servers), so this is safe.
+RUN apk add --no-cache postgresql-client
 
 # Production environment variables
 ENV NODE_ENV=production
@@ -64,7 +80,9 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Create required directories with proper permissions
-RUN mkdir -p /app/logs /app/uploads /app/tmp && \
+# /app/backups is the ADR-0016 BACKUP_DIR mount point — pre-creating it with the
+# right owner makes Docker seed a fresh named volume with nextjs ownership.
+RUN mkdir -p /app/logs /app/uploads /app/tmp /app/backups && \
     chown -R nextjs:nodejs /app
 
 # Copy the public folder
@@ -76,13 +94,37 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Copy the bundled background worker (ADR-0008). Run in a separate container from
 # the same image via `node dist/worker.js` (see docker-compose.prod.yml worker
-# service). @prisma/client resolves from the standalone node_modules + the
-# .prisma client copied below.
+# service).
+#
+# Why the worker's externals resolve at runtime WITHOUT any extra installs:
+# build:worker keeps `@prisma/client`, `.prisma/client`, `sharp` and `bcrypt`
+# external (see package.json). The Next.js standalone output copied above traces
+# the app's server-side imports and therefore ALREADY contains node_modules/
+# @prisma/client (prisma is used by virtually every API route), plus sharp
+# (media upload, ADR-0007) and bcrypt (credentials auth) — the worker simply
+# resolves them from that same traced node_modules. The generated `.prisma`
+# client is NOT reliably traced (it is created by `prisma generate`, not
+# declared in package.json), so it is copied explicitly below.
 COPY --from=builder --chown=nextjs:nodejs /app/dist/worker.js ./dist/worker.js
 
-# Copy Prisma files
+# Copy Prisma files: schema + committed migrations (used by the one-shot
+# `migrate` service in docker-compose.prod.yml) and the generated client.
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+
+# Prisma CLI for offline `migrate deploy` (ADR-0022): the standalone
+# node_modules does NOT include the `prisma` CLI (a devDependency never
+# imported by server code), and the CLI's own ~33-package dependency closure
+# (e.g. `effect`) means copying node_modules/prisma alone fails at runtime.
+# The builder stage installed the exact pinned version into an isolated
+# /prisma-cli prefix (full closure resolved by npm); the compose `migrate`
+# one-shot runs
+#   node /app/prisma-cli/node_modules/prisma/build/index.js migrate deploy
+# from /app, where ./prisma/schema.prisma + ./prisma/migrations (copied above)
+# are found. Works fully offline at deploy time. Migrations are intentionally
+# NOT run from the entrypoint — see docker/entrypoint.sh.
+COPY --from=builder --chown=nextjs:nodejs /prisma-cli ./prisma-cli
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 
 # Copy startup script
 COPY --chown=nextjs:nodejs docker/entrypoint.sh /app/entrypoint.sh

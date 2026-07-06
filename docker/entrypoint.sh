@@ -1,4 +1,24 @@
 #!/bin/sh
+# ============================================================================
+# Production entrypoint (ADR-0022): wait-for-deps + assert ENCRYPTION_KEY +
+# exec node server.js. Nothing else.
+#
+# What MOVED OUT of here, and where it went:
+#   - `npx prisma migrate deploy`  → the explicit one-shot `migrate` service in
+#     docker-compose.prod.yml (runs the bundled Prisma CLI via
+#     `node node_modules/prisma/build/index.js migrate deploy`; app/worker
+#     start only after it completes). Migrations are a deploy-time step, not a
+#     per-container-boot side effect — and `npx` in the standalone image would
+#     have tried to download the prisma CLI from the registry at runtime.
+#   - `npx prisma generate`        → build time only (Dockerfile.prod builder
+#     stage). The generated client is baked into the image; regenerating at
+#     runtime is impossible (no prisma CLI dev tooling) and pointless (the
+#     schema cannot change inside a built image).
+#   - SEED_DATABASE / `npx prisma db seed` → removed. tsx (the seed runner) is
+#     not in the production image; seeding policy is ADR-0025.
+#
+# `nc` is busybox nc, present in the node:20-alpine base — no extra package.
+# ============================================================================
 set -e
 
 echo "🚀 Starting SociallyHub Production..."
@@ -35,20 +55,6 @@ until nc -z "${REDIS_HOST:-localhost}" "${REDIS_PORT:-6379}"; do
     sleep 2
 done
 echo "✅ Redis is up!"
-
-# Run database migrations
-echo "📊 Running database migrations..."
-npx prisma migrate deploy
-
-# Generate Prisma client (in case of schema changes)
-echo "🔄 Generating Prisma client..."
-npx prisma generate
-
-# Seed database if SEED_DATABASE is set
-if [ "$SEED_DATABASE" = "true" ]; then
-    echo "🌱 Seeding database..."
-    npx prisma db seed || echo "⚠️ Database seeding failed or not configured"
-fi
 
 echo "🎉 Starting Next.js application..."
 exec node server.js

@@ -1,168 +1,30 @@
-version: '3.8'
+# ============================================================================
+# SociallyHub production topology (ADR-0022) — self-hosted Docker VM.
+#
+# Image: built and pushed by CI to GHCR; this file NEVER builds. Deploy by
+# setting APP_IMAGE_TAG in .env (see .env.production.example) and running:
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Startup order is honest and enforced:
+#   postgres healthy → migrate (one-shot `prisma migrate deploy`, exits 0)
+#   → app + worker start. A failed migration BLOCKS the deploy instead of
+#   booting an app against a half-migrated schema.
+#
+# TLS bootstrap on a fresh VM (certs don't exist yet — nginx's 443 block
+# references them): see the runbook comment at the top of
+# docker/nginx/conf.d/default.conf. Also replace the placeholder domain
+# `sociallyhub.example.com` in that file before first deploy.
+#
+# Monitoring (prometheus/grafana/loki/promtail) is OPT-IN via the
+# "monitoring" profile:  docker compose ... --profile monitoring up -d
+# ============================================================================
 
 services:
-  # Application
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-      args:
-        - NODE_ENV=production
-    image: sociallyhub:latest
-    container_name: sociallyhub-app
-    restart: unless-stopped
-    ports:
-      - "3099:3099"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD}@postgres:5432/sociallyhub
-      - REDIS_URL=redis://redis:6379
-      - NEXTAUTH_URL=${NEXTAUTH_URL}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # Backup artifacts dir (ADR-0016) — shared named volume with the worker so
-      # the web tier can serve/download a backup file the worker wrote.
-      - BACKUP_DIR=/app/backups
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - sociallyhub-network
-    volumes:
-      - uploads:/app/uploads
-      - logs:/app/logs
-      # Backup artifacts (ADR-0016) — shared with the worker service.
-      - backups:/app/backups
-    labels:
-      - "com.sociallyhub.service=app"
-      - "com.sociallyhub.version=1.0.0"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3099/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  # Background job worker (ADR-0008) — dedicated container from the SAME image as
-  # `app` (built once, run with a different command). The web tier only enqueues;
-  # this process owns BullMQ workers, repeatable schedules, and graceful shutdown.
-  worker:
-    image: sociallyhub:latest
-    container_name: sociallyhub-worker
-    restart: unless-stopped
-    command: ["node", "dist/worker.js"]
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD}@postgres:5432/sociallyhub
-      # Redis requires a password (see redis service --requirepass); the worker
-      # must authenticate. buildRedisConnectionOptions() parses REDIS_URL first.
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      # ENCRYPTION_KEY (ADR-0006): REQUIRED — the worker decrypts SocialAccount
-      # tokens at publish time. Provide a real 64-hex key via the env/secret.
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      # Local media storage (ADR-0007), shared with `app` via the uploads volume.
-      - STORAGE_DRIVER=${STORAGE_DRIVER:-local}
-      - STORAGE_LOCAL_ROOT=/app/uploads
-      # Backup artifacts dir (ADR-0016) — the worker writes pg_dump/tar files here.
-      # NOTE: the prod image is built from Dockerfile.prod, which must also install
-      # the postgresql client tools (pg_dump/pg_restore) for real backups to run;
-      # without them the worker records an honest spawn-error FAILED. See ADR-0016.
-      - BACKUP_DIR=/app/backups
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - sociallyhub-network
-    volumes:
-      - uploads:/app/uploads
-      - logs:/app/logs
-      # Backup artifacts (ADR-0016) — shared with the app service.
-      - backups:/app/backups
-    labels:
-      - "com.sociallyhub.service=worker"
-      - "com.sociallyhub.version=1.0.0"
-    healthcheck:
-      # Liveness = the worker's Redis heartbeat key exists (refreshed every ~20s,
-      # EX 60). ioredis is present in the traced standalone node_modules.
-      test: ["CMD-SHELL", "node -e \"const R=require('ioredis');const r=new R(process.env.REDIS_URL);r.get('worker:heartbeat').then(v=>{r.quit();process.exit(v?0:1)}).catch(()=>process.exit(1))\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: sociallyhub-postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=sociallyhub
-      - POSTGRES_USER=sociallyhub
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - PGDATA=/var/lib/postgresql/data/pgdata
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/pgdata
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - postgres_backups:/backups
-    networks:
-      - sociallyhub-network
-    labels:
-      - "com.sociallyhub.service=database"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sociallyhub"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    command: >
-      postgres 
-      -c log_statement=all
-      -c log_min_duration_statement=1000
-      -c log_checkpoints=on
-      -c log_connections=on
-      -c log_disconnections=on
-      -c shared_preload_libraries=pg_stat_statements
-
-  # Redis Cache and Job Queue
-  redis:
-    image: redis:7-alpine
-    container_name: sociallyhub-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    command: >
-      redis-server 
-      --appendonly yes 
-      --maxmemory 256mb 
-      --maxmemory-policy allkeys-lru
-      --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    networks:
-      - sociallyhub-network
-    labels:
-      - "com.sociallyhub.service=cache"
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  # Nginx Reverse Proxy
+  # --------------------------------------------------------------------------
+  # Edge: TLS termination + reverse proxy.
+  # --------------------------------------------------------------------------
   nginx:
     image: nginx:alpine
     container_name: sociallyhub-nginx
@@ -172,68 +34,286 @@ services:
       - "443:443"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
-      - logs:/var/log/nginx
-    depends_on:
-      - app
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      # Shared with certbot: ACME webroot + issued certificates.
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    # Reload every 6h so renewed certificates (written by the certbot service)
+    # are picked up without manual intervention.
+    command: >
+      /bin/sh -c "while :; do sleep 6h; nginx -s reload; done & nginx -g 'daemon off;'"
+    # NO depends_on app — deliberate. The vhost config resolves the app
+    # hostname at request time (resolver 127.0.0.11 + variable upstream), so
+    # nginx starts fine before/without the app (502 until it's healthy). This
+    # keeps the TLS bootstrap flow working: `up -d nginx` must not drag in the
+    # app image before it has even been pulled (docs/ops/deployment.md §5-6).
     networks:
       - sociallyhub-network
-    labels:
-      - "com.sociallyhub.service=proxy"
     healthcheck:
+      # Plain-HTTP /health on :80 (exempt from the HTTPS redirect) proxies to
+      # the app's real /api/health.
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Monitoring - Prometheus
+  # --------------------------------------------------------------------------
+  # Let's Encrypt renewal loop (webroot mode; nginx serves the challenges).
+  # First issuance is a manual `docker compose run --rm certbot certonly ...` —
+  # see docker/nginx/conf.d/default.conf for the exact runbook.
+  # --------------------------------------------------------------------------
+  certbot:
+    image: certbot/certbot
+    container_name: sociallyhub-certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    # Dual-mode entrypoint:
+    #   - `up -d` (no command)            → 12h `certbot renew` loop
+    #     (webroot mode; nginx serves the challenges from certbot_www).
+    #   - `run --rm certbot certonly ...` → forwards the args straight to the
+    #     certbot binary, so the bootstrap commands in docs/ops/deployment.md
+    #     §5 work unchanged (compose `run` keeps the service entrypoint and
+    #     only replaces the command, which lands in "$@" here).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        if [ "$$#" -gt 0 ]; then exec certbot "$$@"; fi;
+        trap exit TERM;
+        while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $$!; done
+      - certbot-entry
+    command: []
+    networks:
+      - sociallyhub-network
+
+  # --------------------------------------------------------------------------
+  # One-shot migration runner (ADR-0002 migration-first). Same image as the
+  # app; overrides the entrypoint to invoke the Prisma CLI baked into the
+  # image (node_modules/prisma — copied explicitly in Dockerfile.prod, since
+  # the standalone output does not trace devDependencies and `npx` would try
+  # to download the CLI at deploy time). Runs `prisma migrate deploy`, exits;
+  # app and worker wait for it to complete successfully.
+  # --------------------------------------------------------------------------
+  migrate:
+    image: ghcr.io/h-shvedko/sociallyhub:${APP_IMAGE_TAG:?set APP_IMAGE_TAG (e.g. the git SHA CI pushed) in .env}
+    container_name: sociallyhub-migrate
+    restart: "no"
+    entrypoint: ["node", "/app/prisma-cli/node_modules/prisma/build/index.js"] # self-contained pinned CLI (Dockerfile.prod)
+    command: ["migrate", "deploy"]
+    environment:
+      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/sociallyhub
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sociallyhub-network
+
+  # --------------------------------------------------------------------------
+  # Web tier: Next.js standalone server. Enqueues jobs; never publishes.
+  # No host port — nginx is the only public entry point.
+  # --------------------------------------------------------------------------
+  app:
+    image: ghcr.io/h-shvedko/sociallyhub:${APP_IMAGE_TAG:?set APP_IMAGE_TAG (e.g. the git SHA CI pushed) in .env}
+    container_name: sociallyhub-app
+    restart: unless-stopped
+    # Secrets and app config come from the VM-side .env file
+    # (see .env.production.example for the documented contract).
+    env_file:
+      # required:false lets `docker compose config` validate on machines
+      # without a .env (CI, dev checkouts). This is NOT a silent-skip hole:
+      # every critical var still fails loudly — ${VAR:?} interpolation above/
+      # below and the entrypoint's ENCRYPTION_KEY assertion.
+      - path: .env
+        required: false
+    environment:
+      # Compose-internal wiring overrides (single source of truth for the
+      # in-network hostnames; POSTGRES_PASSWORD/REDIS_PASSWORD interpolate
+      # from .env).
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/sociallyhub
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Local media storage (ADR-0007) on the shared uploads volume.
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-local}
+      - STORAGE_LOCAL_ROOT=/app/uploads
+      # Backup artifacts dir (ADR-0016) — shared named volume with the worker
+      # so the web tier can serve/download a backup file the worker wrote.
+      - BACKUP_DIR=/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - sociallyhub-network
+    volumes:
+      - uploads:/app/uploads
+      - backups:/app/backups
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3099/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # --------------------------------------------------------------------------
+  # Background job worker (ADR-0008) — SAME image, different command. Owns
+  # BullMQ workers, repeatable schedules, graceful shutdown, and the ADR-0016
+  # backup jobs (pg_dump is installed in the image).
+  # --------------------------------------------------------------------------
+  worker:
+    image: ghcr.io/h-shvedko/sociallyhub:${APP_IMAGE_TAG:?set APP_IMAGE_TAG (e.g. the git SHA CI pushed) in .env}
+    container_name: sociallyhub-worker
+    restart: unless-stopped
+    # Bypass the web entrypoint (its dep-waits are redundant here — compose
+    # gates on healthchecks) and run the bundled worker directly.
+    command: ["node", "dist/worker.js"]
+    env_file:
+      # required:false lets `docker compose config` validate on machines
+      # without a .env (CI, dev checkouts). This is NOT a silent-skip hole:
+      # every critical var still fails loudly — ${VAR:?} interpolation above/
+      # below and the entrypoint's ENCRYPTION_KEY assertion.
+      - path: .env
+        required: false
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/sociallyhub
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-local}
+      - STORAGE_LOCAL_ROOT=/app/uploads
+      # Backup artifacts dir (ADR-0016) — the worker writes pg_dump/tar files
+      # here; Dockerfile.prod installs postgresql-client so pg_dump is real.
+      - BACKUP_DIR=/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - sociallyhub-network
+    volumes:
+      - uploads:/app/uploads
+      - backups:/app/backups
+    healthcheck:
+      # Liveness = the worker's Redis heartbeat key exists (refreshed every
+      # ~20s, EX 60). ioredis is present in the traced standalone node_modules.
+      test: ["CMD-SHELL", "node -e \"const R=require('ioredis');const r=new R(process.env.REDIS_URL);r.get('worker:heartbeat').then(v=>{r.quit();process.exit(v?0:1)}).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL — compose-network internal ONLY (no host port). Reach it via
+  # `docker compose exec postgres psql -U sociallyhub` on the VM.
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: sociallyhub-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=sociallyhub
+      - POSTGRES_USER=sociallyhub
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/pgdata
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - sociallyhub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sociallyhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # --------------------------------------------------------------------------
+  # Redis — compose-network internal ONLY (no host port), password-protected.
+  # maxmemory-policy MUST be noeviction: BullMQ job state lives here and an
+  # eviction policy that drops keys silently loses jobs (BullMQ requirement).
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sociallyhub-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    volumes:
+      - redis_data:/data
+    networks:
+      - sociallyhub-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ==========================================================================
+  # OPTIONAL monitoring stack — enable with `--profile monitoring`.
+  # Mounts reference ONLY files that actually exist in the repo
+  # (docker/monitoring/{prometheus,loki,promtail}.yml). The former grafana
+  # provisioning mounts (./docker/monitoring/grafana/**) pointed at
+  # directories that do NOT exist and were removed — grafana starts with its
+  # own persisted storage; datasources/dashboards are configured in its UI.
+  # ==========================================================================
   prometheus:
     image: prom/prometheus:latest
     container_name: sociallyhub-prometheus
     restart: unless-stopped
+    profiles: ["monitoring"]
     ports:
       - "9090:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
     volumes:
       - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
       - sociallyhub-network
-    labels:
-      - "com.sociallyhub.service=monitoring"
 
-  # Monitoring - Grafana
   grafana:
     image: grafana/grafana:latest
     container_name: sociallyhub-grafana
     restart: unless-stopped
+    profiles: ["monitoring"]
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./docker/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./docker/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
     networks:
       - sociallyhub-network
-    labels:
-      - "com.sociallyhub.service=visualization"
     depends_on:
       - prometheus
 
-  # Log Management - Loki
   loki:
     image: grafana/loki:2.9.0
     container_name: sociallyhub-loki
     restart: unless-stopped
+    profiles: ["monitoring"]
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -242,17 +322,18 @@ services:
       - ./docker/monitoring/loki.yml:/etc/loki/local-config.yaml:ro
     networks:
       - sociallyhub-network
-    labels:
-      - "com.sociallyhub.service=logs"
 
-  # Log Collection - Promtail
   promtail:
     image: grafana/promtail:2.9.0
     container_name: sociallyhub-promtail
     restart: unless-stopped
+    profiles: ["monitoring"]
     volumes:
-      - logs:/var/log/sociallyhub:ro
       - ./docker/monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      # App/worker log to stdout/stderr; promtail's docker_sd job scrapes the
+      # Docker json logs via these mounts. (promtail.yml's file-based
+      # /var/log/sociallyhub and /var/log/nginx jobs simply match no files —
+      # the old shared `logs` volume was removed with the ADR-0022 rewrite.)
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
     command: -config.file=/etc/promtail/config.yml
@@ -260,53 +341,22 @@ services:
       - loki
     networks:
       - sociallyhub-network
-    labels:
-      - "com.sociallyhub.service=log-collection"
 
 # Networks
 networks:
   sociallyhub-network:
     driver: bridge
-    labels:
-      - "com.sociallyhub.network=main"
 
 # Volumes
 volumes:
   postgres_data:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=database"
-  postgres_backups:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=backups"
   redis_data:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=cache"
   uploads:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=uploads"
-  # Backup artifacts (ADR-0016) — shared by app + worker; distinct from the
-  # postgres_backups volume mounted into the database container.
+  # Backup artifacts (ADR-0016) — shared by app + worker.
   backups:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=app-backups"
-  logs:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=logs"
+  # Let's Encrypt state: issued certs/account (conf) + ACME webroot (www).
+  certbot_conf:
+  certbot_www:
   prometheus_data:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=metrics"
   grafana_data:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=dashboards"
   loki_data:
-    driver: local
-    labels:
-      - "com.sociallyhub.volume=logs-storage"

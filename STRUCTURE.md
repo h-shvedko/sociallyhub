@@ -810,7 +810,7 @@
 
 ### Container Configuration
 - `docker/entrypoint.sh` - Docker container entrypoint script for application startup
-- `Dockerfile` - Multi-stage Docker build configuration for production deployment
+- `Dockerfile.dev` / `Dockerfile.prod` - Docker build configurations for development and production (self-hosted compose)
 - `docker-compose.yml` - Local development environment orchestration with all services
 
 ### Monitoring Stack

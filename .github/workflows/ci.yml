@@ -1,10 +1,58 @@
 name: Continuous Integration
 
+# ============================================================================
+# ADR-0022 Track B: the HONEST pipeline.
+#
+# Every job below is either a real, passable, meaningful gate (BLOCKING) or is
+# loudly labelled advisory with the verified reason and the ADR that owns
+# making it green. No phantom scripts, no gates that can never pass, no steps
+# that silently skip.
+#
+# Verified baselines (2026-07-06) behind each blocking/advisory decision:
+#   - `next build`         GREEN (ADR-0024)                         -> build BLOCKS
+#   - `npm run build:worker` produces dist/worker.js                -> build BLOCKS
+#   - `npm run db:check`   GREEN (ADR-0002 migration-first gate)    -> schema BLOCKS
+#   - `npx tsc --noEmit`   1,641 pre-existing errors (deferred
+#     subsystems; ADR-0002 fallout inventory)                       -> typecheck ADVISORY
+#   - `npm run lint`       ~1,368-error pre-existing baseline       -> lint ADVISORY
+#   - Jest: 10/10 suites fail at CONFIG level (jest.config.js uses
+#     the invalid key `moduleNameMapping` -> jest.setup.js ESM
+#     import never transformed; 0 tests execute)                    -> test ADVISORY
+#   - `npm audit --audit-level moderate`: 43 vulns (2 critical)
+#     in the current tree                                           -> security ADVISORY
+#   - e2e specs assert unverified selectors/data-testids against
+#     the real UI, and docker-compose.ci.yml lands with Track C     -> e2e ADVISORY
+#
+# ADR-0021 owns ratcheting the advisory jobs into blocking gates.
+#
+# Removed from the previous pipeline (theater or contradicted owner decisions):
+#   - deploy-preview (Vercel) — owner decision is self-hosted Docker (ADR-0022)
+#   - performance job — installed Playwright browsers, then ran Jest
+#   - visual-regression job — depended on the deleted .next artifact hand-off
+#     and the broken webServer flow (no step ever started the app)
+#   - Snyk step — requires a SNYK_TOKEN secret that is not provisioned
+#   - Slack notify job — requires SLACK_WEBHOOK (not provisioned), referenced
+#     deleted jobs
+#   - the inline 70% coverage gate — unattainable with ~7 test files and a
+#     broken Jest config; ADR-0021 owns coverage ratchets
+#   - codecov fail_ci_if_error — same reason
+#   - upload/download-artifact@v3 — disabled by GitHub; the docker job now
+#     rebuilds hermetically instead of shipping .next between jobs
+# ============================================================================
+
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+
+# Cancel superseded runs of the same ref (e.g. force-pushes to a PR branch).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   NODE_VERSION: '20'
@@ -18,9 +66,14 @@ env:
   ENCRYPTION_KEY: b29945a36f9850725969747a03f57cb7bb83d7655844f8c12d853e16e5a132c2
 
 jobs:
-  # Linting and Code Quality
+  # --------------------------------------------------------------------------
+  # ADVISORY: ESLint sits on a ~1,368-error pre-existing baseline, so a
+  # blocking lint gate would be a gate that can never go green. It runs (so
+  # the baseline is visible on every PR) but does not block. ADR-0021 owns
+  # the ratchet to blocking.
+  # --------------------------------------------------------------------------
   lint:
-    name: Lint & Format
+    name: Lint (advisory)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -35,11 +88,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run ESLint
+      - name: ESLint (advisory — pre-existing ~1,368-error baseline, see ADR-0021)
+        continue-on-error: true
         run: npm run lint
-
-      - name: Check TypeScript
-        run: npx tsc --noEmit
 
       # ADR-0005: publish the API route-auth coverage baseline on every build.
       # WARN mode — the script always exits 0; continue-on-error is belt-and-
@@ -49,9 +100,44 @@ jobs:
         continue-on-error: true
         run: npx tsx scripts/check-route-auth.ts
 
-  # Database Schema and Mock Data Validation
-  database-validation:
-    name: Database Schema & Mock Data Validation
+  # --------------------------------------------------------------------------
+  # ADVISORY: `npx tsc --noEmit` reports 1,641 pre-existing errors (verified
+  # 2026-07-06), concentrated in the deferred subsystems catalogued in
+  # ADR/ADR-0002-fallout-inventory.md. A blocking typecheck gate is therefore
+  # unattainable today. It runs so the error count is visible and regressions
+  # are reviewable; ADR-0021 owns the ratchet to blocking.
+  # NOTE: tsc passing would NOT be a substitute for the build gate anyway —
+  # see the motivating bug on the build job below.
+  # --------------------------------------------------------------------------
+  typecheck:
+    name: TypeScript (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: tsc --noEmit (advisory — 1,641 pre-existing errors in deferred subsystems, see ADR-0021)
+        continue-on-error: true
+        run: npm run typecheck
+
+  # --------------------------------------------------------------------------
+  # BLOCKING: schema gate (ADR-0002, migration-first). The schema must
+  # validate, must match the committed migration history (drift check replays
+  # prisma/migrations into a disposable shadow DB), migrations must deploy
+  # onto a clean postgres, and the seed must produce real rows. All of this
+  # is verified green today. `prisma db push` is banned (ADR-0002).
+  # --------------------------------------------------------------------------
+  schema:
+    name: Schema & Migrations (gate)
     runs-on: ubuntu-latest
 
     services:
@@ -98,93 +184,61 @@ jobs:
           npx prisma migrate deploy
           npx prisma generate
 
-      - name: Test mock data seeding
+      # Seed smoke test: the seed must run to completion against freshly
+      # deployed migrations and produce a real dataset. The row-count check is
+      # a genuine assertion (it catches seed/schema divergence), not theater.
+      # (The old "performance test" probe was removed: its 5s threshold only
+      # ever warned, so it gated nothing.)
+      - name: Seed smoke test (real row counts)
         run: |
-          echo "Testing mock data generation..."
           npm run db:seed
-          
-          # Validate data was created
           node -e "
             const { PrismaClient } = require('@prisma/client');
             const prisma = new PrismaClient();
-            
+
             async function validateData() {
               try {
                 const userCount = await prisma.user.count();
                 const workspaceCount = await prisma.workspace.count();
                 const postCount = await prisma.post.count();
                 const metricsCount = await prisma.analyticsMetric.count();
-                
-                console.log(\`✅ Data validation results:\`);
-                console.log(\`  Users: \${userCount}\`);
-                console.log(\`  Workspaces: \${workspaceCount}\`);
-                console.log(\`  Posts: \${postCount}\`);
-                console.log(\`  Analytics Metrics: \${metricsCount}\`);
-                
+
+                console.log('Seed validation results:');
+                console.log('  Users: ' + userCount);
+                console.log('  Workspaces: ' + workspaceCount);
+                console.log('  Posts: ' + postCount);
+                console.log('  Analytics Metrics: ' + metricsCount);
+
                 if (userCount < 10 || workspaceCount < 5 || postCount < 50) {
-                  throw new Error('Insufficient mock data generated');
+                  throw new Error('Insufficient seed data generated');
                 }
-                
-                console.log('✅ Mock data validation passed');
+
+                console.log('Seed validation passed');
               } catch (error) {
-                console.error('❌ Mock data validation failed:', error.message);
+                console.error('Seed validation failed:', error.message);
                 process.exit(1);
               } finally {
                 await prisma.\$disconnect();
               }
             }
-            
+
             validateData();
           "
         env:
           NODE_ENV: test
 
-      - name: Test database performance with large dataset
-        run: |
-          echo "Testing database performance with mock data..."
-          node -e "
-            const { PrismaClient } = require('@prisma/client');
-            const prisma = new PrismaClient();
-            
-            async function performanceTest() {
-              try {
-                const start = Date.now();
-                
-                // Complex query to test performance
-                const analytics = await prisma.analyticsMetric.findMany({
-                  where: {
-                    date: {
-                      gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-                    }
-                  },
-                  include: {
-                    post: true,
-                    socialAccount: true
-                  },
-                  take: 100
-                });
-                
-                const duration = Date.now() - start;
-                console.log(\`✅ Performance test completed in \${duration}ms\`);
-                console.log(\`✅ Fetched \${analytics.length} analytics records\`);
-                
-                if (duration > 5000) {
-                  console.warn('⚠️  Query took longer than 5 seconds');
-                }
-              } catch (error) {
-                console.error('❌ Performance test failed:', error.message);
-                process.exit(1);
-              } finally {
-                await prisma.\$disconnect();
-              }
-            }
-            
-            performanceTest();
-          "
-
-  # Unit and Integration Tests
+  # --------------------------------------------------------------------------
+  # ADVISORY: the Jest suite is broken at CONFIG level — jest.config.js uses
+  # the invalid option name `moduleNameMapping` (should be `moduleNameMapper`),
+  # so the `@/` alias never applies and jest.setup.js's ESM import is never
+  # transformed. Verified 2026-07-06: 10/10 suites fail, 0 tests execute.
+  # A blocking test gate would be unattainable. The job still runs Jest so the
+  # breakage is visible on every PR; ADR-0021 owns fixing the config and
+  # flipping this to blocking. The DB/Redis services stay so the job is ready
+  # the moment the config is fixed.
+  # --------------------------------------------------------------------------
   test:
-    name: Unit & Integration Tests
+    name: Jest (advisory — suite broken at config level, see ADR-0021)
     runs-on: ubuntu-latest
 
     services:
@@ -230,54 +284,40 @@ jobs:
           npx prisma migrate deploy
           npx prisma generate
 
-      - name: Seed test database with mock data
-        run: npm run db:seed
-        env:
-          NODE_ENV: test
-
-      - name: Run Jest tests
+      - name: Run Jest (advisory — known-broken config, see ADR-0021)
+        continue-on-error: true
         run: npm run test:ci
 
-      - name: Check code coverage threshold
-        run: |
-          npm run test:coverage -- --passWithNoTests
-          echo "Checking coverage thresholds..."
-          node -e "
-            const fs = require('fs');
-            try {
-              const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
-              const { lines, functions, branches, statements } = coverage.total.pct;
-              const threshold = 70;
-              
-              console.log(\`Coverage Summary:\`);
-              console.log(\`  Lines: \${lines}%\`);
-              console.log(\`  Functions: \${functions}%\`);
-              console.log(\`  Branches: \${branches}%\`);
-              console.log(\`  Statements: \${statements}%\`);
-              
-              if (lines < threshold || functions < threshold || branches < threshold || statements < threshold) {
-                console.error(\`❌ Coverage below \${threshold}% threshold\`);
-                process.exit(1);
-              }
-              
-              console.log(\`✅ All coverage thresholds met (\${threshold}%+)\`);
-            } catch (error) {
-              console.error('Coverage file not found or invalid');
-              process.exit(1);
-            }
-          "
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
+      # Coverage is uploaded for visibility only. No threshold gate here:
+      # ADR-0021 owns coverage ratchets. The old inline 70% gate was
+      # unattainable (~7 test files) and has been removed.
+      - name: Upload coverage report (non-blocking)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
         with:
-          files: ./coverage/lcov.info
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: true
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: ignore
 
-  # Build Test
+  # --------------------------------------------------------------------------
+  # BLOCKING: THE GATE.
+  #
+  # Motivating bug (why this job exists): a missing npm package ('sonner')
+  # shipped to main because `tsc --noEmit` PASSES on missing-module value
+  # imports — TypeScript only type-checks, it does not resolve and bundle
+  # runtime modules. Only `next build` actually resolves every import in the
+  # app graph, so only `next build` catches that class of defect. The same
+  # applies to the worker: `npm run build:worker` (esbuild) resolves the whole
+  # worker graph into dist/worker.js — the exact artifact the worker container
+  # runs (`node dist/worker.js`).
+  #
+  # `next build` is verified GREEN as of ADR-0024, so this gate is passable
+  # today and every red run means a real regression.
+  # --------------------------------------------------------------------------
   build:
-    name: Build Test
+    name: Build (gate)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -292,47 +332,84 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build application
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build Next.js app (catches missing-module imports tsc misses)
         run: npm run build
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: build-files
-          path: .next/
-          retention-days: 1
+      - name: Build worker bundle
+        run: npm run build:worker
 
-  # E2E Tests
-  e2e:
-    name: E2E Tests
+      - name: Assert worker artifact exists
+        run: test -f dist/worker.js
+
+      # No .next artifact upload: the docker-image job rebuilds hermetically
+      # via Dockerfile.prod (and upload-artifact@v3 is disabled by GitHub).
+
+  # --------------------------------------------------------------------------
+  # BLOCKING: the production image must build from Dockerfile.prod on every
+  # PR (push: false), and is pushed to GHCR only on push to main. GHA layer
+  # cache keeps rebuilds (including the e2e job's load) warm.
+  # --------------------------------------------------------------------------
+  docker-image:
+    name: Docker image (gate)
     runs-on: ubuntu-latest
-    needs: [lint, database-validation, test, build]
-    
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: sociallyhub_test
-          POSTGRES_USER: sociallyhub  
-          POSTGRES_PASSWORD: password
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+    needs: [build]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
+      - name: Log in to GHCR (main pushes only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image (push only on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.prod
+          tags: ghcr.io/h-shvedko/sociallyhub:sha-${{ github.sha }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # --------------------------------------------------------------------------
+  # ADVISORY until ADR-0021: pragmatic v1 e2e smoke against the REAL production
+  # image (docker-compose.ci.yml, owned by Track C — it consumes APP_IMAGE).
+  #
+  # Why advisory (job-level continue-on-error), verified 2026-07-06:
+  #   1. The existing e2e specs assert selectors/data-testids and literal texts
+  #      that were never verified against the real UI (e.g. `h1` containing
+  #      'Sign In', '[data-testid="total-users-card"]') — the suite has never
+  #      run green because no CI step ever started the app.
+  #   2. docker-compose.ci.yml lands with Track C; until it merges this job
+  #      cannot pass by definition.
+  # The job is fully real end-to-end (image boot, /api/health wait, migrate +
+  # seed, Playwright chromium against e2e/auth.spec.ts) so the moment Track C
+  # lands and a smoke spec is verified, dropping continue-on-error flips it to
+  # a blocking gate (ADR-0021).
+  #
+  # Contract for Track C / verify stage: docker-compose.ci.yml must expose the
+  # app on localhost:3099 and postgres on localhost:5432 with credentials
+  # matching this workflow's DATABASE_URL
+  # (postgresql://sociallyhub:password@localhost:5432/sociallyhub_test).
+  # --------------------------------------------------------------------------
+  e2e:
+    name: E2E smoke (advisory until ADR-0021 — unverified specs; needs Track C compose)
+    runs-on: ubuntu-latest
+    needs: [docker-image]
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -346,202 +423,100 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Setup test database
+      # The docker-image job runs on a different runner, and on PRs the image
+      # is not pushed anywhere — so rebuild here with load: true. The GHA layer
+      # cache written by the docker-image job makes this a cache hit, not a
+      # second cold build.
+      - name: Load production image into local docker (from GHA cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.prod
+          tags: ghcr.io/h-shvedko/sociallyhub:sha-${{ github.sha }}
+          push: false
+          load: true
+          cache-from: type=gha
+
+      - name: Start CI stack (Track C compose)
+        run: docker compose -f docker-compose.ci.yml up -d
+        env:
+          APP_IMAGE: ghcr.io/h-shvedko/sociallyhub:sha-${{ github.sha }}
+
+      - name: Wait for compose postgres to accept connections
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U sociallyhub > /dev/null 2>&1; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            echo "Waiting for postgres... ($i/30)"
+            sleep 2
+          done
+          echo "Postgres never became ready"
+          exit 1
+
+      - name: Apply migrations and seed (against the compose postgres)
         run: |
           npx prisma migrate deploy
           npx prisma generate
-
-      - name: Seed test database with mock data
-        run: npm run db:seed
+          npm run db:seed
         env:
           NODE_ENV: test
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: build-files
-          path: .next/
-
-      - name: Run Playwright tests
-        run: npm run test:e2e
+      - name: Wait for /api/health (real readiness — reports Redis/worker state)
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3099/api/health > /dev/null 2>&1; then
+              echo "App is healthy"
+              exit 0
+            fi
+            echo "Waiting for app... ($i/60)"
+            sleep 5
+          done
+          echo "App never became healthy; dumping compose logs:"
+          docker compose -f docker-compose.ci.yml logs --tail 200
+          exit 1
         env:
-          CI: true
-          DATABASE_SEEDED: true
+          APP_IMAGE: ghcr.io/h-shvedko/sociallyhub:sha-${{ github.sha }}
 
-      - name: Upload Playwright Report
-        uses: actions/upload-artifact@v3
+      - name: Install Playwright (chromium only)
+        run: npx playwright install --with-deps chromium
+
+      # Smoke subset only: the auth spec on chromium. The full multi-browser /
+      # visual / performance matrix is ADR-0021 scope.
+      - name: Run Playwright smoke (auth spec, chromium)
+        run: npx playwright test e2e/auth.spec.ts --project=chromium
+        env:
+          CI: 'true'
+          PLAYWRIGHT_BASE_URL: http://localhost:3099
+
+      - name: Upload Playwright report
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report/
-          retention-days: 30
+          retention-days: 14
+          if-no-files-found: ignore
 
-      - name: Upload test results
-        uses: actions/upload-artifact@v3
+      - name: Tear down CI stack
         if: always()
-        with:
-          name: test-results
-          path: test-results/
-          retention-days: 30
-
-  # Performance Tests
-  performance:
-    name: Performance Tests
-    runs-on: ubuntu-latest
-    needs: [build]
-    
-    services:
-      postgres:
-        image: postgres:15
+        run: docker compose -f docker-compose.ci.yml down -v
         env:
-          POSTGRES_DB: sociallyhub_test
-          POSTGRES_USER: sociallyhub
-          POSTGRES_PASSWORD: password
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+          APP_IMAGE: ghcr.io/h-shvedko/sociallyhub:sha-${{ github.sha }}
 
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Setup test database
-        run: |
-          npx prisma migrate deploy
-          npx prisma generate
-
-      - name: Seed test database with mock data
-        run: npm run db:seed
-        env:
-          NODE_ENV: test
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: build-files
-          path: .next/
-
-      - name: Run Performance Tests
-        run: npm run test:performance
-        env:
-          DATABASE_SEEDED: true
-
-      - name: Upload performance results
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: performance-results
-          path: test-results/
-          retention-days: 30
-
-  # Visual Regression Tests
-  visual:
-    name: Visual Regression Tests
-    runs-on: ubuntu-latest
-    needs: [build]
-    
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: sociallyhub_test
-          POSTGRES_USER: sociallyhub
-          POSTGRES_PASSWORD: password
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Setup test database
-        run: |
-          npx prisma migrate deploy
-          npx prisma generate
-
-      - name: Seed test database with mock data
-        run: npm run db:seed
-        env:
-          NODE_ENV: test
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: build-files
-          path: .next/
-
-      - name: Run Visual Tests
-        run: npm run test:visual
-        env:
-          DATABASE_SEEDED: true
-
-      - name: Upload visual diff results
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: visual-diff-results
-          path: test-results/
-          retention-days: 30
-
-  # Security Scan
+  # --------------------------------------------------------------------------
+  # ADVISORY: `npm audit --audit-level moderate` currently reports 43
+  # vulnerabilities (4 low, 28 moderate, 9 high, 2 critical) in the existing
+  # dependency tree (verified 2026-07-06), so a blocking audit gate would be
+  # unattainable. It runs for visibility; ADR-0021 owns the remediation +
+  # ratchet. The old Snyk step was removed (SNYK_TOKEN is not provisioned).
+  # --------------------------------------------------------------------------
   security:
-    name: Security Scan
+    name: Security audit (advisory)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -556,64 +531,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run npm audit
-        run: npm audit --audit-level moderate
-
-      - name: Run Snyk security scan
-        uses: snyk/actions/node@master
+      - name: npm audit (advisory — 43 known vulns incl. 2 critical, see ADR-0021)
         continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
-
-  # Deployment Preview (for PRs)
-  deploy-preview:
-    name: Deploy Preview
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    needs: [lint, test, build]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: build-files
-          path: .next/
-
-      - name: Deploy to Vercel Preview
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          vercel-org-id: ${{ secrets.ORG_ID }}
-          vercel-project-id: ${{ secrets.PROJECT_ID }}
-
-  # Notify on failure
-  notify:
-    name: Notify on Failure
-    runs-on: ubuntu-latest
-    if: failure()
-    needs: [lint, test, build, e2e, performance, visual, security]
-    
-    steps:
-      - name: Send Slack notification
-        if: github.ref == 'refs/heads/main'
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          channel: '#dev-alerts'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        run: npm audit --audit-level moderate

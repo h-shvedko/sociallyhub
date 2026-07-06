@@ -1,0 +1,81 @@
+# ============================================================================
+# CI smoke stack (ADR-0022): boots the freshly built production image against
+# throwaway Postgres/Redis/Mailhog so the pipeline can prove the image
+# actually starts and /api/health reports real dependency state.
+#
+# Usage (from CI, after building/loading the image):
+#   APP_IMAGE=ghcr.io/h-shvedko/sociallyhub:<sha> \
+#     docker compose -f docker-compose.ci.yml up -d --wait
+#
+# Postgres/Redis publish host ports so CI steps can run
+# `npx prisma migrate deploy` / seed from the runner BEFORE (or after) the app
+# comes up. The app container's entrypoint only waits for the TCP ports +
+# asserts ENCRYPTION_KEY — it does NOT migrate (that's a CI step, mirroring
+# the prod `migrate` one-shot service).
+#
+# The ENCRYPTION_KEY below is the sanctioned DEV/CI-ONLY key already committed
+# in .github/workflows/ci.yml (ADR-0006). It protects nothing real. Never use
+# it outside CI/dev.
+# ============================================================================
+
+services:
+  app:
+    image: ${APP_IMAGE:?set APP_IMAGE to the image under test, e.g. ghcr.io/h-shvedko/sociallyhub:<sha>}
+    ports:
+      - "3099:3099"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://sociallyhub:password@postgres:5432/sociallyhub_test
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - NEXTAUTH_URL=http://localhost:3099
+      - NEXTAUTH_SECRET=ci-secret
+      - ENCRYPTION_KEY=b29945a36f9850725969747a03f57cb7bb83d7655844f8c12d853e16e5a132c2
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_FROM=noreply@sociallyhub.test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3099/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      # Published so CI steps on the runner can migrate/seed via localhost:5432.
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=sociallyhub_test
+      - POSTGRES_USER=sociallyhub
+      - POSTGRES_PASSWORD=password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sociallyhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"

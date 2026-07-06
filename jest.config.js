@@ -22,7 +22,7 @@ const customJestConfig = {
   ],
   
   // Module name mapping for absolute imports
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@/__tests__/(.*)$': '<rootDir>/__tests__/$1',
   },
@@ -113,7 +113,7 @@ const customJestConfig = {
   restoreMocks: true,
   
   // Mock certain modules
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
