@@ -10,14 +10,12 @@ import {
   NotificationCategory,
   EmailNotificationData,
   PushNotificationData,
-  SMSNotificationData,
   WebhookNotificationData
 } from './types'
-import { websocketManager } from './websocket-manager'
+import { publishToUser } from './realtime'
 import { BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 import { emailService } from './email-service'
 import { pushService } from './push-service'
-import { smsService } from './sms-service'
 import { webhookService } from './webhook-service'
 
 export interface NotificationManagerConfig {
@@ -205,10 +203,9 @@ export class NotificationManager {
   private async sendInApp(notification: NotificationData): Promise<void> {
     if (!this.config.enableInApp) return
 
-    // Send via WebSocket
-    if (websocketManager.isConnected()) {
-      await websocketManager.sendMessage('notification', notification)
-    }
+    // Realtime push via SSE (Redis pub/sub) — ADR-0010 replaced the dead
+    // socket.io client with publishToUser.
+    await publishToUser(notification.userId, notification)
 
     // Notify local subscribers
     const userSubscribers = this.subscribers.get(notification.userId) || new Set()
@@ -270,20 +267,11 @@ export class NotificationManager {
     await pushService.send(notification.userId, pushData)
   }
 
-  private async sendSMS(notification: NotificationData): Promise<void> {
-    if (!this.config.enableSMS) return
-
-    // Only send SMS for high/critical priority notifications
-    if (![NotificationPriority.HIGH, NotificationPriority.CRITICAL].includes(notification.priority)) {
-      return
-    }
-
-    const smsData: SMSNotificationData = {
-      to: notification.userId, // TODO: Get actual phone number
-      message: `${notification.title}: ${notification.message}`
-    }
-
-    await smsService.send(smsData)
+  private async sendSMS(_notification: NotificationData): Promise<void> {
+    // SMS channel was cut in ADR-0010 (no Twilio dependency, no product
+    // requirement). Kept as a no-op so the channel switch stays exhaustive;
+    // re-adding SMS would mean a real provider integration, not the old mock.
+    return
   }
 
   private async sendWebhook(notification: NotificationData): Promise<void> {

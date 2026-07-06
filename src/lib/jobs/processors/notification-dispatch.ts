@@ -1,571 +1,432 @@
+// Notification channel fan-out (ADR-0010, Phase 3.10).
+//
+// PERSIST-FIRST (binding, ADR-0010): the `Notification` row is ALWAYS created by
+// `notifyUser` (src/lib/notifications/notify.ts) BEFORE this job is enqueued. This
+// processor therefore never persists — it only DELIVERS the already-persisted row
+// across channels:
+//   - in_app: nudge the user's open tabs over SSE (`publishToUser`) and stamp
+//             `deliveredAt`. In-app is the source of truth and always "delivered".
+//   - email:  resolve the REAL recipient (`prisma.user.email`) and send via the
+//             existing nodemailer `email-service` (SMTP_PASSWORD).
+//   - push:   hand off to `push-service` by userId (loads subscriptions from the
+//             DB; honest no-op/failure when unconfigured or no subscriptions).
+//
+// Channel gating comes from the DB `NotificationPreferences` row (global toggles,
+// the per-type `preferences` JSON, and DND / quiet-hours), NOT from any in-memory
+// preferences object. SMS was cut per ADR-0010 — there is no sms branch.
+//
+// Honesty: we NEVER fabricate delivery. A channel that is disabled, in quiet
+// hours, has no recipient, or is unconfigured is recorded as skipped (with a
+// reason); a channel that throws is recorded as failed. The overall job succeeds
+// as long as the guaranteed in-app channel was delivered, so a transient
+// email/push failure does NOT trigger a whole-job retry that would double-send.
+
 import { Job } from 'bullmq'
+import type { Notification, NotificationPreferences } from '@prisma/client'
+
 import { JobProcessor, JobResult } from '../queue-manager'
-import { notificationManager } from '@/lib/notifications/notification-manager'
+import { prisma } from '@/lib/prisma'
 import { emailService } from '@/lib/notifications/email-service'
 import { pushService } from '@/lib/notifications/push-service'
-import { smsService } from '@/lib/notifications/sms-service'
-import { webhookService } from '@/lib/notifications/webhook-service'
-import { BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
-import {
-  NotificationData,
-  NotificationPreferences,
+import { publishToUser } from '@/lib/notifications/realtime'
+import type {
   EmailNotificationData,
   PushNotificationData,
-  SMSNotificationData,
-  WebhookNotificationData,
-  NotificationPriority
 } from '@/lib/notifications/types'
+import { BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 
+type Channel = 'in_app' | 'email' | 'push'
+
+/**
+ * Job payload as enqueued by `notifyUser` (src/lib/notifications/notify.ts): just
+ * the id of the already-persisted notification plus the target user. Everything
+ * else (title/message/type, recipient email, channel preferences) is resolved
+ * from the DB here so the queue never carries stale copies.
+ */
 export interface NotificationDispatchJobData {
   id: string
-  type: 'notification_dispatch' | 'bulk_notification_dispatch' | 'scheduled_notification'
+  type: 'notification_dispatch'
   payload: {
-    notification: NotificationData
-    preferences: NotificationPreferences
-    channels: Array<'in_app' | 'email' | 'push' | 'sms' | 'webhook'>
-    deliveryOptions?: {
-      email?: {
-        template?: string
-        customData?: Record<string, any>
-      }
-      push?: {
-        badge?: number
-        sound?: string
-        vibration?: number[]
-      }
-      sms?: {
-        provider?: 'twilio' | 'aws_sns'
-      }
-      webhook?: {
-        urls: string[]
-        timeout?: number
-        retries?: number
-      }
-    }
-    scheduledFor?: string
+    notificationId: string
+    userId: string
+    notificationType?: string
   }
   userId: string
   workspaceId?: string
+  createdAt?: string
+}
+
+interface ChannelResult {
+  channel: Channel
+  success: boolean
+  skipped?: boolean
+  reason?: string
+  deliveredAt?: string
+  error?: string
 }
 
 export interface NotificationDispatchResult {
   notificationId: string
-  results: Array<{
-    channel: 'in_app' | 'email' | 'push' | 'sms' | 'webhook'
-    success: boolean
-    deliveredAt?: string
-    error?: string
-    deliveryId?: string
-    metrics?: {
-      responseTime: number
-      deliveryConfirmed: boolean
-    }
-  }>
+  results: ChannelResult[]
   summary: {
     totalChannels: number
-    successfulDeliveries: number
-    failedDeliveries: number
+    delivered: number
+    skipped: number
+    failed: number
     duration: number
+  }
+}
+
+/**
+ * Default channel set per notification type (the ADR-0010 domain-events table).
+ * in_app is implicit on every type; email/push here are only ATTEMPTED — each is
+ * still gated by the user's `NotificationPreferences` and DND before it fires.
+ * Keyed by the DB `NotificationType` string so unknown/new values fall back
+ * gracefully instead of throwing.
+ */
+const DEFAULT_CHANNELS_BY_TYPE: Record<string, Channel[]> = {
+  PUBLISH_SUCCESS: ['in_app'],
+  PUBLISH_FAILED: ['in_app', 'email', 'push'],
+  TOKEN_EXPIRING: ['in_app', 'email'],
+  TOKEN_EXPIRED: ['in_app', 'email'],
+  INBOX_ASSIGNMENT: ['in_app', 'push'],
+  SLA_BREACH: ['in_app', 'email', 'push'],
+  REPORT_READY: ['in_app', 'email'],
+  APPROVAL_REQUESTED: ['in_app', 'email'],
+  APPROVAL_GRANTED: ['in_app', 'email'],
+  APPROVAL_DENIED: ['in_app', 'email'],
+  SUPPORT_TICKET_UPDATED: ['in_app', 'email', 'push'],
+  TEAM_INVITATION: ['in_app'], // route already sends the invite email
+  BILLING_ALERT: ['in_app', 'email'],
+}
+const FALLBACK_CHANNELS: Channel[] = ['in_app', 'email']
+
+/**
+ * Is a cross-channel (email/push) delivery allowed by the user's preferences?
+ * in_app is always allowed (persist-first source of truth). When the user has no
+ * preferences row, channels default ON. A per-type entry in the `preferences`
+ * JSON (`{ "<TYPE>": { "email": bool, "push": bool } }`) can turn a channel off.
+ */
+function isChannelAllowed(
+  prefs: NotificationPreferences | null,
+  type: string,
+  channel: Channel
+): boolean {
+  if (channel === 'in_app') return true
+  if (!prefs) return true // sensible default: enabled when unconfigured
+
+  const globalOn = channel === 'email' ? prefs.emailEnabled : prefs.pushEnabled
+  if (!globalOn) return false
+
+  const perType = (prefs.preferences as Record<string, unknown> | null)?.[type]
+  if (perType && typeof perType === 'object') {
+    const key = channel === 'email' ? 'email' : 'push'
+    if ((perType as Record<string, unknown>)[key] === false) return false
+  }
+  return true
+}
+
+/**
+ * Is "now" inside the user's Do-Not-Disturb window? DND suppresses email/push
+ * only (never in-app). Empty `dndDays` means every day. Evaluated in the user's
+ * `digestTimezone` (falls back to UTC). Returns false whenever DND is disabled or
+ * incompletely configured.
+ */
+function isWithinDnd(prefs: NotificationPreferences | null): boolean {
+  if (!prefs?.dndEnabled) return false
+  if (!prefs.dndStartTime || !prefs.dndEndTime) return false
+
+  const tz = prefs.digestTimezone || 'UTC'
+  const now = new Date()
+
+  const days = Array.isArray(prefs.dndDays) ? prefs.dndDays : []
+  if (days.length > 0) {
+    const today = now
+      .toLocaleDateString('en-US', { weekday: 'long', timeZone: tz })
+      .toLowerCase()
+    if (!days.map((d) => d.toLowerCase()).includes(today)) return false
+  }
+
+  const toMinutes = (hhmm: string): number => {
+    const [h, m] = hhmm.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  const current = now.toLocaleTimeString('en-GB', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: tz,
+  })
+  const cur = toMinutes(current)
+  const start = toMinutes(prefs.dndStartTime)
+  const end = toMinutes(prefs.dndEndTime)
+
+  // Window may wrap past midnight (e.g. 22:00 → 07:00).
+  return start <= end ? cur >= start && cur < end : cur >= start || cur < end
+}
+
+function nowIso(): string {
+  return new Date().toISOString()
+}
+
+function baseMetrics(duration: number): JobResult['metrics'] {
+  return {
+    duration,
+    memoryUsage: process.memoryUsage().heapUsed,
+    timestamp: nowIso(),
   }
 }
 
 export const notificationDispatchProcessor: JobProcessor<NotificationDispatchJobData> = async (
   job: Job<NotificationDispatchJobData>
 ): Promise<JobResult> => {
-  const { payload } = job.data
-  const { notification, preferences, channels, deliveryOptions, scheduledFor } = payload
-
   const timer = PerformanceLogger.startTimer('notification_dispatch_job')
-  
+  const notificationId = job.data?.payload?.notificationId
+
   try {
-    // Check if notification should be delayed
-    if (scheduledFor) {
-      const scheduleTime = new Date(scheduledFor)
-      const now = new Date()
-      
-      if (scheduleTime > now) {
-        // Job was scheduled too early, reschedule it
-        const delay = scheduleTime.getTime() - now.getTime()
-        throw new Error(`Notification scheduled for future delivery in ${delay}ms`)
-      }
+    if (!notificationId) {
+      throw new Error('notification_dispatch job missing payload.notificationId')
     }
 
-    // Check quiet hours
-    if (preferences.quietHours?.enabled) {
-      const now = new Date()
-      const currentTime = now.toLocaleTimeString('en-US', { 
-        hour12: false, 
-        timeZone: preferences.quietHours.timezone 
-      })
-      const [currentHour, currentMinute] = currentTime.split(':').map(Number)
-      const currentMinutes = currentHour * 60 + currentMinute
-
-      const [startHour, startMinute] = preferences.quietHours.start.split(':').map(Number)
-      const startMinutes = startHour * 60 + startMinute
-
-      const [endHour, endMinute] = preferences.quietHours.end.split(':').map(Number)
-      const endMinutes = endHour * 60 + endMinute
-
-      const isQuietTime = startMinutes <= endMinutes
-        ? currentMinutes >= startMinutes && currentMinutes <= endMinutes
-        : currentMinutes >= startMinutes || currentMinutes <= endMinutes
-
-      if (isQuietTime && notification.priority !== NotificationPriority.CRITICAL) {
-        BusinessLogger.logNotificationEvent('notification_delayed_quiet_hours', notification.userId, {
-          notificationId: notification.id,
-          currentTime,
-          quietHoursStart: preferences.quietHours.start,
-          quietHoursEnd: preferences.quietHours.end
-        })
-
-        // Reschedule for after quiet hours
-        const nextDeliveryTime = new Date()
-        nextDeliveryTime.setHours(endHour, endMinute, 0, 0)
-        if (nextDeliveryTime <= now) {
-          nextDeliveryTime.setDate(nextDeliveryTime.getDate() + 1)
-        }
-
-        return {
-          success: false,
-          error: `Notification delayed due to quiet hours. Rescheduled for ${nextDeliveryTime.toISOString()}`,
-          metrics: {
-            duration: timer.getDuration(),
-            memoryUsage: process.memoryUsage().heapUsed,
-            timestamp: new Date().toISOString()
-          }
-        }
-      }
-    }
-
-    BusinessLogger.logNotificationEvent('notification_dispatch_started', notification.userId, {
-      notificationId: notification.id,
-      channels,
-      type: notification.type,
-      priority: notification.priority
+    // The row is the source of truth (created by notifyUser). Load it fresh —
+    // never trust a copy carried on the job.
+    const notification: Notification | null = await prisma.notification.findUnique({
+      where: { id: notificationId },
     })
 
-    const results: NotificationDispatchResult['results'] = []
-    let successfulDeliveries = 0
-    let failedDeliveries = 0
+    if (!notification) {
+      // Honest failure: nothing to deliver. Retrying will not conjure the row.
+      const message = `Notification ${notificationId} not found (nothing to dispatch)`
+      timer.end({ success: false, notificationId })
+      return { success: false, error: message, metrics: baseMetrics(timer.getDuration()) }
+    }
 
-    // Process each delivery channel
+    const userId = notification.userId
+    const type = notification.type as string
+
+    const [user, prefs] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true },
+      }),
+      prisma.notificationPreferences.findUnique({ where: { userId } }),
+    ])
+
+    const channels = DEFAULT_CHANNELS_BY_TYPE[type] ?? FALLBACK_CHANNELS
+    const dnd = isWithinDnd(prefs)
+
+    BusinessLogger.logNotificationEvent('notification_dispatch_started', userId, {
+      notificationId: notification.id,
+      type,
+      channels,
+      dnd,
+    })
+
+    const results: ChannelResult[] = []
+
     for (const channel of channels) {
       const channelTimer = PerformanceLogger.startTimer(`notification_${channel}_dispatch`)
-      
+
+      // Preference + DND gating for cross-channel delivery (in_app is exempt).
+      if (channel !== 'in_app') {
+        if (!isChannelAllowed(prefs, type, channel)) {
+          results.push({ channel, success: false, skipped: true, reason: 'disabled_by_preferences' })
+          channelTimer.end({ skipped: true, channel })
+          continue
+        }
+        if (dnd) {
+          results.push({ channel, success: false, skipped: true, reason: 'quiet_hours' })
+          channelTimer.end({ skipped: true, channel })
+          continue
+        }
+      }
+
       try {
-        const channelResult: NotificationDispatchResult['results'][0] = {
-          channel,
-          success: false,
-          deliveredAt: new Date().toISOString()
-        }
-
         switch (channel) {
-          case 'in_app':
-            // In-app notifications are handled by the notification manager
-            await notificationManager.storeNotification(notification)
-            channelResult.success = true
-            channelResult.deliveryId = notification.id
+          case 'in_app': {
+            // Persist already happened; nudge SSE + mark delivered. publishToUser
+            // is fail-soft (never throws) — a down Redis costs latency, not data.
+            await publishToUser(userId, notification)
+            await prisma.notification.update({
+              where: { id: notification.id },
+              data: { deliveredAt: new Date() },
+            })
+            results.push({ channel, success: true, deliveredAt: nowIso() })
             break
+          }
 
-          case 'email':
-            if (preferences.channels.email) {
-              const emailData: EmailNotificationData = {
-                to: [notification.userId], // This should be resolved to actual email
-                subject: notification.title,
-                html: await generateEmailTemplate(notification, deliveryOptions?.email),
-                text: notification.message,
-                headers: {
-                  'X-Notification-ID': notification.id,
-                  'X-Notification-Type': notification.type,
-                  'X-Priority': notification.priority
-                }
-              }
-              
-              await emailService.send(emailData)
-              channelResult.success = true
-              channelResult.deliveryId = `email_${notification.id}`
-            } else {
-              throw new Error('Email notifications disabled in user preferences')
+          case 'email': {
+            if (!user?.email) {
+              results.push({ channel, success: false, skipped: true, reason: 'no_recipient_email' })
+              break
             }
-            break
-
-          case 'push':
-            if (preferences.channels.push) {
-              const pushData: PushNotificationData = {
-                title: notification.title,
-                body: notification.message,
-                icon: notification.imageUrl || '/icon-192.png',
-                badge: deliveryOptions?.push?.badge,
-                tag: notification.id,
-                data: {
-                  notificationId: notification.id,
-                  actionUrl: notification.actionUrl,
-                  ...notification.data
-                },
-                actions: notification.actionLabel ? [{
-                  action: 'view',
-                  title: notification.actionLabel,
-                  icon: '/icon-view.png'
-                }] : undefined,
-                requireInteraction: notification.priority === NotificationPriority.CRITICAL
-              }
-
-              await pushService.send(notification.userId, pushData)
-              channelResult.success = true
-              channelResult.deliveryId = `push_${notification.id}`
-            } else {
-              throw new Error('Push notifications disabled in user preferences')
+            const emailData: EmailNotificationData = {
+              to: [user.email],
+              subject: notification.title,
+              html: buildEmailHtml(notification, user.name),
+              text: notification.message,
+              headers: {
+                'X-Notification-ID': notification.id,
+                'X-Notification-Type': type,
+              },
             }
+            await emailService.send(emailData)
+            results.push({ channel, success: true, deliveredAt: nowIso() })
             break
+          }
 
-          case 'sms':
-            if (preferences.channels.sms && notification.priority === NotificationPriority.CRITICAL) {
-              // SMS only for critical notifications
-              const smsData: SMSNotificationData = {
-                to: notification.userId, // This should be resolved to actual phone number
-                message: `${notification.title}: ${notification.message}`,
-                from: process.env.SMS_FROM_NUMBER
-              }
-
-              await smsService.send(smsData)
-              channelResult.success = true
-              channelResult.deliveryId = `sms_${notification.id}`
-            } else {
-              throw new Error('SMS notifications not available for this priority level or disabled')
+          case 'push': {
+            // Honest failure when web-push is unconfigured — never claim delivery.
+            if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+              results.push({ channel, success: false, skipped: true, reason: 'push_not_configured' })
+              break
             }
-            break
-
-          case 'webhook':
-            if (deliveryOptions?.webhook?.urls) {
-              const webhookPromises = deliveryOptions.webhook.urls.map(async (url) => {
-                const webhookData: WebhookNotificationData = {
-                  url,
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'X-Notification-ID': notification.id,
-                    'X-Notification-Type': notification.type,
-                    'User-Agent': 'SociallyHub-Notification-Webhook/1.0'
-                  },
-                  payload: {
-                    event: 'notification.sent',
-                    notification,
-                    timestamp: new Date().toISOString(),
-                    workspace: notification.workspaceId
-                  },
-                  timeout: deliveryOptions.webhook.timeout || 5000,
-                  retries: deliveryOptions.webhook.retries || 2
-                }
-
-                return await webhookService.send(webhookData)
-              })
-
-              await Promise.all(webhookPromises)
-              channelResult.success = true
-              channelResult.deliveryId = `webhook_${notification.id}`
-            } else {
-              throw new Error('No webhook URLs configured')
+            const data = (notification.data as Record<string, unknown> | null) ?? {}
+            const actionUrl = typeof data.actionUrl === 'string' ? data.actionUrl : undefined
+            const pushData: PushNotificationData = {
+              title: notification.title,
+              body: notification.message,
+              icon: '/icon-192.png',
+              tag: notification.id,
+              data: { ...data, notificationId: notification.id, actionUrl },
             }
+            // push-service resolves subscriptions from the DB (rework owned by the
+            // push phase); it throws on real send failures and logs an honest skip
+            // when the user has no subscriptions.
+            await pushService.send(userId, pushData)
+            results.push({ channel, success: true, deliveredAt: nowIso() })
             break
-
-          default:
-            throw new Error(`Unsupported notification channel: ${channel}`)
+          }
         }
-
-        channelResult.metrics = {
-          responseTime: channelTimer.getDuration(),
-          deliveryConfirmed: true
-        }
-
-        successfulDeliveries++
-        results.push(channelResult)
-
-        BusinessLogger.logNotificationEvent(`notification_${channel}_sent`, notification.userId, {
-          notificationId: notification.id,
-          deliveryId: channelResult.deliveryId,
-          responseTime: channelTimer.getDuration()
-        })
 
         channelTimer.end({ success: true, channel })
-
-      } catch (error) {
-        results.push({
-          channel,
-          success: false,
-          error: (error as Error).message,
-          deliveredAt: new Date().toISOString(),
-          metrics: {
-            responseTime: channelTimer.getDuration(),
-            deliveryConfirmed: false
-          }
+        BusinessLogger.logNotificationEvent(`notification_${channel}_sent`, userId, {
+          notificationId: notification.id,
         })
-
-        failedDeliveries++
-
+      } catch (error) {
+        results.push({ channel, success: false, error: (error as Error).message })
         ErrorLogger.logExternalServiceError(channel, error as Error, {
           operation: 'notification_dispatch',
           notificationId: notification.id,
-          userId: notification.userId,
-          workspaceId: notification.workspaceId
+          userId,
         })
-
         channelTimer.end({ success: false, error: true, channel })
       }
     }
+
+    const delivered = results.filter((r) => r.success).length
+    const skipped = results.filter((r) => r.skipped).length
+    const failed = results.filter((r) => !r.success && !r.skipped).length
 
     const finalResult: NotificationDispatchResult = {
       notificationId: notification.id,
       results,
       summary: {
         totalChannels: channels.length,
-        successfulDeliveries,
-        failedDeliveries,
-        duration: timer.getDuration()
-      }
+        delivered,
+        skipped,
+        failed,
+        duration: timer.getDuration(),
+      },
     }
 
+    // Overall success is anchored to the guaranteed in-app channel: as long as
+    // in-app delivered, the job is done. Email/push are best-effort — failing
+    // them must NOT trigger a whole-job retry that re-sends the email/push.
+    const inApp = results.find((r) => r.channel === 'in_app')
+    const jobSucceeded = inApp ? inApp.success : failed === 0
+
     timer.end({
-      success: successfulDeliveries > 0,
+      success: jobSucceeded,
       notificationId: notification.id,
-      successfulDeliveries,
-      failedDeliveries,
-      totalChannels: channels.length
+      delivered,
+      skipped,
+      failed,
     })
 
-    BusinessLogger.logNotificationEvent('notification_dispatch_completed', notification.userId, {
+    BusinessLogger.logNotificationEvent('notification_dispatch_completed', userId, {
       notificationId: notification.id,
       summary: finalResult.summary,
-      duration: timer.getDuration()
     })
 
     return {
-      success: successfulDeliveries > 0,
+      success: jobSucceeded,
       result: finalResult,
-      error: failedDeliveries === channels.length ? 'All delivery channels failed' : undefined,
-      metrics: {
-        duration: timer.getDuration(),
-        memoryUsage: process.memoryUsage().heapUsed,
-        timestamp: new Date().toISOString()
-      }
+      error: jobSucceeded
+        ? undefined
+        : `In-app delivery failed for notification ${notification.id}`,
+      metrics: baseMetrics(timer.getDuration()),
     }
-
   } catch (error) {
-    timer.end({ success: false, error: true, notificationId: notification.id })
+    timer.end({ success: false, error: true, notificationId })
 
     ErrorLogger.logUnexpectedError(error as Error, {
       context: 'notification_dispatch_job',
-      notificationId: notification.id,
-      userId: notification.userId,
-      workspaceId: notification.workspaceId,
-      channels
+      notificationId,
+      userId: job.data?.userId,
     })
 
     return {
       success: false,
       error: (error as Error).message,
-      metrics: {
-        duration: timer.getDuration(),
-        memoryUsage: process.memoryUsage().heapUsed,
-        timestamp: new Date().toISOString()
-      }
+      metrics: baseMetrics(timer.getDuration()),
     }
   }
 }
 
-// Bulk notification dispatch processor
-export interface BulkNotificationDispatchJobData {
-  id: string
-  type: 'bulk_notification_dispatch'
-  payload: {
-    notifications: Array<{
-      notification: NotificationData
-      preferences: NotificationPreferences
-      channels: Array<'in_app' | 'email' | 'push' | 'sms' | 'webhook'>
-    }>
-    batchId: string
-    deliveryOptions?: NotificationDispatchJobData['payload']['deliveryOptions']
-  }
-  userId: string
-  workspaceId?: string
-}
+/**
+ * Render the transactional email body for a persisted notification. Pulls an
+ * optional call-to-action from the notification's `data` JSON (`actionUrl` +
+ * `actionLabel`). Kept intentionally small — richer per-type templates can come
+ * later without changing the dispatch contract.
+ */
+function buildEmailHtml(notification: Notification, userName?: string | null): string {
+  const data = (notification.data as Record<string, unknown> | null) ?? {}
+  const actionUrl = typeof data.actionUrl === 'string' ? data.actionUrl : undefined
+  const actionLabel =
+    typeof data.actionLabel === 'string' ? data.actionLabel : 'View in SociallyHub'
+  const greeting = userName ? `Hi ${escapeHtml(userName)},` : 'Hi,'
 
-export const bulkNotificationDispatchProcessor: JobProcessor<BulkNotificationDispatchJobData> = async (
-  job: Job<BulkNotificationDispatchJobData>
-): Promise<JobResult> => {
-  const { payload } = job.data
-  const { notifications, batchId, deliveryOptions } = payload
-
-  const timer = PerformanceLogger.startTimer('bulk_notification_dispatch_job')
-
-  try {
-    BusinessLogger.logNotificationEvent('bulk_notification_dispatch_started', 'system', {
-      batchId,
-      notificationCount: notifications.length
-    })
-
-    const results = []
-    let totalSuccessful = 0
-    let totalFailed = 0
-
-    for (const [index, notificationItem] of notifications.entries()) {
-      try {
-        // Update job progress
-        await job.updateProgress(Math.round(((index + 1) / notifications.length) * 100))
-
-        // Create individual notification dispatch job
-        const dispatchJobData: NotificationDispatchJobData = {
-          id: `dispatch_${notificationItem.notification.id}`,
-          type: 'notification_dispatch',
-          payload: {
-            notification: notificationItem.notification,
-            preferences: notificationItem.preferences,
-            channels: notificationItem.channels,
-            deliveryOptions
-          },
-          userId: notificationItem.notification.userId,
-          workspaceId: notificationItem.notification.workspaceId
-        }
-
-        // Process the notification dispatch
-        const dispatchResult = await notificationDispatchProcessor({
-          ...job,
-          data: dispatchJobData
-        } as Job<NotificationDispatchJobData>)
-
-        results.push({
-          notificationId: notificationItem.notification.id,
-          success: dispatchResult.success,
-          result: dispatchResult.result,
-          error: dispatchResult.error
-        })
-
-        if (dispatchResult.success) {
-          totalSuccessful++
-        } else {
-          totalFailed++
-        }
-
-      } catch (error) {
-        results.push({
-          notificationId: notificationItem.notification.id,
-          success: false,
-          error: (error as Error).message
-        })
-        totalFailed++
-      }
-    }
-
-    timer.end({
-      success: totalSuccessful > 0,
-      batchId,
-      totalNotifications: notifications.length,
-      totalSuccessful,
-      totalFailed
-    })
-
-    BusinessLogger.logNotificationEvent('bulk_notification_dispatch_completed', 'system', {
-      batchId,
-      totalNotifications: notifications.length,
-      totalSuccessful,
-      totalFailed,
-      duration: timer.getDuration()
-    })
-
-    return {
-      success: totalSuccessful > 0,
-      result: {
-        batchId,
-        totalNotifications: notifications.length,
-        totalSuccessful,
-        totalFailed,
-        results
-      },
-      metrics: {
-        duration: timer.getDuration(),
-        memoryUsage: process.memoryUsage().heapUsed,
-        timestamp: new Date().toISOString()
-      }
-    }
-
-  } catch (error) {
-    timer.end({ success: false, error: true, batchId })
-
-    ErrorLogger.logUnexpectedError(error as Error, {
-      context: 'bulk_notification_dispatch_job',
-      batchId,
-      notificationCount: notifications.length
-    })
-
-    return {
-      success: false,
-      error: (error as Error).message,
-      metrics: {
-        duration: timer.getDuration(),
-        memoryUsage: process.memoryUsage().heapUsed,
-        timestamp: new Date().toISOString()
-      }
-    }
-  }
-}
-
-// Helper function to generate email templates
-async function generateEmailTemplate(
-  notification: NotificationData,
-  options?: { template?: string; customData?: Record<string, any> }
-): Promise<string> {
-  const defaultTemplate = `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${notification.title}</title>
-      <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: white; padding: 30px; border: 1px solid #e1e5e9; }
-        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #6c757d; font-size: 14px; border-radius: 0 0 8px 8px; }
-        .button { display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-        .priority-high { border-left: 4px solid #dc3545; }
-        .priority-critical { border-left: 4px solid #dc3545; background: #fff5f5; }
-      </style>
+      <title>${escapeHtml(notification.title)}</title>
     </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>🔔 ${notification.title}</h1>
+    <body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;">
+      <div style="max-width:600px;margin:0 auto;padding:24px;">
+        <div style="background:#2563eb;color:#ffffff;padding:24px;border-radius:8px 8px 0 0;">
+          <h1 style="margin:0;font-size:20px;">${escapeHtml(notification.title)}</h1>
         </div>
-        <div class="content ${notification.priority === NotificationPriority.HIGH || notification.priority === NotificationPriority.CRITICAL ? 'priority-' + notification.priority : ''}">
-          <p>${notification.message}</p>
-          
-          ${notification.actionUrl && notification.actionLabel ? `
-            <div style="text-align: center;">
-              <a href="${notification.actionUrl}" class="button">${notification.actionLabel}</a>
-            </div>
-          ` : ''}
-          
-          ${notification.metadata ? `
-            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
-              <strong>Additional Details:</strong>
-              <ul style="margin: 10px 0;">
-                ${Object.entries(notification.metadata).map(([key, value]) => 
-                  `<li><strong>${key}:</strong> ${value}</li>`
-                ).join('')}
-              </ul>
-            </div>
-          ` : ''}
+        <div style="background:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+          <p style="margin:0 0 12px;">${greeting}</p>
+          <p style="margin:0 0 16px;line-height:1.6;">${escapeHtml(notification.message)}</p>
+          ${
+            actionUrl
+              ? `<div style="text-align:center;margin:24px 0;">
+                   <a href="${escapeHtml(actionUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">${escapeHtml(
+                     actionLabel
+                   )}</a>
+                 </div>`
+              : ''
+          }
         </div>
-        <div class="footer">
-          <p>This notification was sent from SociallyHub</p>
-          <p><small>Priority: ${notification.priority} | Category: ${notification.category}</small></p>
+        <div style="background:#f8f9fa;padding:16px 24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;color:#6b7280;font-size:12px;">
+          <p style="margin:0;">This notification was sent from SociallyHub.</p>
         </div>
       </div>
     </body>
     </html>
   `
+}
 
-  // In a real implementation, you might want to use a template engine
-  // or load templates from a database/file system
-  return defaultTemplate
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }

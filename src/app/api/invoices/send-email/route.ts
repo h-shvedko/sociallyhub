@@ -35,9 +35,9 @@ export async function POST(request: NextRequest) {
       host: process.env.SMTP_HOST || 'localhost',
       port: parseInt(process.env.SMTP_PORT || '1025'),
       secure: false,
-      auth: process.env.SMTP_USER && process.env.SMTP_PASS ? {
+      auth: process.env.SMTP_USER && process.env.SMTP_PASSWORD ? {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        pass: process.env.SMTP_PASSWORD,
       } : undefined,
     })
 

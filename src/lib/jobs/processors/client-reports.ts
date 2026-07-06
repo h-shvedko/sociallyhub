@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer'
 
 import { prisma } from '@/lib/prisma'
 import { BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
+import { notifyUser } from '@/lib/notifications/notify'
 
 import { JobProcessor, JobResult } from '../queue-manager'
 import { CLIENT_REPORT_JOB_NAME } from '../client-reports-queue'
@@ -368,6 +369,35 @@ export const clientReportsProcessor: JobProcessor<ClientReportJobData> = async (
       }
     }
 
+    // ADR-0010: notify the workspace owner that a report is ready. The schedule is
+    // workspace-scoped (no owning user column), so the OWNER is the recipient.
+    // Persist-first + best-effort — a notify hiccup must not fail a successful run.
+    try {
+      const owner = await prisma.userWorkspace.findFirst({
+        where: { workspaceId: schedule.workspaceId, role: 'OWNER' },
+        select: { userId: true },
+      })
+      if (owner) {
+        await notifyUser(owner.userId, {
+          type: 'REPORT_READY',
+          title: 'Client report ready',
+          message: `The report "${report.name}" for ${schedule.client.name} has finished generating.`,
+          data: {
+            reportId: report.id,
+            clientId: schedule.clientId,
+            scheduleId: schedule.id,
+            actionUrl: `/dashboard/clients?tab=reports&report=${report.id}`,
+          },
+        })
+      }
+    } catch (notifyError) {
+      ErrorLogger.logUnexpectedError(notifyError as Error, {
+        context: 'client_report_notify',
+        scheduleId: schedule.id,
+        reportId: report.id,
+      })
+    }
+
     timer.end({ success: true, scheduleId, reportId: report.id, dataPoints: aggregate.dataPoints })
     BusinessLogger.logSystemEvent('client_report_generated', {
       scheduleId: schedule.id,
@@ -429,7 +459,7 @@ async function sendScheduledReportEmail(
     port: parseInt(process.env.SMTP_PORT || '1025', 10),
     secure: false,
     auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
       : undefined,
   })
 

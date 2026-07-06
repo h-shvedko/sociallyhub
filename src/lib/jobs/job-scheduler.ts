@@ -1,7 +1,7 @@
 import { queueManager } from './queue-manager'
 import { postSchedulingProcessor, bulkPostSchedulingProcessor } from './processors/post-scheduling'
 import { analyticsCollectionProcessor, scheduledAnalyticsProcessor } from './processors/analytics-collection'
-import { notificationDispatchProcessor, bulkNotificationDispatchProcessor } from './processors/notification-dispatch'
+import { notificationDispatchProcessor } from './processors/notification-dispatch'
 import {
   reconcileScheduledPostsProcessor,
   RECONCILE_JOB_NAME,
@@ -47,8 +47,15 @@ export class JobScheduler {
       queueManager.registerProcessor('post-scheduling', 'bulk_post_scheduling', bulkPostSchedulingProcessor)
       queueManager.registerProcessor('analytics-collection', 'analytics_collection', analyticsCollectionProcessor)
       queueManager.registerProcessor('analytics-collection', 'scheduled_analytics', scheduledAnalyticsProcessor)
+      // ADR-0010: a single dispatch job name. Every notification is enqueued by
+      // notifyUser() as one `notification_dispatch` job carrying only the
+      // notificationId — the processor resolves recipient + channel preferences
+      // from the DB and fans out in-app/email/push per user preferences. The old
+      // `bulk_notification_dispatch` processor (which shared this queue key and
+      // silently overwrote the single one before ADR-0008 re-keyed by jobName) was
+      // removed: notifyUsers() now fans out to individual notifyUser() calls, each
+      // its own single job, so there is no second processor to collide.
       queueManager.registerProcessor('notification-dispatch', 'notification_dispatch', notificationDispatchProcessor)
-      queueManager.registerProcessor('notification-dispatch', 'bulk_notification_dispatch', bulkNotificationDispatchProcessor)
 
       // Client-report generation (ADR-0008 Phase 4). Both the per-schedule
       // repeatable and the manual "run now" one-off fire this job name.

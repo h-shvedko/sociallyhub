@@ -1,54 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { withLogging, SecurityLogger, ErrorLogger, BusinessLogger } from '@/lib/middleware/logging'
+import { NextResponse } from 'next/server'
+import { NotificationStatus } from '@prisma/client'
 
-async function handleMarkAllAsRead(request: NextRequest) {
+import { requireSession } from '@/lib/auth'
+import { handleApiError } from '@/lib/api/respond'
+import { prisma } from '@/lib/prisma'
+
+// ADR-0010 Phase 1.1: bulk mark-as-read via `updateMany` over the caller's
+// UNREAD rows only. Idempotent — a second call updates 0 rows.
+
+export async function POST() {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
-      SecurityLogger.logUnauthorizedAccess(
-        undefined, 
-        '/api/notifications/read-all', 
-        request.headers.get('x-forwarded-for') || undefined
-      )
-      
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
+    const user = await requireSession() // authenticate
 
-    // TODO: Implement actual database update
-    // For now, we'll simulate marking all as read
-    const readAt = new Date().toISOString()
-    
-    BusinessLogger.logNotificationEvent(
-      'all_notifications_read',
-      session.user.id,
-      { readAt, action: 'bulk_mark_read' }
-    )
+    const readAt = new Date()
+    const result = await prisma.notification.updateMany({
+      where: { userId: user.id, status: NotificationStatus.UNREAD },
+      data: { status: NotificationStatus.READ, readAt },
+    })
 
     return NextResponse.json({
       success: true,
       data: {
-        readAt,
-        message: 'All notifications marked as read'
-      }
+        updated: result.count,
+        readAt: readAt.toISOString(),
+        message: 'All notifications marked as read',
+      },
     })
-
-  } catch (error) {
-    ErrorLogger.logUnexpectedError(error as Error, {
-      endpoint: '/api/notifications/read-all',
-      method: 'POST'
-    })
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+  } catch (err) {
+    return handleApiError(err)
   }
 }
-
-export const POST = withLogging(handleMarkAllAsRead, 'mark-all-notifications-read')

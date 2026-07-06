@@ -162,6 +162,7 @@ model User {
   sessions           Session[]
   assignedInboxItems InboxItem[]       @relation("AssignedTo")
   notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
   auditEvents        AuditEvent[]
   createdPosts       Post[]
   approvedPosts      Post[]            @relation("ApprovedBy")
@@ -800,6 +801,22 @@ model Notification {
   @@map("notifications")
 }
 
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
 model AuditEvent {
   id          String   @id @default(cuid())
   workspaceId String
@@ -949,6 +966,9 @@ enum NotificationType {
   INBOX_ASSIGNMENT
   SLA_BREACH
   REPORT_READY
+  SUPPORT_TICKET_UPDATED
+  TEAM_INVITATION
+  BILLING_ALERT
 }
 
 enum NotificationStatus {

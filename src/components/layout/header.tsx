@@ -2,7 +2,7 @@
 
 import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { Bell, ChevronDown, Search, Plus } from "lucide-react"
+import { Search, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -14,9 +14,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Badge } from "@/components/ui/badge"
 import { ThemeSwitcher } from "@/components/ui/theme-switcher"
 import { LanguageSelector } from "@/components/ui/language-selector"
+import { NotificationCenter } from "@/components/notifications/notification-center"
 import { MobileNavigation } from "./mobile-navigation"
 
 interface HeaderProps {
@@ -92,21 +92,10 @@ export function Header({ className }: HeaderProps) {
           <ThemeSwitcher />
         </div>
 
-        {/* Notifications */}
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="relative p-2 hover:bg-primary/10 transition-all duration-200 active:scale-95"
-        >
-          <Bell className="h-4 w-4 transition-transform hover:rotate-12" />
-          <Badge 
-            variant="destructive" 
-            className="absolute -right-1 -top-1 h-5 w-5 p-0 text-xs animate-pulse"
-          >
-            3
-          </Badge>
-          <span className="sr-only">Notifications</span>
-        </Button>
+        {/* Notifications — self-contained bell + panel; the badge count and the
+            list come from use-notifications (real Notification rows + live SSE),
+            replacing the old hardcoded "3" badge (ADR-0010, Phase 1.4). */}
+        <NotificationCenter className="p-2 hover:bg-primary/10 transition-all duration-200 active:scale-95" />
 
         {/* User Menu */}
         <DropdownMenu>

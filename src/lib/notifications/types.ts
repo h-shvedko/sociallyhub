@@ -227,12 +227,6 @@ export interface PushNotificationData {
   silent?: boolean
 }
 
-export interface SMSNotificationData {
-  to: string
-  message: string
-  from?: string
-}
-
 export interface WebhookNotificationData {
   url: string
   method: 'POST' | 'PUT' | 'PATCH'

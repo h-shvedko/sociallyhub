@@ -3,6 +3,7 @@ import { requireSession, requireWorkspaceRole } from '@/lib/auth'
 import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { emailService } from '@/lib/notifications/email-service'
+import { notifyUser } from '@/lib/notifications/notify'
 
 export async function POST(request: NextRequest) {
   try {
@@ -98,6 +99,28 @@ export async function POST(request: NextRequest) {
     } catch (emailError) {
       console.error('Failed to send team invitation email:', emailError)
       // Don't fail the invitation if email fails
+    }
+
+    // ADR-0010: if the invitee already has a SociallyHub account, drop an in-app
+    // notification so they can accept from within the app (the email above is the
+    // channel for brand-new emails, which have no userId to notify). Persist-first
+    // + best-effort — a notify failure must never fail the invitation.
+    if (existingUser && workspace) {
+      try {
+        await notifyUser(existingUser.id, {
+          type: 'TEAM_INVITATION',
+          title: `Invitation to join ${workspace.name}`,
+          message: `${inviter?.name || inviter?.email || 'A team admin'} invited you to join ${workspace.name} as ${role}.`,
+          data: {
+            workspaceId,
+            role,
+            invitationToken: invitation.token,
+            actionUrl: `/team/invite/${invitation.token}`,
+          },
+        })
+      } catch (notifyError) {
+        console.error('Failed to send team invitation notification:', notifyError)
+      }
     }
 
     return NextResponse.json({

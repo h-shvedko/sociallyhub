@@ -13,7 +13,7 @@ const createEmailTransporter = () => {
     secure: false, // true for 465, false for other ports
     auth: process.env.SMTP_USER ? {
       user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
+      pass: process.env.SMTP_PASSWORD
     } : undefined,
     // For development with Mailhog
     ignoreTLS: process.env.NODE_ENV === 'development'

@@ -16,8 +16,7 @@ import {
 import { prisma } from '@/lib/prisma'
 import { decryptToken } from '@/lib/encryption'
 import { BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
-import { notificationManager } from '@/lib/notifications/notification-manager'
-import { NotificationType, NotificationPriority, NotificationCategory } from '@/lib/notifications/types'
+import { notifyUser } from '@/lib/notifications/notify'
 
 // ============================================================================
 // ADR-0008 Phase 3 — DB-backed, restart-safe, HONEST publishing processor.
@@ -305,6 +304,26 @@ async function markAccountStatus(
       status,
     })
   }
+}
+
+/**
+ * ADR-0010 producer recipient resolution. A publish job is enqueued with the
+ * acting user's id, but `Post` itself has no `userId` column — so when the job
+ * carries no user (e.g. a system-triggered run) we fall back to the workspace
+ * OWNER so the notification still reaches a real person. Returns null only when
+ * there is neither a job user nor a resolvable workspace owner.
+ */
+async function resolvePostNotifyRecipient(
+  userId: string | undefined,
+  workspaceId: string | undefined
+): Promise<string | null> {
+  if (userId) return userId
+  if (!workspaceId) return null
+  const owner = await prisma.userWorkspace.findFirst({
+    where: { workspaceId, role: 'OWNER' },
+    select: { userId: true },
+  })
+  return owner?.userId ?? null
 }
 
 /**
@@ -699,43 +718,48 @@ export const postSchedulingProcessor: JobProcessor<PostSchedulingJobData> = asyn
     // (6) Notifications fire from ACTUAL outcomes, only at terminal state, and
     // only when something was actually attempted this run (no spam on no-op
     // retries where every variant was already published).
-    if (isTerminal && processedCount > 0 && userId) {
-      const publishedPlatforms = outcomes
-        .filter((o) => o.finalStatus === 'PUBLISHED' && o.processed)
-        .map((o) => o.platform)
-        .filter(Boolean)
-      const failedDetails = outcomes
-        .filter((o) => o.finalStatus === 'FAILED')
-        .map((o) => ({ platform: o.platform, error: o.failureReason }))
+    if (isTerminal && processedCount > 0) {
+      const recipient = await resolvePostNotifyRecipient(userId, workspaceId)
+      if (recipient) {
+        const publishedPlatforms = outcomes
+          .filter((o) => o.finalStatus === 'PUBLISHED' && o.processed)
+          .map((o) => o.platform)
+          .filter(Boolean)
+        const failedDetails = outcomes
+          .filter((o) => o.finalStatus === 'FAILED')
+          .map((o) => ({ platform: o.platform, error: o.failureReason }))
 
-      if (published > 0) {
-        await notificationManager.send({
-          type: NotificationType.POST_PUBLISHED,
-          title: 'Post Published',
-          message: `Your post was published to ${published} platform${published > 1 ? 's' : ''}.`,
-          userId,
-          workspaceId,
-          priority: NotificationPriority.MEDIUM,
-          category: NotificationCategory.SOCIAL_MEDIA,
-          actionUrl: `/dashboard/posts/${postId}`,
-          actionLabel: 'View Post',
-          metadata: { postId, publishedPlatforms, published, total: outcomes.length },
-        })
-      }
-
-      if (failed > 0) {
-        await notificationManager.send({
-          type: NotificationType.POST_FAILED,
-          title: 'Post Publishing Failed',
-          message: `Publishing failed on ${failed} platform${failed > 1 ? 's' : ''}.`,
-          userId,
-          workspaceId,
-          priority: NotificationPriority.HIGH,
-          category: NotificationCategory.SOCIAL_MEDIA,
-          actionUrl: `/dashboard/posts/${postId}`,
-          actionLabel: 'View Details',
-          metadata: { postId, failed, total: outcomes.length, errors: failedDetails },
-        })
+        // A single, truthful notification per terminal run (ADR-0010). Nothing
+        // published (with something processed) ⇒ PUBLISH_FAILED; otherwise
+        // PUBLISH_SUCCESS (mixed counts roll up to success per ADR-0008). The
+        // notify path is persist-first + best-effort: a Redis/enqueue hiccup must
+        // never fail an already-persisted publish outcome.
+        const allFailed = published === 0
+        try {
+          await notifyUser(recipient, {
+            type: allFailed ? 'PUBLISH_FAILED' : 'PUBLISH_SUCCESS',
+            title: allFailed ? 'Post publishing failed' : 'Post published',
+            message: allFailed
+              ? `Publishing failed on ${failed} platform${failed > 1 ? 's' : ''}.`
+              : `Your post was published to ${published} platform${published > 1 ? 's' : ''}.` +
+                (failed > 0 ? ` ${failed} platform${failed > 1 ? 's' : ''} failed.` : ''),
+            data: {
+              postId,
+              published,
+              failed,
+              total: outcomes.length,
+              publishedPlatforms,
+              failedDetails,
+              actionUrl: `/dashboard/posts/${postId}`,
+            },
+          })
+        } catch (notifyError) {
+          ErrorLogger.logUnexpectedError(notifyError as Error, {
+            context: 'post_scheduling_notify',
+            postId,
+            workspaceId,
+          })
+        }
       }
     }
 
@@ -861,20 +885,30 @@ export const bulkPostSchedulingProcessor: JobProcessor<BulkPostSchedulingJobData
       }
     }
 
-    // Batch notification from real counts.
-    if (userId) {
-      await notificationManager.send({
-        type: NotificationType.POST_PUBLISHED,
-        title: 'Bulk Publishing Completed',
-        message: `${successfulPosts} of ${totalPosts} posts processed successfully.`,
-        userId,
-        workspaceId,
-        priority: failedPosts > 0 ? NotificationPriority.HIGH : NotificationPriority.MEDIUM,
-        category: NotificationCategory.SOCIAL_MEDIA,
-        actionUrl: `/dashboard/posts?batch=${batchId}`,
-        actionLabel: 'View Results',
-        metadata: { batchId, totalPosts, successfulPosts, failedPosts },
-      })
+    // Batch notification from real counts (ADR-0010 producer, persist-first,
+    // best-effort). All posts failed ⇒ PUBLISH_FAILED; otherwise PUBLISH_SUCCESS.
+    const recipient = await resolvePostNotifyRecipient(userId, workspaceId)
+    if (recipient) {
+      try {
+        await notifyUser(recipient, {
+          type: successfulPosts === 0 && failedPosts > 0 ? 'PUBLISH_FAILED' : 'PUBLISH_SUCCESS',
+          title: 'Bulk publishing completed',
+          message: `${successfulPosts} of ${totalPosts} posts processed successfully.`,
+          data: {
+            batchId,
+            totalPosts,
+            successfulPosts,
+            failedPosts,
+            actionUrl: `/dashboard/posts?batch=${batchId}`,
+          },
+        })
+      } catch (notifyError) {
+        ErrorLogger.logUnexpectedError(notifyError as Error, {
+          context: 'bulk_post_scheduling_notify',
+          batchId,
+          workspaceId,
+        })
+      }
     }
 
     timer.end({ success: true, batchId, totalPosts, successfulPosts, failedPosts })
