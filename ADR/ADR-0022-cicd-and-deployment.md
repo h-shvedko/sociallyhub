@@ -1,8 +1,34 @@
 # ADR-0022: CI/CD Pipeline and Self-Hosted Docker Deployment
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-06** (all phases; live deployment awaits a provisioned VM + DEPLOY_* secrets, by design)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06, commit `338a4e1`).** The three contradictory deployment
+> stories are gone (k8s manifests, kubectl scripts, Vercel workflow, stale root Dockerfile —
+> deleted). **The production image is verified end-to-end locally:** `docker build -f
+> Dockerfile.prod` succeeds (595 MB — previously impossible), the image **boots** against the
+> dev stack (entrypoint = waits + ENCRYPTION_KEY assert + `exec node server.js`, ready in
+> 368 ms, `/api/health` → `"healthy"`), and its **self-contained pinned prisma CLI** runs
+> `migrate status` offline ("Database schema is up to date" — copying `node_modules/prisma`
+> alone fails on the CLI's ~33-package closure, e.g. `effect`; a `/app/prisma-cli` prefix
+> install fixes it). `ci.yml` is the honest 8-job pipeline: **blocking** schema / build (the
+> gate that would have caught the `sonner` incident) / docker-image (GHCR `sha-<sha>` on main);
+> **advisory with measured justifications in YAML comments** lint (~1,368 baseline), typecheck
+> (1,641 deferred-subsystem errors), test (Jest broken — its `moduleNameMapping` typo fixed
+> here; ESM transform remains ADR-0021), e2e, security (43 known vulns) — each flips to
+> blocking by deleting one line when its ADR-0021 ratchet lands. `deploy.yml` = workflow_run
+> SSH tag-swap deploy with a body-asserting health gate (`"status":"healthy"` — the route
+> returns 200 even when degraded, so a bare `curl -f` could never catch a dead worker) +
+> `.env.previous` auto-rollback; fails loudly until DEPLOY_* secrets exist (no silent skips).
+> Topology per the ADR table (nginx/certbot/app/worker/migrate/postgres/redis; DB host ports
+> removed; monitoring behind a compose profile pending ADR-0023); `docker-compose.ci.yml` +
+> `.env.production.example` + `docs/ops/deployment.md` runbook shipped. **Root-cause fixes
+> along the way:** committed `.npmrc` (`legacy-peer-deps=true`) because the lockfile is
+> maintained in legacy mode and plain `npm ci` failed everywhere; lazy Proxy OpenAI clients in
+> 3 libs whose module-scope constructors crashed hermetic (key-less) builds at page-data
+> collection. **Not yet exercised:** a real VM deploy (needs provisioning per the runbook) and
+> the GHCR push (first main-branch CI run does it).
 
 ## Context and Problem Statement
 
