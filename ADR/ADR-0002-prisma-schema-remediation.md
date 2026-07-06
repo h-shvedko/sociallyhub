@@ -1,8 +1,21 @@
 # ADR-0002: Prisma Schema Remediation and Migration-First Workflow
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-03**
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-03).** Schema now validates with 0 errors (137 models after the
+> ADR-0004/0012 RBAC cut); the analytics `UserSession` is canonical (RBAC duplicate deleted); all 15
+> missing `Documentation*` enums defined; client regenerated with all Support/Community/Documentation/
+> Settings accessors. Catch-up migration `20260702195923_0002_schema_remediation` baselines the DB
+> (80 `CREATE TABLE` plus new columns — not purely additive: intentionally drops
+> `user_workspaces.permissions` and adds `clients.email` as `NOT NULL DEFAULT ''`, made safe for
+> populated DBs). Migration-first workflow enforced: `db push` removed from `dev-local.sh`/
+> `docker/start-dev.sh`/`package.json`; `npm run db:check` added and run as the first step of CI's
+> `database-validation` job. **Note:** route-level schema divergences and broken imports surfaced by
+> the regeneration are catalogued in `ADR/ADR-0002-fallout-inventory.md` (2,382 type errors across 348
+> files, classified per owning ADR) — that inventory was the entry criteria for ADR-0003/0011/0012/
+> 0013/0014.
 
 ## Context and Problem Statement
 

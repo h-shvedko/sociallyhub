@@ -1,8 +1,22 @@
 # ADR-0003: Auth Helper Consolidation and API Route Conventions
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-03**
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-03).** All defect classes eliminated: 64 broken-import files fixed
+> (across four nonexistent paths), 352 unawaited `normalizeUserId` calls awaited, 25 no-arg
+> `getServerSession()` calls replaced, 12 default-import `prisma` bugs fixed, 40 legacy sync-params
+> routes migrated to Next 15 async params. All auth imports resolve through the canonical `@/lib/auth`
+> barrel (`getAuthenticatedUser()`, `requireSession()`, `requireAdmin()`, `ApiError` in
+> `src/lib/auth/session.ts`; `jsonError`/`handleApiError` in `src/lib/api/respond.ts`). Conventions in
+> `docs/api-conventions.md`, enforced by ESLint `no-restricted-imports` + type-aware
+> `no-floating-promises` on `src/app/api`. **Note:** helper adoption is partial by design — at delivery
+> only ~9 routes had adopted `getAuthenticatedUser()`; admin routes were collapsed onto
+> `requireAdmin()` in the 2026-07-03 remediation pass, but ~175 routes still call
+> `getServerSession(authOptions)` + `normalizeUserId` directly, pending ADR-0011/0012 (both since
+> implemented, adopting the helpers on their touched routes). `requireAdmin()` intentionally kept the
+> coarse any-workspace semantics until ADR-0004 (since implemented).
 
 ## Context and Problem Statement
 
