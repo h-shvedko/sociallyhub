@@ -3,76 +3,42 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions, normalizeUserId, requireWorkspaceRole } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-// GET /api/community/discord - Get Discord integration info
+import { isFeatureEnabled } from '@/lib/config/features'
+
+// GET /api/community/discord - Get Discord integration info for a workspace
 export async function GET(request: NextRequest) {
+  if (!isFeatureEnabled('FEATURE_DISCORD')) {
+    return NextResponse.json({ error: 'Feature not available' }, { status: 404 })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const workspaceId = searchParams.get('workspaceId')
 
-    // If workspaceId provided, get specific integration
-    if (workspaceId) {
-      const integration = await prisma.discordIntegration.findUnique({
-        where: { workspaceId },
-        select: {
-          id: true,
-          guildId: true,
-          guildName: true,
-          guildIcon: true,
-          inviteUrl: true,
-          memberCount: true,
-          onlineMembers: true,
-          lastActivity: true,
-          isActive: true,
-          channels: true,
-          createdAt: true
-        }
-      })
-
-      return NextResponse.json({ integration })
+    // workspaceId is required — there is no public/demo Discord server.
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 })
     }
 
-    // Otherwise return demo/public Discord server info
-    const demoDiscordInfo = {
-      id: 'demo-discord',
-      guildId: '1234567890123456789',
-      guildName: 'SociallyHub Community',
-      guildIcon: 'https://cdn.discordapp.com/icons/server/icon.png',
-      inviteUrl: 'https://discord.gg/sociallyhub',
-      memberCount: 1247,
-      onlineMembers: 89,
-      lastActivity: new Date().toISOString(),
-      isActive: true,
-      channels: {
-        general: '1234567890123456789',
-        support: '1234567890123456790',
-        announcements: '1234567890123456791',
-        feature_requests: '1234567890123456792',
-        showcase: '1234567890123456793'
-      },
-      recentActivity: [
-        {
-          type: 'member_joined',
-          userName: 'NewUser123',
-          timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString() // 5 minutes ago
-        },
-        {
-          type: 'message_posted',
-          userName: 'ActiveUser',
-          channel: 'general',
-          content: 'Thanks for the help with my integration issue!',
-          timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString() // 15 minutes ago
-        },
-        {
-          type: 'feature_discussed',
-          userName: 'PowerUser',
-          channel: 'feature_requests',
-          content: 'Love the new analytics dashboard feature!',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString() // 30 minutes ago
-        }
-      ]
-    }
+    const integration = await prisma.discordIntegration.findUnique({
+      where: { workspaceId },
+      select: {
+        id: true,
+        guildId: true,
+        guildName: true,
+        guildIcon: true,
+        inviteUrl: true,
+        memberCount: true,
+        onlineMembers: true,
+        lastActivity: true,
+        isActive: true,
+        channels: true,
+        createdAt: true
+      }
+    })
 
-    return NextResponse.json({ integration: demoDiscordInfo })
+    // No integration configured for this workspace -> honest null, not a fake server.
+    return NextResponse.json({ integration })
 
   } catch (error) {
     console.error('Failed to fetch Discord integration:', error)
@@ -85,6 +51,10 @@ export async function GET(request: NextRequest) {
 
 // POST /api/community/discord - Setup Discord integration
 export async function POST(request: NextRequest) {
+  if (!isFeatureEnabled('FEATURE_DISCORD')) {
+    return NextResponse.json({ error: 'Feature not available' }, { status: 404 })
+  }
+
   try {
     const session = await getServerSession(authOptions)
 
@@ -178,6 +148,10 @@ export async function POST(request: NextRequest) {
 
 // PUT /api/community/discord - Update Discord integration
 export async function PUT(request: NextRequest) {
+  if (!isFeatureEnabled('FEATURE_DISCORD')) {
+    return NextResponse.json({ error: 'Feature not available' }, { status: 404 })
+  }
+
   try {
     const session = await getServerSession(authOptions)
 
@@ -188,7 +162,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const userId = await normalizeUserId(session.user.id)
+    await normalizeUserId(session.user.id)
     const body = await request.json()
 
     const {

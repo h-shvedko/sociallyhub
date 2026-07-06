@@ -61,13 +61,6 @@ interface DiscordIntegration {
     feature_requests?: string
     showcase?: string
   }
-  recentActivity?: Array<{
-    type: string
-    userName: string
-    channel?: string
-    content?: string
-    timestamp: string
-  }>
 }
 
 interface CommunityIntegrationProps {
@@ -76,6 +69,7 @@ interface CommunityIntegrationProps {
 
 export function CommunityIntegration({ workspaceId }: CommunityIntegrationProps) {
   const [loading, setLoading] = useState(true)
+  const [available, setAvailable] = useState(true)
   const [stats, setStats] = useState<CommunityStats | null>(null)
   const [discord, setDiscord] = useState<DiscordIntegration | null>(null)
   const [activities, setActivities] = useState<any[]>([])
@@ -86,23 +80,39 @@ export function CommunityIntegration({ workspaceId }: CommunityIntegrationProps)
 
   const fetchCommunityData = async () => {
     try {
+      // Build the query string correctly. The previous `...&limit=10` produced a
+      // malformed URL (no `?`) whenever workspaceId was absent — ADR-0013.
+      const activityParams = new URLSearchParams({ limit: '10' })
+      if (workspaceId) activityParams.set('workspaceId', workspaceId)
+      const discordQuery = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+
       const [activityResponse, discordResponse] = await Promise.all([
-        fetch(`/api/community/activity${workspaceId ? `?workspaceId=${workspaceId}` : ''}&limit=10`),
-        fetch(`/api/community/discord${workspaceId ? `?workspaceId=${workspaceId}` : ''}`)
+        fetch(`/api/community/activity?${activityParams.toString()}`),
+        fetch(`/api/community/discord${discordQuery}`)
       ])
 
-      if (activityResponse.ok) {
-        const activityData = await activityResponse.json()
-        setStats(activityData.stats)
-        setActivities(activityData.activities)
+      // ADR-0013 / ADR-0015: the Community subsystem is deferred behind a feature
+      // flag. When it is off, src/middleware.ts returns 404 for these routes. Treat
+      // an unavailable community feed as "render nothing" rather than a broken/empty
+      // shell (the component is also not mounted by default — defense in depth).
+      if (!activityResponse.ok) {
+        setAvailable(false)
+        return
       }
 
+      const activityData = await activityResponse.json()
+      setStats(activityData.stats)
+      setActivities(activityData.activities || [])
+
+      // Discord may be separately gated (FEATURE_DISCORD sub-flag) or simply not
+      // configured for this workspace; the route returns `{ integration: null }`.
       if (discordResponse.ok) {
         const discordData = await discordResponse.json()
-        setDiscord(discordData.integration)
+        setDiscord(discordData.integration ?? null)
       }
     } catch (error) {
       console.error('Failed to fetch community data:', error)
+      setAvailable(false)
     } finally {
       setLoading(false)
     }
@@ -150,6 +160,12 @@ export function CommunityIntegration({ workspaceId }: CommunityIntegrationProps)
       default:
         return 'bg-gray-100 text-gray-700'
     }
+  }
+
+  // ADR-0013 / ADR-0015: render nothing when the community surface is unavailable
+  // (gated off → 404, or a fetch failure).
+  if (!available) {
+    return null
   }
 
   if (loading) {
@@ -318,90 +334,55 @@ export function CommunityIntegration({ workspaceId }: CommunityIntegrationProps)
           </CardContent>
         </Card>
 
-        {/* Discord Server */}
+        {/* Discord Server — rendered only when a real integration is configured.
+            No hardcoded server, member counts, invite link, or recent activity. */}
+        {discord && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Hash className="h-5 w-5" />
               Discord Server
-              {discord?.isActive && (
+              {discord.isActive && (
                 <div className="w-2 h-2 bg-green-500 rounded-full ml-auto" />
               )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {discord ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  {discord.guildIcon && (
-                    <img
-                      src={discord.guildIcon}
-                      alt={discord.guildName}
-                      className="w-10 h-10 rounded-full"
-                    />
-                  )}
-                  <div>
-                    <p className="font-medium">{discord.guildName}</p>
-                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {discord.memberCount} members
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full" />
-                        {discord.onlineMembers} online
-                      </span>
-                    </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                {discord.guildIcon && (
+                  <img
+                    src={discord.guildIcon}
+                    alt={discord.guildName}
+                    className="w-10 h-10 rounded-full"
+                  />
+                )}
+                <div>
+                  <p className="font-medium">{discord.guildName}</p>
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <span className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {discord.memberCount} members
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full" />
+                      {discord.onlineMembers} online
+                    </span>
                   </div>
                 </div>
-
-                {discord.recentActivity && discord.recentActivity.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="font-medium text-sm">Recent Activity</h4>
-                    {discord.recentActivity.slice(0, 3).map((activity, index) => (
-                      <div key={index} className="flex items-start gap-3 p-2 bg-gray-50 rounded-lg">
-                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                          <Users className="h-3 w-3 text-blue-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm">
-                            <span className="font-medium">{activity.userName}</span>
-                            {activity.type === 'member_joined' && ' joined the server'}
-                            {activity.type === 'message_posted' && activity.channel && ` posted in #${activity.channel}`}
-                            {activity.type === 'feature_discussed' && activity.channel && ` discussed in #${activity.channel}`}
-                          </p>
-                          {activity.content && (
-                            <p className="text-xs text-gray-600 mt-1 line-clamp-2">"{activity.content}"</p>
-                          )}
-                          <p className="text-xs text-gray-500 mt-1">{formatActivityTime(activity.timestamp)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Button
-                  className="w-full"
-                  onClick={() => window.open(discord.inviteUrl, '_blank')}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Join Discord Server
-                </Button>
               </div>
-            ) : (
-              <div className="text-center py-6">
-                <Hash className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-600 mb-4">
-                  Connect with our community on Discord for real-time discussions and support.
-                </p>
-                <Button onClick={() => window.open('https://discord.gg/sociallyhub', '_blank')}>
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Join Discord Server
-                </Button>
-              </div>
-            )}
+
+              <Button
+                className="w-full"
+                onClick={() => window.open(discord.inviteUrl, '_blank')}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Join Discord Server
+              </Button>
+            </div>
           </CardContent>
         </Card>
+        )}
 
         {/* Feature Requests */}
         <Card>

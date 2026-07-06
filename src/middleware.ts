@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { isFeatureEnabled } from '@/lib/config/features'
 
 /**
- * Edge middleware — ADR-0005 Phase 0 (Stop the bleeding).
+ * Edge middleware — ADR-0005 Phase 0 (Stop the bleeding) + the deferral gate
+ * for ADR-0013/0014/0015.
  *
  * Cross-cutting, cheap protections applied to every `/api/*` request:
+ *   0. Feature-flag gate (ADR-0013/0014/0015): deferred, known-broken
+ *      subsystems return a JSON 404 when their flag is off (the default).
+ *      `/api/community/**` is gated by FEATURE_COMMUNITY and
+ *      `/api/documentation/**` by FEATURE_DOCS_MANAGEMENT. One gate here covers
+ *      all 36 community + 19 documentation route files without touching them,
+ *      so the deferred code stays byte-identical for a clean eventual repair.
  *   1. `x-request-id` response header (crypto.randomUUID) for log correlation.
  *   2. `X-Robots-Tag: noindex` so API responses never get indexed.
  *   3. `Cache-Control: no-store` on every `/api/*` response — defense in depth
@@ -21,8 +29,10 @@ import type { NextRequest } from 'next/server'
  * and is not shared across app containers. The authoritative, Redis-backed
  * sliding-window limiter lives in `src/lib/utils/rate-limit.ts` and is applied
  * inside the `withApiAuth` wrapper (ADR-0005 Phase 1). Do NOT add Prisma,
- * ioredis, `@/lib` imports, or any Node-only API here — the edge runtime will
- * reject them and every API request would fail.
+ * ioredis, or any Node-only API here — the edge runtime will reject them and
+ * every API request would fail. The only `@/lib` import allowed is
+ * `@/lib/config/features`, which is pure `process.env` reads and therefore
+ * edge-safe; keep it that way.
  */
 
 // --- Coarse in-memory per-IP throttle (backstop only) --------------------
@@ -75,6 +85,21 @@ function isThrottledPath(pathname: string): boolean {
 export function middleware(request: NextRequest): NextResponse {
   const requestId = crypto.randomUUID()
   const { pathname } = request.nextUrl
+
+  // --- Feature-flag deferral gate (ADR-0013/0014/0015) ---------------------
+  // Deferred, known-broken subsystems 404 when their flag is off (the default).
+  // Discord lives under `/api/community/**`, so the community gate covers it;
+  // ADR-0015's own per-route guards enforce the FEATURE_DISCORD sub-flag.
+  if (
+    (pathname.startsWith('/api/community') && !isFeatureEnabled('FEATURE_COMMUNITY')) ||
+    (pathname.startsWith('/api/documentation') && !isFeatureEnabled('FEATURE_DOCS_MANAGEMENT'))
+  ) {
+    const res = NextResponse.json({ error: 'Not found' }, { status: 404 })
+    res.headers.set('x-request-id', requestId)
+    res.headers.set('X-Robots-Tag', 'noindex')
+    res.headers.set('Cache-Control', 'no-store')
+    return res
+  }
 
   // Coarse throttle on the highest-risk unauthenticated surfaces only.
   if (isThrottledPath(pathname)) {

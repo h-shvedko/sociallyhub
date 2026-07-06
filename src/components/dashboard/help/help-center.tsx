@@ -49,6 +49,20 @@ import { EnhancedFAQSection } from '@/components/help/enhanced-faq-section'
 import { CreateTicketDialog } from '@/components/support/create-ticket-dialog'
 import { CommunityIntegration } from '@/components/community/community-integration'
 
+// ADR-0013 (Community) / ADR-0014 (Documentation management): both subsystems are
+// deferred behind feature flags that DEFAULT OFF and stay off until their repair
+// phases ship. This is a client component, so it reads the NEXT_PUBLIC_ mirror of
+// each flag — Next.js only inlines env vars prefixed with NEXT_PUBLIC_ into the
+// browser bundle; the bare server-side FEATURE_* vars (src/lib/config/features.ts)
+// evaluate to `undefined` here. Both default to false when the var is unset, so the
+// Documentation card and the Community entry points below do NOT render until the
+// feature is un-deferred (which also requires setting the NEXT_PUBLIC_ mirror at
+// build time). The authoritative gate is server-side (src/middleware.ts + the API
+// routes); hiding these launch points is defense in depth — "users should never see
+// a door that opens onto a 404" (ADR-0013).
+const COMMUNITY_UI_ENABLED = process.env.NEXT_PUBLIC_FEATURE_COMMUNITY === 'true'
+const DOCS_MANAGEMENT_UI_ENABLED = process.env.NEXT_PUBLIC_FEATURE_DOCS_MANAGEMENT === 'true'
+
 interface HelpCategory {
   id: string
   name: string
@@ -344,6 +358,10 @@ export function HelpCenter() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* ADR-0014: Documentation management is deferred; this card links to
+            /dashboard/documentation (gated 404 by default) and only renders when
+            NEXT_PUBLIC_FEATURE_DOCS_MANAGEMENT is enabled. */}
+        {DOCS_MANAGEMENT_UI_ENABLED && (
         <Card
           className="hover:shadow-md transition-shadow cursor-pointer"
           onClick={() => window.location.href = '/dashboard/documentation'}
@@ -360,6 +378,7 @@ export function HelpCenter() {
             </div>
           </CardContent>
         </Card>
+        )}
 
         <Card
           className="hover:shadow-md transition-shadow cursor-pointer"
@@ -630,6 +649,14 @@ export function HelpCenter() {
                   </div>
                 </div>
                 
+                {/* ADR-0013: the Community subsystem is deferred; these entry points
+                    (forum, feature requests, community dashboard) only render when
+                    NEXT_PUBLIC_FEATURE_COMMUNITY is enabled (default hidden — the
+                    /community/* targets are gated 404 by src/middleware.ts).
+                    ADR-0015: the fabricated hardcoded Discord invite button (a server
+                    we do not control) is DELETED, not gated — no Discord entry point
+                    ships until the real integration lands. */}
+                {COMMUNITY_UI_ENABLED && (
                 <div className="space-y-3">
                   <h3 className="font-semibold">Community</h3>
                   <p className="text-sm text-muted-foreground">
@@ -643,14 +670,6 @@ export function HelpCenter() {
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Community Forum
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start"
-                      onClick={() => window.open('https://discord.gg/sociallyhub', '_blank')}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Discord Server
                     </Button>
                     <Button
                       variant="outline"
@@ -669,6 +688,7 @@ export function HelpCenter() {
                     View Community Dashboard
                   </Button>
                 </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -697,7 +717,10 @@ export function HelpCenter() {
         }}
       />
 
-      {/* Community Integration Dialog */}
+      {/* Community Integration Dialog — ADR-0013: gated off by default; the
+          <CommunityIntegration> mount also defends itself by rendering null when the
+          community API 404s. */}
+      {COMMUNITY_UI_ENABLED && (
       <Dialog open={showCommunityIntegration} onOpenChange={setShowCommunityIntegration}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -709,6 +732,7 @@ export function HelpCenter() {
           <CommunityIntegration />
         </DialogContent>
       </Dialog>
+      )}
     </div>
   )
 }
