@@ -29,6 +29,7 @@ export const KNOWN_QUEUE_NAMES = [
   'post-scheduling',
   'analytics-collection',
   'notification-dispatch',
+  'backup-execution',
 ] as const
 
 export type KnownQueueName = (typeof KNOWN_QUEUE_NAMES)[number]

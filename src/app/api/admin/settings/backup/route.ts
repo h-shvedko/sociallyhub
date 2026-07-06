@@ -3,6 +3,7 @@ import { requireSession, requirePlatformAdmin, requireWorkspaceRole } from '@/li
 import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { canAccessGlobalScope } from '../_lib/global-scope'
+import { computeNextRun } from '@/lib/jobs/backup-queue'
 
 // GET /api/admin/settings/backup - List backup configurations
 export async function GET(request: NextRequest) {
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
     // Calculate next run times for active configurations
     const configsWithNextRun = configurations.map(config => ({
       ...config,
-      nextRunCalculated: config.isActive ? calculateNextRun(config.schedule) : null
+      nextRunCalculated: config.isActive ? computeNextRun(config.schedule, new Date()) : null
     }))
 
     // Get recent backup records for statistics
@@ -254,7 +255,7 @@ export async function POST(request: NextRequest) {
         priority,
         maxSize: maxSize ? BigInt(maxSize) : null,
         parallelJobs,
-        nextRun: calculateNextRun(schedule),
+        nextRun: computeNextRun(schedule, new Date()),
         createdBy: user.id,
         lastUpdatedBy: user.id
       },
@@ -292,32 +293,4 @@ function isValidCronExpression(cron: string): boolean {
   ]
 
   return parts.every((part, index) => patterns[index].test(part))
-}
-
-// Helper function to calculate next run time from cron schedule
-function calculateNextRun(cronSchedule: string): Date {
-  // This is a simplified implementation
-  // In production, use a proper cron parsing library like 'node-cron' or 'cron-parser'
-
-  const now = new Date()
-  const parts = cronSchedule.split(' ')
-
-  // For demo purposes, assume daily backup at specified hour
-  if (parts[1] !== '*') {
-    const hour = parseInt(parts[1])
-    const nextRun = new Date(now)
-    nextRun.setHours(hour, 0, 0, 0)
-
-    // If the time has passed today, schedule for tomorrow
-    if (nextRun <= now) {
-      nextRun.setDate(nextRun.getDate() + 1)
-    }
-
-    return nextRun
-  }
-
-  // Default to next hour for other patterns
-  const nextRun = new Date(now)
-  nextRun.setHours(nextRun.getHours() + 1, 0, 0, 0)
-  return nextRun
 }

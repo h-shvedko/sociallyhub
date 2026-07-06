@@ -129,7 +129,6 @@ model Workspace {
   systemConfigurations       SystemConfiguration[]       @relation("WorkspaceSystemConfigurations")
   emailTemplates             EmailTemplate[]             @relation("WorkspaceEmailTemplates")
   integrationSettings        IntegrationSetting[]        @relation("WorkspaceIntegrationSettings")
-  brandingConfiguration      BrandingConfiguration?      @relation("WorkspaceBrandingConfiguration")
   notificationConfigurations NotificationConfiguration[] @relation("WorkspaceNotificationConfigurations")
   securityConfigurations     SecurityConfiguration[]     @relation("WorkspaceSecurityConfigurations")
   performanceConfigurations  PerformanceConfiguration[]  @relation("WorkspacePerformanceConfigurations")
@@ -256,7 +255,6 @@ model User {
   emailTemplatesUpdated      EmailTemplate[]             @relation("EmailTemplateUpdater")
   integrationSettingsCreated IntegrationSetting[]        @relation("IntegrationSettingCreator")
   integrationSettingsUpdated IntegrationSetting[]        @relation("IntegrationSettingUpdater")
-  brandingConfigUpdates      BrandingConfiguration[]     @relation("BrandingConfigurationUpdater")
   notificationConfigUpdates  NotificationConfiguration[] @relation("NotificationConfigurationUpdater")
   securityConfigUpdates      SecurityConfiguration[]     @relation("SecurityConfigurationUpdater")
   performanceConfigUpdates   PerformanceConfiguration[]  @relation("PerformanceConfigurationUpdater")
@@ -5262,40 +5260,6 @@ model IntegrationSetting {
 
   @@unique([workspaceId, provider, name])
   @@map("integration_settings")
-}
-
-model BrandingConfiguration {
-  id             String   @id @default(cuid())
-  workspaceId    String   @unique
-  companyName    String?
-  logoUrl        String?
-  logoUrlDark    String?
-  faviconUrl     String?
-  primaryColor   String? // Hex color
-  secondaryColor String? // Hex color
-  accentColor    String? // Hex color
-  colorPalette   Json? // Extended color palette
-  fontFamily     String?
-  fontScale      Float?   @default(1.0)
-  customCSS      String?  @db.Text
-  isWhiteLabel   Boolean  @default(false)
-  customDomain   String?
-  hideCredits    Boolean  @default(false)
-  footerText     String?
-  copyrightText  String?
-  socialLinks    Json? // Social media links
-  contactInfo    Json? // Contact information
-  features       Json? // Enabled/disabled features
-  customFields   Json? // Custom branding fields
-  lastUpdatedBy  String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relations
-  workspace     Workspace @relation("WorkspaceBrandingConfiguration", fields: [workspaceId], references: [id], onDelete: Cascade)
-  updatedByUser User      @relation("BrandingConfigurationUpdater", fields: [lastUpdatedBy], references: [id])
-
-  @@map("branding_configurations")
 }
 
 model NotificationConfiguration {

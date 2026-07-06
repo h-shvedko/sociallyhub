@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireSession, requirePlatformAdmin } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
+import {
+  evaluateFeatureFlag,
+  evaluateFlagRules,
+  parsePrerequisiteKeys,
+} from '@/lib/feature-flags/db'
 
 // POST /api/admin/settings/feature-flags/evaluate - Evaluate feature flags
 export async function POST(request: NextRequest) {
@@ -54,95 +59,10 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Evaluation function
-    const evaluateFlag = (flag: any, userId?: string): { result: boolean; variant?: string; reason: string } => {
-      const now = new Date()
-
-      // Check if flag is expired
-      if (flag.expiresAt && now > flag.expiresAt) {
-        return { result: false, reason: 'OFF' }
-      }
-
-      // Check prerequisites
-      if (flag.prerequisites && flag.prerequisites.length > 0) {
-        // In a real implementation, you'd check other flags
-        // For now, assume prerequisites are met
-      }
-
-      // Time-based targeting
-      if (flag.timeTargeting) {
-        const timeTarget = flag.timeTargeting
-        if (timeTarget.startDate && now < new Date(timeTarget.startDate)) {
-          return { result: false, reason: 'OFF' }
-        }
-        if (timeTarget.endDate && now > new Date(timeTarget.endDate)) {
-          return { result: false, reason: 'OFF' }
-        }
-      }
-
-      // User targeting
-      if (flag.userTargeting && userId) {
-        const userTarget = flag.userTargeting
-        if (userTarget.include && userTarget.include.includes(userId)) {
-          return { result: true, variant: flag.defaultVariant, reason: 'TARGET_MATCH' }
-        }
-        if (userTarget.exclude && userTarget.exclude.includes(userId)) {
-          return { result: false, reason: 'OFF' }
-        }
-      }
-
-      // Group/Role targeting
-      if (flag.groupTargeting && context.userRole) {
-        const groupTarget = flag.groupTargeting
-        if (groupTarget.include && groupTarget.include.includes(context.userRole)) {
-          return { result: true, variant: flag.defaultVariant, reason: 'TARGET_MATCH' }
-        }
-        if (groupTarget.exclude && groupTarget.exclude.includes(context.userRole)) {
-          return { result: false, reason: 'OFF' }
-        }
-      }
-
-      // Geographic targeting
-      if (flag.geoTargeting && context.country) {
-        const geoTarget = flag.geoTargeting
-        if (geoTarget.include && !geoTarget.include.includes(context.country)) {
-          return { result: false, reason: 'OFF' }
-        }
-        if (geoTarget.exclude && geoTarget.exclude.includes(context.country)) {
-          return { result: false, reason: 'OFF' }
-        }
-      }
-
-      // Complex conditions
-      if (flag.conditions) {
-        // In a real implementation, you'd evaluate complex conditions
-        // For now, assume conditions are met
-      }
-
-      // Percentage rollout
-      if (flag.rolloutPercent > 0) {
-        let hash = 0
-        const key = `${flag.key}:${userId || 'anonymous'}`
-        for (let i = 0; i < key.length; i++) {
-          hash = ((hash << 5) - hash) + key.charCodeAt(i)
-          hash = hash & hash // Convert to 32-bit integer
-        }
-
-        const percentage = Math.abs(hash) % 100
-        const isIncluded = percentage < flag.rolloutPercent
-
-        return {
-          result: isIncluded,
-          variant: flag.defaultVariant,
-          reason: isIncluded ? 'PERCENT_ROLLOUT' : 'OFF'
-        }
-      }
-
-      // Default to off if no targeting rules apply
-      return { result: false, reason: 'DEFAULT' }
-    }
-
-    // Evaluate each flag
+    // Evaluate each flag. The per-flag targeting rules live in ONE place
+    // (`evaluateFlagRules`, shared with the server-side `evaluateFeatureFlag`
+    // helper); this route additionally writes the audit row + bumps the
+    // evaluation count. Prerequisites are checked FIRST and fail closed.
     const evaluations = await Promise.all(
       flagKeys.map(async (key: string) => {
         const flag = flags.find(f => f.key === key)
@@ -157,7 +77,33 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const evaluation = evaluateFlag(flag, evaluationUserId)
+        // Real prerequisite check (ADR-0016): every prerequisite flag must
+        // itself evaluate true (in the SAME context). If any is false the
+        // dependent flag is forced off with PREREQUISITE_NOT_MET; a cyclic
+        // prerequisite graph fails closed with PREREQUISITE_CYCLE.
+        let evaluation: { result: boolean; variant: string | null; reason: string }
+        const prereqKeys = parsePrerequisiteKeys(flag.prerequisites)
+        let prereqFailure: string | null = null
+        for (const prereqKey of prereqKeys) {
+          const pre = await evaluateFeatureFlag(prereqKey, {
+            userId: evaluationUserId,
+            workspaceId: flag.workspaceId,
+            context
+          })
+          if (!pre.result) {
+            prereqFailure =
+              pre.reason === 'PREREQUISITE_CYCLE'
+                ? 'PREREQUISITE_CYCLE'
+                : 'PREREQUISITE_NOT_MET'
+            break
+          }
+        }
+
+        if (prereqFailure) {
+          evaluation = { result: false, variant: null, reason: prereqFailure }
+        } else {
+          evaluation = evaluateFlagRules(flag, { userId: evaluationUserId, context })
+        }
 
         // Record evaluation in database
         try {

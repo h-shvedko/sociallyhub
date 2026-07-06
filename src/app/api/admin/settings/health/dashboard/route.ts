@@ -116,10 +116,10 @@ export async function GET(request: NextRequest) {
       : 100
 
     // System overview
+    // uptime/metrics intentionally omitted — real uptime tracking is ADR-0023 (Observability).
     const systemOverview = {
       overallStatus: healthScore >= 80 ? 'HEALTHY' : healthScore >= 60 ? 'WARNING' : 'CRITICAL',
       healthScore,
-      uptime: '99.9%', // Mock uptime - in real implementation, calculate from actual data
       lastUpdated: healthMetrics[0]?.collectedAt || now,
       components
     }

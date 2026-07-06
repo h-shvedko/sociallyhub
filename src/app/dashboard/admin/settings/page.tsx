@@ -1,398 +1,266 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import {
   Settings,
   Mail,
   Globe,
-  Palette,
-  Bell,
-  Shield,
-  Zap,
   Database,
-  Activity,
   Flag,
-  Search,
-  Filter,
-  Plus,
-  ExternalLink,
+  KeyRound,
   Wrench,
-  ChevronRight
+  ChevronRight,
+  AlertCircle
 } from 'lucide-react'
 
-interface SettingCategory {
+// ADR-0016 Phase 4 — honest admin settings hub.
+//
+// The previous hub rendered 10 hardcoded cards with fake setTimeout stats
+// (e.g. a hardcoded "198 total configurations") and linked to 9 pages that
+// returned 404. This rebuild links ONLY to pages that exist and shows REAL
+// counts fetched from the list endpoints. If a count cannot be fetched we
+// show nothing rather than inventing a number.
+
+interface Workspace {
+  id: string
+  name: string
+}
+
+interface HubCounts {
+  system: number | null
+  backupConfigs: number | null
+  lastBackup: string | null
+  featureFlags: number | null
+  emailTemplates: number | null
+  integrations: number | null
+  workspaceName: string | null
+}
+
+interface CardDef {
   id: string
   name: string
   description: string
   icon: any
-  status: 'active' | 'warning' | 'error' | 'disabled'
-  lastUpdated?: string
-  count?: number
-  route: string
-}
-
-interface SettingsStats {
-  totalConfigurations: number
-  activeIntegrations: number
-  pendingAlerts: number
-  lastBackup: string
+  href: string
+  scope: 'global' | 'workspace' | 'none'
+  count: number | null
+  extra?: string | null
 }
 
 export default function AdminSettingsPage() {
-  const [stats, setStats] = useState<SettingsStats>({
-    totalConfigurations: 0,
-    activeIntegrations: 0,
-    pendingAlerts: 0,
-    lastBackup: ''
+  const [counts, setCounts] = useState<HubCounts>({
+    system: null,
+    backupConfigs: null,
+    lastBackup: null,
+    featureFlags: null,
+    emailTemplates: null,
+    integrations: null,
+    workspaceName: null
   })
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
-  const settingCategories: SettingCategory[] = [
+  useEffect(() => {
+    let cancelled = false
+
+    const loadCounts = async () => {
+      setLoading(true)
+      setError(null)
+
+      // Each fetch is independent — one failure must not blank the others.
+      const safeJson = async (url: string): Promise<any | null> => {
+        try {
+          const res = await fetch(url)
+          if (!res.ok) return null
+          return await res.json()
+        } catch {
+          return null
+        }
+      }
+
+      // Global-scope counts.
+      const [systemData, backupData, flagsData, workspacesData] = await Promise.all([
+        safeJson('/api/admin/settings/system'),
+        safeJson('/api/admin/settings/backup'),
+        safeJson('/api/admin/settings/feature-flags'),
+        safeJson('/api/admin/workspaces')
+      ])
+
+      // Workspace-scoped counts (email templates / integrations) — fetched for
+      // the first workspace the admin can see, purely to give the hub a real
+      // (non-fabricated) number. Omitted entirely if there is no workspace.
+      let emailTemplates: number | null = null
+      let integrations: number | null = null
+      let workspaceName: string | null = null
+
+      const workspaces: Workspace[] = workspacesData?.workspaces ?? []
+      const firstWorkspace = workspaces[0]
+      if (firstWorkspace) {
+        workspaceName = firstWorkspace.name
+        const [emailData, integrationData] = await Promise.all([
+          safeJson(`/api/admin/settings/email-templates?workspaceId=${encodeURIComponent(firstWorkspace.id)}`),
+          safeJson(`/api/admin/settings/integrations?workspaceId=${encodeURIComponent(firstWorkspace.id)}`)
+        ])
+        if (typeof emailData?.total === 'number') emailTemplates = emailData.total
+        if (typeof integrationData?.total === 'number') integrations = integrationData.total
+      }
+
+      if (cancelled) return
+
+      // If literally every source failed, surface an honest error.
+      if (!systemData && !backupData && !flagsData && !workspacesData) {
+        setError('Unable to load settings data. You may not have platform-admin access, or the services are unavailable.')
+      }
+
+      setCounts({
+        system: typeof systemData?.total === 'number' ? systemData.total : null,
+        backupConfigs: typeof backupData?.total === 'number' ? backupData.total : null,
+        lastBackup: backupData?.stats?.lastSuccessfulBackup ?? null,
+        featureFlags: typeof flagsData?.total === 'number' ? flagsData.total : null,
+        emailTemplates,
+        integrations,
+        workspaceName
+      })
+      setLoading(false)
+    }
+
+    loadCounts()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const cards: CardDef[] = [
     {
       id: 'system',
       name: 'System Configuration',
-      description: 'Global platform settings and core system parameters',
+      description: 'Global platform settings and core system parameters (secrets masked).',
       icon: Settings,
-      status: 'active',
-      lastUpdated: '2 hours ago',
-      count: 45,
-      route: '/dashboard/admin/settings/system'
+      href: '/dashboard/admin/settings/system',
+      scope: 'global',
+      count: counts.system
     },
     {
       id: 'email-templates',
       name: 'Email Templates',
-      description: 'Manage notification, welcome, and system email templates',
+      description: 'Manage per-workspace notification, welcome, and system email templates.',
       icon: Mail,
-      status: 'active',
-      lastUpdated: '1 day ago',
-      count: 12,
-      route: '/dashboard/admin/settings/email-templates'
+      href: '/dashboard/admin/settings/email-templates',
+      scope: 'workspace',
+      count: counts.emailTemplates,
+      extra: counts.workspaceName ? `in ${counts.workspaceName}` : null
     },
     {
       id: 'integrations',
-      name: 'Integration Settings',
-      description: 'Configure third-party integrations like Discord, analytics tools',
+      name: 'Integrations',
+      description: 'Configure per-workspace third-party integrations. Credentials stay masked.',
       icon: Globe,
-      status: 'warning',
-      lastUpdated: '3 days ago',
-      count: 8,
-      route: '/dashboard/admin/settings/integrations'
-    },
-    {
-      id: 'branding',
-      name: 'Branding Management',
-      description: 'Platform branding, white-label options, custom domains',
-      icon: Palette,
-      status: 'active',
-      lastUpdated: '1 week ago',
-      count: 1,
-      route: '/dashboard/admin/settings/branding'
-    },
-    {
-      id: 'notifications',
-      name: 'Notification Settings',
-      description: 'Global notification preferences and delivery settings',
-      icon: Bell,
-      status: 'active',
-      lastUpdated: '2 days ago',
-      count: 23,
-      route: '/dashboard/admin/settings/notifications'
-    },
-    {
-      id: 'security',
-      name: 'Security Settings',
-      description: 'Password policies, session management, security headers',
-      icon: Shield,
-      status: 'error',
-      lastUpdated: '5 hours ago',
-      count: 18,
-      route: '/dashboard/admin/settings/security'
-    },
-    {
-      id: 'performance',
-      name: 'Performance Settings',
-      description: 'Caching configuration, CDN settings, optimization',
-      icon: Zap,
-      status: 'active',
-      lastUpdated: '6 hours ago',
-      count: 34,
-      route: '/dashboard/admin/settings/performance'
+      href: '/dashboard/admin/settings/integrations',
+      scope: 'workspace',
+      count: counts.integrations,
+      extra: counts.workspaceName ? `in ${counts.workspaceName}` : null
     },
     {
       id: 'backup',
       name: 'Backup & Recovery',
-      description: 'Database backup scheduling and restoration tools',
+      description: 'Backup configurations and recent backup records with real status.',
       icon: Database,
-      status: 'active',
-      lastUpdated: '30 minutes ago',
-      count: 5,
-      route: '/dashboard/admin/settings/backup'
-    },
-    {
-      id: 'health',
-      name: 'System Health',
-      description: 'Monitor system performance, error rates, uptime',
-      icon: Activity,
-      status: 'warning',
-      lastUpdated: 'Live',
-      count: 156,
-      route: '/dashboard/admin/settings/health'
+      href: '/dashboard/admin/settings/backup',
+      scope: 'global',
+      count: counts.backupConfigs,
+      extra: counts.lastBackup
+        ? `last success ${new Date(counts.lastBackup).toLocaleDateString()}`
+        : 'no successful backup yet'
     },
     {
       id: 'feature-flags',
       name: 'Feature Flags',
-      description: 'Enable/disable features for testing and gradual rollouts',
+      description: 'View feature flags and their rollout state; create new flags.',
       icon: Flag,
-      status: 'active',
-      lastUpdated: '4 hours ago',
-      count: 27,
-      route: '/dashboard/admin/settings/feature-flags'
+      href: '/dashboard/admin/settings/feature-flags',
+      scope: 'global',
+      count: counts.featureFlags
+    },
+    {
+      id: 'sso',
+      name: 'Single Sign-On',
+      description: 'External identity providers. Disabled until a real SSO flow ships.',
+      icon: KeyRound,
+      href: '/dashboard/admin/settings/sso',
+      scope: 'none',
+      count: null
     }
   ]
-
-  const fetchStats = async () => {
-    try {
-      setLoading(true)
-      // Mock stats for now - in real implementation, fetch from multiple APIs
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      setStats({
-        totalConfigurations: 198,
-        activeIntegrations: 12,
-        pendingAlerts: 3,
-        lastBackup: '2 hours ago'
-      })
-    } catch (error) {
-      console.error('Failed to fetch settings stats:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchStats()
-  }, [])
-
-  const filteredCategories = settingCategories.filter(category => {
-    const matchesSearch = category.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         category.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFilter = !categoryFilter || category.status === categoryFilter
-    return matchesSearch && matchesFilter
-  })
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'text-green-600 bg-green-100'
-      case 'warning':
-        return 'text-yellow-600 bg-yellow-100'
-      case 'error':
-        return 'text-red-600 bg-red-100'
-      case 'disabled':
-        return 'text-gray-600 bg-gray-100'
-      default:
-        return 'text-gray-600 bg-gray-100'
-    }
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'active':
-        return '●'
-      case 'warning':
-        return '⚠'
-      case 'error':
-        return '✕'
-      case 'disabled':
-        return '○'
-      default:
-        return '○'
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2">Loading settings...</span>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-              <Wrench className="mr-3 h-6 w-6" />
-              Settings & Configuration Management
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Comprehensive system configuration and management dashboard
-            </p>
-          </div>
-          <div className="flex space-x-3">
-            <button className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center">
-              <Plus className="mr-2 h-4 w-4" />
-              Quick Setup
-            </button>
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center">
-              <ExternalLink className="mr-2 h-4 w-4" />
-              System Status
-            </button>
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+          <Wrench className="mr-3 h-6 w-6" />
+          Settings &amp; Configuration
+        </h1>
+        <p className="text-gray-600 mt-1">
+          Platform and workspace configuration. Counts below are read live from the
+          backing services — no placeholder data.
+        </p>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white p-6 rounded-lg border">
-          <div className="flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Settings className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Configurations</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.totalConfigurations}</p>
-            </div>
-          </div>
+      {error && (
+        <div className="mb-6 flex items-start rounded-lg border border-red-200 bg-red-50 p-4">
+          <AlertCircle className="mr-3 h-5 w-5 flex-shrink-0 text-red-600" />
+          <p className="text-sm text-red-700">{error}</p>
         </div>
+      )}
 
-        <div className="bg-white p-6 rounded-lg border">
-          <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Globe className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Integrations</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.activeIntegrations}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg border">
-          <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <Bell className="h-6 w-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending Alerts</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.pendingAlerts}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg border">
-          <div className="flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Database className="h-6 w-6 text-purple-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Last Backup</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.lastBackup}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters and Search */}
-      <div className="bg-white p-4 rounded-lg border mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input
-                type="text"
-                placeholder="Search settings categories..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Status</option>
-              <option value="active">Active</option>
-              <option value="warning">Warning</option>
-              <option value="error">Error</option>
-              <option value="disabled">Disabled</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Settings Categories Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredCategories.map((category) => {
-          const IconComponent = category.icon
+        {cards.map((card) => {
+          const Icon = card.icon
           return (
-            <div
-              key={category.id}
-              className="bg-white rounded-lg border hover:border-blue-300 transition-all duration-200 cursor-pointer group"
-              onClick={() => window.location.href = category.route}
+            <Link
+              key={card.id}
+              href={card.href}
+              className="group block rounded-lg border bg-white transition-all duration-200 hover:border-blue-300"
             >
               <div className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center">
-                    <div className="p-3 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                      <IconComponent className="h-6 w-6 text-blue-600" />
+                    <div className="rounded-lg bg-blue-100 p-3 transition-colors group-hover:bg-blue-200">
+                      <Icon className="h-6 w-6 text-blue-600" />
                     </div>
                     <div className="ml-4">
-                      <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                        {category.name}
+                      <h3 className="text-lg font-semibold text-gray-900 transition-colors group-hover:text-blue-600">
+                        {card.name}
                       </h3>
-                      <div className="flex items-center mt-1">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(category.status)}`}>
-                          {getStatusIcon(category.status)} {category.status}
-                        </span>
-                        {category.count && (
-                          <span className="ml-2 text-sm text-gray-500">
-                            {category.count} items
+                      <div className="mt-1 flex items-center gap-2 text-sm text-gray-500">
+                        {loading ? (
+                          <span className="inline-block h-3 w-16 animate-pulse rounded bg-gray-200" />
+                        ) : card.scope === 'none' ? (
+                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            disabled
+                          </span>
+                        ) : card.count !== null ? (
+                          <span>
+                            {card.count} {card.count === 1 ? 'item' : 'items'}
+                            {card.extra ? ` · ${card.extra}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">
+                            {card.extra ?? 'count unavailable'}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
+                  <ChevronRight className="h-5 w-5 text-gray-400 transition-colors group-hover:text-blue-600" />
                 </div>
-
-                <p className="text-gray-600 mt-3 text-sm">
-                  {category.description}
-                </p>
-
-                {category.lastUpdated && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <p className="text-xs text-gray-500">
-                      Last updated: {category.lastUpdated}
-                    </p>
-                  </div>
-                )}
+                <p className="mt-3 text-sm text-gray-600">{card.description}</p>
               </div>
-            </div>
+            </Link>
           )
         })}
       </div>
-
-      {filteredCategories.length === 0 && (
-        <div className="text-center py-12">
-          <Filter className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No settings found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Try adjusting your search or filter criteria.
-          </p>
-        </div>
-      )}
     </div>
   )
 }

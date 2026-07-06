@@ -17,7 +17,11 @@ import {
   ArrowLeft,
   Eye,
   UserPlus,
-  KeyRound
+  KeyRound,
+  Mail,
+  Globe,
+  Database,
+  Flag
 } from 'lucide-react'
 
 interface AdminSidebarProps {
@@ -79,6 +83,11 @@ const navigation: NavItem[] = [
     icon: Settings,
     children: [
       { name: 'Settings Hub', href: '/dashboard/admin/settings', icon: Settings },
+      { name: 'System Configuration', href: '/dashboard/admin/settings/system', icon: Settings },
+      { name: 'Email Templates', href: '/dashboard/admin/settings/email-templates', icon: Mail },
+      { name: 'Integrations', href: '/dashboard/admin/settings/integrations', icon: Globe },
+      { name: 'Backup & Recovery', href: '/dashboard/admin/settings/backup', icon: Database },
+      { name: 'Feature Flags', href: '/dashboard/admin/settings/feature-flags', icon: Flag },
       { name: 'Single Sign-On', href: '/dashboard/admin/settings/sso', icon: KeyRound }
     ]
   }

@@ -1,7 +1,13 @@
 FROM node:20-alpine
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init curl
+# Install dumb-init for proper signal handling, curl for healthchecks, and the
+# postgresql client tools (pg_dump / pg_restore) so the worker can run real
+# backups (ADR-0016 Phase 2). NOTE: this base is Alpine 3.23, which does NOT ship
+# a `postgresql15-client` package — the unpinned `postgresql-client` meta resolves
+# to the current major (v18). A newer client dumping/restoring the postgres:15
+# server is supported (pg_dump/pg_restore are backward-compatible with older
+# servers), so this is safe.
+RUN apk add --no-cache dumb-init curl postgresql-client
 
 WORKDIR /app
 

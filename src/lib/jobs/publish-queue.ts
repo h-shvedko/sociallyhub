@@ -27,9 +27,16 @@ export const POST_SCHEDULING_QUEUE = 'post-scheduling'
  */
 export const PUBLISH_JOB_NAME = 'post_scheduling'
 
-/** Deterministic, idempotent BullMQ jobId for a post's publish job. */
+/**
+ * Deterministic, idempotent BullMQ jobId for a post's publish job.
+ *
+ * The separator is '-', NOT ':' — BullMQ rejects a custom job id containing a
+ * colon ("Custom Id cannot contain :"), which silently broke every publish +
+ * reconcile enqueue. postIds are cuids (alphanumeric) so a hyphen never
+ * collides.
+ */
 export function publishJobId(postId: string): string {
-  return `publish:${postId}`
+  return `publish-${postId}`
 }
 
 export interface EnqueuePublishParams {

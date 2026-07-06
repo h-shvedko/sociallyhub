@@ -786,6 +786,92 @@ async function main() {
   const supportCounts = await seedSupport()
   console.log('✅ Support data seeded')
 
+  // Seed default settings rows (ADR-0016 Phase 3 item 12 / ADR-0025).
+  // Idempotent by hand (findFirst → create): the FeatureFlag @@unique([workspaceId, key])
+  // and BackupConfiguration @@unique([workspaceId, name]) are NULLable on workspaceId,
+  // and Postgres does not enforce uniqueness across NULLs, so a compound-key upsert
+  // is not reliably idempotent for GLOBAL rows — a manual find-or-create is.
+  console.log('🚩 Seeding default feature flags + backup configuration...')
+  let settingsSeeded = 0
+
+  // Three INERT placeholder feature flags (global scope, workspaceId null). These
+  // are NOT live gates — the ADR-0013/0014/0015 deferrals stay on the static env
+  // gate (FEATURE_COMMUNITY / FEATURE_DOCS_MANAGEMENT / FEATURE_DISCORD). These rows
+  // exist only as a FUTURE migration target so a later ADR can move the deferrals
+  // onto the DB-backed flag evaluator without a data-create step.
+  const placeholderFlags: Array<{ key: string; name: string; description: string; category: 'FEATURE' }> = [
+    {
+      key: 'community-subsystem',
+      name: 'Community Subsystem',
+      description: 'INERT placeholder (ADR-0016). The Community deferral (ADR-0013) stays on the static FEATURE_COMMUNITY env gate; this flag is a future migration target only, not a live gate.',
+      category: 'FEATURE',
+    },
+    {
+      key: 'documentation-management',
+      name: 'Documentation Management',
+      description: 'INERT placeholder (ADR-0016). The Documentation deferral (ADR-0014) stays on the static FEATURE_DOCS_MANAGEMENT env gate; this flag is a future migration target only, not a live gate.',
+      category: 'FEATURE',
+    },
+    {
+      key: 'discord-integration',
+      name: 'Discord Integration',
+      description: 'INERT placeholder (ADR-0016). The Discord deferral (ADR-0015) stays on the static FEATURE_DISCORD env gate; this flag is a future migration target only, not a live gate.',
+      category: 'FEATURE',
+    },
+  ]
+
+  for (const flag of placeholderFlags) {
+    const existing = await prisma.featureFlag.findFirst({
+      where: { workspaceId: null, key: flag.key },
+    })
+    if (!existing) {
+      await prisma.featureFlag.create({
+        data: {
+          workspaceId: null,
+          key: flag.key,
+          name: flag.name,
+          description: flag.description,
+          category: flag.category,
+          isActive: false,
+          rolloutPercent: 0,
+          createdBy: demoUser.id,
+          lastUpdatedBy: demoUser.id,
+        },
+      })
+      settingsSeeded++
+    }
+  }
+
+  // Default GLOBAL backup configuration — inactive until an admin enables it, so
+  // seeding never silently starts writing dumps. Nightly at 02:00 when activated.
+  const existingBackupConfig = await prisma.backupConfiguration.findFirst({
+    where: { workspaceId: null, name: 'Default database backup' },
+  })
+  if (!existingBackupConfig) {
+    await prisma.backupConfiguration.create({
+      data: {
+        workspaceId: null,
+        name: 'Default database backup',
+        backupType: 'DATABASE_ONLY',
+        schedule: '0 2 * * *',
+        isActive: false,
+        retention: 30,
+        storageLocation: 'LOCAL',
+        storageConfig: {},
+        createdBy: demoUser.id,
+        lastUpdatedBy: demoUser.id,
+      },
+    })
+    settingsSeeded++
+  }
+
+  // NOTE: a baseline system EmailTemplate is intentionally SKIPPED here (ADR-0016
+  // Phase 3, optional). The EmailTemplate model carries several required
+  // enum/JSON fields (category/type/status + variables) whose correct seeding is
+  // non-trivial; a real template belongs to the email-templates admin surface,
+  // not to a placeholder seed row.
+  console.log(`✅ Seeded ${settingsSeeded} default settings rows (flags + backup config)`)
+
   console.log('🎉 Comprehensive database seeding completed!')
   console.log(`
 📊 Final Statistics:

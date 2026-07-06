@@ -23,6 +23,9 @@ services:
       - DATABASE_PORT=5432
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Backup artifacts dir (ADR-0016) — shared named volume with the worker so
+      # the web tier can serve/download a backup file the worker wrote.
+      - BACKUP_DIR=/app/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,6 +36,8 @@ services:
     volumes:
       - uploads:/app/uploads
       - logs:/app/logs
+      # Backup artifacts (ADR-0016) — shared with the worker service.
+      - backups:/app/backups
     labels:
       - "com.sociallyhub.service=app"
       - "com.sociallyhub.version=1.0.0"
@@ -68,6 +73,11 @@ services:
       # Local media storage (ADR-0007), shared with `app` via the uploads volume.
       - STORAGE_DRIVER=${STORAGE_DRIVER:-local}
       - STORAGE_LOCAL_ROOT=/app/uploads
+      # Backup artifacts dir (ADR-0016) — the worker writes pg_dump/tar files here.
+      # NOTE: the prod image is built from Dockerfile.prod, which must also install
+      # the postgresql client tools (pg_dump/pg_restore) for real backups to run;
+      # without them the worker records an honest spawn-error FAILED. See ADR-0016.
+      - BACKUP_DIR=/app/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,6 +88,8 @@ services:
     volumes:
       - uploads:/app/uploads
       - logs:/app/logs
+      # Backup artifacts (ADR-0016) — shared with the app service.
+      - backups:/app/backups
     labels:
       - "com.sociallyhub.service=worker"
       - "com.sociallyhub.version=1.0.0"
@@ -276,6 +288,12 @@ volumes:
     driver: local
     labels:
       - "com.sociallyhub.volume=uploads"
+  # Backup artifacts (ADR-0016) — shared by app + worker; distinct from the
+  # postgres_backups volume mounted into the database container.
+  backups:
+    driver: local
+    labels:
+      - "com.sociallyhub.volume=app-backups"
   logs:
     driver: local
     labels:

@@ -22,6 +22,19 @@ import {
   INBOX_SYNC_SCHEDULER_ID,
   INBOX_SYNC_INTERVAL_MS,
 } from './processors/inbox-sync'
+import {
+  backupExecuteProcessor,
+  backupRestoreProcessor,
+  backupTickProcessor,
+} from './processors/backup'
+import {
+  BACKUP_QUEUE,
+  BACKUP_EXECUTE_JOB,
+  BACKUP_RESTORE_JOB,
+  BACKUP_TICK_JOB,
+  BACKUP_TICK_SCHEDULER_ID,
+  BACKUP_TICK_INTERVAL_MS,
+} from './backup-queue'
 import { prisma } from '@/lib/prisma'
 import { BusinessLogger, ErrorLogger } from '@/lib/middleware/logging'
 
@@ -73,6 +86,14 @@ export class JobScheduler {
       // itself is upserted by scheduleInboxSync(), invoked during repeatable sync.
       queueManager.registerProcessor(INBOX_SYNC_QUEUE, INBOX_SYNC_JOB_NAME, inboxSyncProcessor)
 
+      // Backup execution + restore + repeatable tick (ADR-0016 Phase 2). Runs on
+      // its own queue (concurrency 1) so a heavy pg_dump/pg_restore never contends
+      // with the publishing pipeline. The repeatable tick is upserted by
+      // scheduleBackupJobs(), invoked during the worker's repeatable-job sync.
+      queueManager.registerProcessor(BACKUP_QUEUE, BACKUP_EXECUTE_JOB, backupExecuteProcessor)
+      queueManager.registerProcessor(BACKUP_QUEUE, BACKUP_RESTORE_JOB, backupRestoreProcessor)
+      queueManager.registerProcessor(BACKUP_QUEUE, BACKUP_TICK_JOB, backupTickProcessor)
+
       // Create and start workers for each queue. `media-processing` is omitted:
       // no processor exists (reserved for ADR-0007), and createWorker would skip
       // it anyway.
@@ -81,7 +102,8 @@ export class JobScheduler {
         { name: 'analytics-collection', concurrency: 3 },
         { name: 'notification-dispatch', concurrency: 10 },
         { name: CLIENT_REPORTS_QUEUE, concurrency: 3 },
-        { name: INBOX_SYNC_QUEUE, concurrency: 2 }
+        { name: INBOX_SYNC_QUEUE, concurrency: 2 },
+        { name: BACKUP_QUEUE, concurrency: 1 }
       ]
 
       for (const config of queueConfigs) {
@@ -427,6 +449,50 @@ export class JobScheduler {
     } catch (error) {
       ErrorLogger.logUnexpectedError(error as Error, {
         context: 'schedule_inbox_sync',
+      })
+      throw error
+    }
+  }
+
+  /**
+   * Upsert the repeatable backup tick (ADR-0016 Phase 2). Discovered and invoked
+   * by the worker's repeatable-job sync (src/worker.ts). Uses the v5 Job
+   * Schedulers API with a stable scheduler id, so re-running it on every worker
+   * boot is idempotent (no duplicate timers). Fires BACKUP_TICK_JOB every
+   * BACKUP_TICK_INTERVAL_MS; the processor dispatches due configurations and runs
+   * the retention sweep. Stays effectively idle until an admin activates a
+   * BackupConfiguration.
+   */
+  async scheduleBackupJobs(): Promise<void> {
+    try {
+      const queue = await queueManager.createQueue(BACKUP_QUEUE)
+
+      await queue.upsertJobScheduler(
+        BACKUP_TICK_SCHEDULER_ID,
+        { every: BACKUP_TICK_INTERVAL_MS },
+        {
+          name: BACKUP_TICK_JOB,
+          data: {
+            id: BACKUP_TICK_SCHEDULER_ID,
+            type: BACKUP_TICK_JOB,
+            payload: {},
+            userId: 'system',
+            createdAt: new Date().toISOString(),
+          },
+          opts: {
+            removeOnComplete: 20,
+            removeOnFail: 20,
+          },
+        }
+      )
+
+      BusinessLogger.logSystemEvent('backup_tick_repeatable_upserted', {
+        schedulerId: BACKUP_TICK_SCHEDULER_ID,
+        everyMs: BACKUP_TICK_INTERVAL_MS,
+      })
+    } catch (error) {
+      ErrorLogger.logUnexpectedError(error as Error, {
+        context: 'schedule_backup_jobs',
       })
       throw error
     }

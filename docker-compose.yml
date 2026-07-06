@@ -66,6 +66,9 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=1000
       - WATCHPACK_POLLING=true
+      # Backup artifacts dir (ADR-0016) — shared named volume with the worker so
+      # the web tier can serve/download a backup file the worker wrote.
+      - BACKUP_DIR=/app/backups
     volumes:
       - ./src:/app/src
       - ./public:/app/public
@@ -76,6 +79,8 @@ services:
       - ./components.json:/app/components.json
       - ./.env.local:/app/.env.local
       - next_cache:/app/.next
+      # Backup artifacts (ADR-0016) — shared with the worker service.
+      - backups:/app/backups
       # Use named volume for node_modules to prevent host conflicts
       - node_modules:/app/node_modules
     depends_on:
@@ -114,11 +119,15 @@ services:
       # Local media storage (ADR-0007) for jobs that read attached media
       - STORAGE_DRIVER=local
       - STORAGE_LOCAL_ROOT=/app/uploads
+      # Backup artifacts dir (ADR-0016) — the worker writes pg_dump/tar files here.
+      - BACKUP_DIR=/app/backups
     volumes:
       - ./src:/app/src
       - ./prisma:/app/prisma
       - ./tsconfig.json:/app/tsconfig.json
       - ./.env.local:/app/.env.local
+      # Backup artifacts (ADR-0016) — shared with the app service.
+      - backups:/app/backups
       # Share node_modules with `app` (populated from the image on first mount).
       - node_modules:/app/node_modules
     depends_on:
@@ -178,3 +187,5 @@ volumes:
   redis_data:
   next_cache:
   node_modules:
+  # Backup artifacts (ADR-0016) — shared by app + worker.
+  backups:
