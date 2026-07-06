@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
             await tx.ticketUpdate.create({
               data: {
                 ticketId: ticket.id,
-                updateType: 'ASSIGNMENT',
+                updateType: 'ASSIGNMENT_CHANGE',
                 message: `Ticket assigned to ${agent.displayName} (bulk operation)`,
                 oldAssignee: ticket.assignedAgentId,
                 newAssignee: data.agentId,
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
               await tx.ticketUpdate.create({
                 data: {
                   ticketId: ticket.id,
-                  updateType: 'ASSIGNMENT',
+                  updateType: 'ASSIGNMENT_CHANGE',
                   message: 'Ticket unassigned (bulk operation)',
                   oldAssignee: ticket.assignedAgentId,
                   newAssignee: null,
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
             await tx.ticketUpdate.create({
               data: {
                 ticketId: ticket.id,
-                updateType: 'TAG_CHANGE',
+                updateType: 'SYSTEM_UPDATE',
                 message: `Tags added: ${data.tags.join(', ')} (bulk operation)`,
                 authorId: userId,
                 authorType: 'admin',

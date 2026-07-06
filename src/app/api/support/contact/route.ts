@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAuthenticatedUser } from '@/lib/auth'
 import { getRequestMetadata } from '@/lib/api/request-metadata'
+import { emailService } from '@/lib/notifications/email-service'
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
 
 // POST /api/support/contact - Submit contact form
 export async function POST(request: NextRequest) {
@@ -80,12 +90,56 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Send confirmation email (you could implement this with your email service)
-    // For now, we'll just return success with ticket info
+    const ticketNumber = `TICK-${contactForm.id.slice(-8).toUpperCase()}`
+
+    // Confirmation email to the submitter (ADR-0011 Phase 1, item 7b). Best-effort:
+    // the submission is already persisted, so an SMTP failure is logged loudly but
+    // never fails the request.
+    try {
+      const safeName = escapeHtml(name.trim())
+      const safeSubject = escapeHtml(subject.trim())
+      const safeMessage = escapeHtml(message.trim()).replace(/\n/g, '<br>')
+      await emailService.send({
+        to: [email.trim().toLowerCase()],
+        subject: `We received your message [${ticketNumber}]`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <div style="display: inline-block; background: #2563eb; padding: 16px; border-radius: 12px;">
+                <span style="color: white; font-size: 24px; font-weight: bold;">S</span>
+              </div>
+            </div>
+            <h1 style="color: #2563eb;">Thanks for reaching out</h1>
+            <p>Hi ${safeName},</p>
+            <p>We've received your message and our support team will get back to you soon.
+              Your reference number is <strong>${ticketNumber}</strong>.</p>
+            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+              <p style="margin: 0 0 8px;"><strong>Subject:</strong> ${safeSubject}</p>
+              <p style="margin: 0;">${safeMessage}</p>
+            </div>
+            <p>Estimated response time: <strong>${availableAgent ? '2-4 hours' : '24-48 hours'}</strong>.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+            <p style="color: #64748b; font-size: 14px;">Best regards,<br>The SociallyHub Support Team</p>
+          </div>
+        `,
+        text:
+          `Hi ${name.trim()},\n\n` +
+          `We've received your message and will get back to you soon. ` +
+          `Your reference number is ${ticketNumber}.\n\n` +
+          `Subject: ${subject.trim()}\n${message.trim()}\n\n` +
+          `Estimated response time: ${availableAgent ? '2-4 hours' : '24-48 hours'}.\n\n` +
+          `The SociallyHub Support Team`,
+      })
+    } catch (emailError) {
+      console.error(
+        `[support-contact] Failed to send confirmation email to ${email} for ${ticketNumber}:`,
+        emailError instanceof Error ? emailError.message : emailError
+      )
+    }
 
     return NextResponse.json({
       id: contactForm.id,
-      ticketNumber: `TICK-${contactForm.id.slice(-8).toUpperCase()}`,
+      ticketNumber,
       status: contactForm.status,
       assignedAgent: contactForm.assignedAgent,
       estimatedResponseTime: availableAgent ? '2-4 hours' : '24-48 hours',

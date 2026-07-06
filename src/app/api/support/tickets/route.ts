@@ -3,6 +3,16 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { withApiAuth } from '@/lib/api/with-api-auth'
 import { jsonError } from '@/lib/api/respond'
+import { emailService } from '@/lib/notifications/email-service'
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
 
 // Generate unique ticket number
 function generateTicketNumber(): string {
@@ -275,6 +285,52 @@ export const POST = withApiAuth(
         isPublic: true,
       },
     })
+
+    // Ticket-created confirmation email to the creator (ADR-0011 Phase 1, item 7c).
+    // Works for both registered users and guests. Best-effort: the ticket is already
+    // persisted, so an SMTP failure is logged loudly but never fails the request.
+    const recipientEmail = ticket.user?.email ?? ticket.guestEmail
+    if (recipientEmail) {
+      try {
+        const recipientName = ticket.user?.name ?? ticket.guestName ?? 'there'
+        await emailService.send({
+          to: [recipientEmail],
+          subject: `Your support ticket ${ticket.ticketNumber} has been created`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="display: inline-block; background: #2563eb; padding: 16px; border-radius: 12px;">
+                  <span style="color: white; font-size: 24px; font-weight: bold;">S</span>
+                </div>
+              </div>
+              <h1 style="color: #2563eb;">We've got your ticket</h1>
+              <p>Hi ${escapeHtml(recipientName)},</p>
+              <p>Your support ticket <strong>${escapeHtml(ticket.ticketNumber)}</strong> has been created and our
+                team is on it${availableAgent ? '' : ' — an agent will pick it up shortly'}.</p>
+              <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
+                <p style="margin: 0 0 8px;"><strong>Subject:</strong> ${escapeHtml(ticket.title)}</p>
+                <p style="margin: 0;">${escapeHtml(ticket.description).replace(/\n/g, '<br>')}</p>
+              </div>
+              <p>We'll email you as soon as there's an update. You can reference this ticket by
+                <strong>${escapeHtml(ticket.ticketNumber)}</strong>.</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+              <p style="color: #64748b; font-size: 14px;">Best regards,<br>The SociallyHub Support Team</p>
+            </div>
+          `,
+          text:
+            `Hi ${recipientName},\n\n` +
+            `Your support ticket ${ticket.ticketNumber} has been created.\n\n` +
+            `Subject: ${ticket.title}\n${ticket.description}\n\n` +
+            `We'll email you as soon as there's an update.\n\n` +
+            `The SociallyHub Support Team`,
+        })
+      } catch (emailError) {
+        console.error(
+          `[support-tickets] Failed to send ticket-created email to ${recipientEmail} for ${ticket.ticketNumber}:`,
+          emailError instanceof Error ? emailError.message : emailError
+        )
+      }
+    }
 
     return NextResponse.json(ticket, { status: 201 })
   },

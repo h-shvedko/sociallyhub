@@ -18,6 +18,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
     const includeUserActivity = searchParams.get('includeUserActivity') === 'true'
+    const exportCsv =
+      searchParams.get('format') === 'csv' || searchParams.get('export') === 'true'
 
     // Build where clause for audit logs
     const auditWhere: any = {}
@@ -46,6 +48,81 @@ export async function GET(request: NextRequest) {
       if (endDate) {
         auditWhere.timestamp.lte = new Date(endDate)
       }
+    }
+
+    // CSV export branch: stream the filtered audit rows as a downloadable CSV
+    // instead of the analytics JSON payload. Honors the same filters.
+    if (exportCsv) {
+      const CSV_EXPORT_CAP = 10000
+      const rows = await prisma.auditLog.findMany({
+        where: auditWhere,
+        include: {
+          user: { select: { name: true, email: true } },
+          workspace: { select: { name: true } }
+        },
+        orderBy: { timestamp: 'desc' },
+        take: CSV_EXPORT_CAP
+      })
+
+      const escapeCsv = (value: unknown): string => {
+        if (value === null || value === undefined) return ''
+        const str =
+          typeof value === 'string' ? value : JSON.stringify(value)
+        // Quote if the value contains a comma, quote, or newline; escape quotes.
+        if (/[",\n\r]/.test(str)) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
+      }
+
+      const header = [
+        'Timestamp',
+        'Action',
+        'Resource',
+        'Resource ID',
+        'User Name',
+        'User Email',
+        'Workspace',
+        'IP Address',
+        'User Agent',
+        'Old Values',
+        'New Values',
+        'Changes'
+      ]
+
+      const lines = [header.map(escapeCsv).join(',')]
+      for (const row of rows) {
+        lines.push(
+          [
+            row.timestamp.toISOString(),
+            row.action,
+            row.resource,
+            row.resourceId,
+            row.user?.name,
+            row.user?.email,
+            row.workspace?.name,
+            row.ipAddress,
+            row.userAgent,
+            row.oldValues,
+            row.newValues,
+            row.changes
+          ]
+            .map(escapeCsv)
+            .join(',')
+        )
+      }
+
+      const csv = lines.join('\r\n')
+      const filename = `access-logs-${new Date().toISOString().split('T')[0]}.csv`
+
+      return new NextResponse(csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'no-store'
+        }
+      })
     }
 
     // Get audit logs

@@ -114,6 +114,17 @@ interface TicketDetail {
   }
 }
 
+// Roster option from GET /api/admin/support-agents (ADR-0011). Loose/optional
+// so the control tolerates the route's exact serialization.
+interface AgentOption {
+  id: string
+  displayName: string
+  department?: string
+  isOnline?: boolean
+  isActive?: boolean
+  user?: { name?: string | null; email?: string | null } | null
+}
+
 const PRIORITY_COLORS = {
   LOW: 'bg-green-100 text-green-800',
   MEDIUM: 'bg-yellow-100 text-yellow-800',
@@ -168,6 +179,22 @@ export default function TicketDetailPage() {
   })
 
   const [submitting, setSubmitting] = useState(false)
+
+  // Agent roster for the assignment control
+  const [agents, setAgents] = useState<AgentOption[]>([])
+
+  // Fetch the assignable support-agent roster
+  const fetchAgents = async () => {
+    try {
+      const response = await fetch('/api/admin/support-agents')
+      if (!response.ok) return
+      const data = await response.json()
+      const list: AgentOption[] = data.supportAgents ?? data.agents ?? []
+      setAgents(Array.isArray(list) ? list : [])
+    } catch (error) {
+      console.error('Error fetching support agents:', error)
+    }
+  }
 
   // Fetch ticket details
   const fetchTicket = async () => {
@@ -297,6 +324,10 @@ export default function TicketDetailPage() {
   useEffect(() => {
     fetchTicket()
   }, [ticketId])
+
+  useEffect(() => {
+    fetchAgents()
+  }, [])
 
   if (loading) {
     return (
@@ -450,6 +481,26 @@ export default function TicketDetailPage() {
                         <option value="CLOSED">Closed</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Assigned Agent
+                    </label>
+                    <select
+                      value={editData.assignedAgentId}
+                      onChange={(e) => setEditData({ ...editData, assignedAgentId: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Unassigned</option>
+                      {agents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.displayName}
+                          {agent.department ? ` — ${agent.department}` : ''}
+                          {agent.isOnline ? ' (online)' : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               ) : (
@@ -833,7 +884,10 @@ export default function TicketDetailPage() {
                 <div className="text-center py-4">
                   <User className="w-12 h-12 text-gray-300 mx-auto mb-2" />
                   <p className="text-sm text-gray-500 mb-3">No agent assigned</p>
-                  <button className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
                     Assign Agent
                   </button>
                 </div>

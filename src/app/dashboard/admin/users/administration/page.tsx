@@ -1,52 +1,82 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Users,
   Plus,
   Edit,
   Trash2,
   Search,
-  Filter,
-  MoreVertical,
   UserCheck,
   UserX,
   Shield,
+  ShieldCheck,
   Mail,
   Calendar,
   Clock,
   MapPin,
-  Building
+  Building,
+  Loader2,
+  AlertTriangle,
+  X,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
+
+// ADR-0004 / ADR-0012: WorkspaceRole is the enforcement primitive. The custom
+// Role/UserRole catalog was cut; the only cross-tenant capability is the
+// `isPlatformAdmin` flag on User.
+const WORKSPACE_ROLES: Array<{ value: string; label: string }> = [
+  { value: 'OWNER', label: 'Owner' },
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'PUBLISHER', label: 'Publisher' },
+  { value: 'ANALYST', label: 'Analyst' },
+  { value: 'CLIENT_VIEWER', label: 'Client Viewer' },
+]
+
+interface WorkspaceMembership {
+  role: string
+  workspace: {
+    id: string
+    name: string
+  }
+}
 
 interface User {
   id: string
   email: string
   name: string
   image?: string
-  emailVerified: boolean
+  // emailVerified is a nullable DateTime serialized to a string (or null).
+  emailVerified: string | null
   twoFactorEnabled: boolean
+  isPlatformAdmin: boolean
   timezone: string
   locale: string
   createdAt: string
   updatedAt: string
-  workspaces: Array<{
-    role: string
-    workspace: {
-      id: string
-      name: string
-    }
-  }>
-  userRoles: Array<{
-    role: {
-      id: string
-      name: string
-      displayName: string
-      color?: string
-    }
-  }>
+  workspaces: WorkspaceMembership[]
   userSessions: Array<{
-    lastActiveAt: string
+    id: string
+    lastActivity: string
+    ip?: string | null
   }>
   _count: {
     userActivities: number
@@ -62,6 +92,17 @@ interface UserStats {
   twoFactorEnabled: number
 }
 
+interface WorkspaceOption {
+  id: string
+  name: string
+}
+
+// Draft membership rows managed inside the create/edit form.
+interface MembershipDraft {
+  workspaceId: string
+  role: string
+}
+
 export default function UserAdministrationPage() {
   const [users, setUsers] = useState<User[]>([])
   const [stats, setStats] = useState<UserStats>({ total: 0, active: 0, verified: 0, twoFactorEnabled: 0 })
@@ -70,9 +111,32 @@ export default function UserAdministrationPage() {
   const [roleFilter, setRoleFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
-  const [showUserModal, setShowUserModal] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [showBulkModal, setShowBulkModal] = useState(false)
+
+  // Fetched workspace list (best source). Falls back to memberships aggregated
+  // from the loaded users so the membership picker always has real options.
+  const [fetchedWorkspaces, setFetchedWorkspaces] = useState<WorkspaceOption[]>([])
+
+  // Create/edit form state
+  const [showUserModal, setShowUserModal] = useState(false)
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [formName, setFormName] = useState('')
+  const [formEmail, setFormEmail] = useState('')
+  const [formPassword, setFormPassword] = useState('')
+  const [formIsPlatformAdmin, setFormIsPlatformAdmin] = useState(false)
+  const [formMemberships, setFormMemberships] = useState<MembershipDraft[]>([])
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
+  const [hardDelete, setHardDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Transient success/error banner
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const fetchUsers = async () => {
     try {
@@ -90,26 +154,65 @@ export default function UserAdministrationPage() {
     }
   }
 
+  const fetchWorkspaces = async () => {
+    try {
+      const response = await fetch('/api/admin/workspaces')
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data.workspaces)) {
+          setFetchedWorkspaces(
+            data.workspaces.map((w: { id: string; name: string }) => ({ id: w.id, name: w.name }))
+          )
+        }
+      }
+    } catch {
+      // Non-fatal: the membership picker falls back to workspaces already
+      // referenced by the loaded users.
+    }
+  }
+
   useEffect(() => {
     fetchUsers()
+    fetchWorkspaces()
   }, [])
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesRole = !roleFilter || user.workspaces.some(ws => ws.role === roleFilter) ||
-                       user.userRoles.some(ur => ur.role.name === roleFilter)
-    const matchesStatus = !statusFilter ||
-                         (statusFilter === 'verified' && user.emailVerified) ||
-                         (statusFilter === 'unverified' && !user.emailVerified) ||
-                         (statusFilter === '2fa' && user.twoFactorEnabled) ||
-                         (statusFilter === 'active' && user.userSessions.length > 0)
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 4000)
+    return () => clearTimeout(timer)
+  }, [notice])
+
+  // Deduped, real workspace options: prefer the admin workspaces endpoint,
+  // fall back to workspaces present on the loaded users. Never fabricated.
+  const workspaceOptions = useMemo<WorkspaceOption[]>(() => {
+    const map = new Map<string, string>()
+    fetchedWorkspaces.forEach((w) => map.set(w.id, w.name))
+    users.forEach((u) =>
+      u.workspaces.forEach((ws) => {
+        if (!map.has(ws.workspace.id)) map.set(ws.workspace.id, ws.workspace.name)
+      })
+    )
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [fetchedWorkspaces, users])
+
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch =
+      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesRole = !roleFilter || user.workspaces.some((ws) => ws.role === roleFilter)
+    const matchesStatus =
+      !statusFilter ||
+      (statusFilter === 'verified' && !!user.emailVerified) ||
+      (statusFilter === 'unverified' && !user.emailVerified) ||
+      (statusFilter === '2fa' && user.twoFactorEnabled) ||
+      (statusFilter === 'platform-admin' && user.isPlatformAdmin) ||
+      (statusFilter === 'active' && user.userSessions.length > 0)
     return matchesSearch && matchesRole && matchesStatus
   })
 
   const getLastActivity = (user: User) => {
     if (user.userSessions.length === 0) return 'Never'
-    const lastActivity = new Date(user.userSessions[0].lastActiveAt)
+    const lastActivity = new Date(user.userSessions[0].lastActivity)
     const now = new Date()
     const diffInHours = Math.floor((now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60))
 
@@ -127,7 +230,7 @@ export default function UserAdministrationPage() {
     if (user.userSessions.length === 0) {
       return { label: 'Inactive', color: 'bg-gray-100 text-gray-800' }
     }
-    const lastActivity = new Date(user.userSessions[0].lastActiveAt)
+    const lastActivity = new Date(user.userSessions[0].lastActivity)
     const hoursAgo = Math.floor((Date.now() - lastActivity.getTime()) / (1000 * 60 * 60))
 
     if (hoursAgo < 1) return { label: 'Online', color: 'bg-green-100 text-green-800' }
@@ -136,10 +239,8 @@ export default function UserAdministrationPage() {
   }
 
   const handleSelectUser = (userId: string) => {
-    setSelectedUsers(prev =>
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
+    setSelectedUsers((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
     )
   }
 
@@ -147,12 +248,206 @@ export default function UserAdministrationPage() {
     if (selectedUsers.length === filteredUsers.length) {
       setSelectedUsers([])
     } else {
-      setSelectedUsers(filteredUsers.map(user => user.id))
+      setSelectedUsers(filteredUsers.map((user) => user.id))
+    }
+  }
+
+  // ----- Create / Edit modal -----
+
+  const openCreateModal = () => {
+    setFormMode('create')
+    setEditingUserId(null)
+    setFormName('')
+    setFormEmail('')
+    setFormPassword('')
+    setFormIsPlatformAdmin(false)
+    setFormMemberships([])
+    setFormError(null)
+    setShowUserModal(true)
+  }
+
+  const openEditModal = (user: User) => {
+    setFormMode('edit')
+    setEditingUserId(user.id)
+    setFormName(user.name || '')
+    setFormEmail(user.email || '')
+    setFormPassword('')
+    setFormIsPlatformAdmin(!!user.isPlatformAdmin)
+    setFormMemberships(
+      user.workspaces.map((ws) => ({ workspaceId: ws.workspace.id, role: ws.role }))
+    )
+    setFormError(null)
+    setShowUserModal(true)
+  }
+
+  const closeUserModal = () => {
+    if (saving) return
+    setShowUserModal(false)
+    setEditingUserId(null)
+  }
+
+  const addMembershipRow = () => {
+    const used = new Set(formMemberships.map((m) => m.workspaceId))
+    const nextWorkspace = workspaceOptions.find((w) => !used.has(w.id)) || workspaceOptions[0]
+    if (!nextWorkspace) return
+    setFormMemberships((prev) => [...prev, { workspaceId: nextWorkspace.id, role: 'ANALYST' }])
+  }
+
+  const updateMembership = (index: number, patch: Partial<MembershipDraft>) => {
+    setFormMemberships((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, ...patch } : m))
+    )
+  }
+
+  const removeMembershipRow = (index: number) => {
+    setFormMemberships((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleSubmitUser = async () => {
+    setFormError(null)
+
+    if (!formName.trim() || !formEmail.trim()) {
+      setFormError('Name and email are required.')
+      return
+    }
+    if (formMode === 'create' && !formPassword) {
+      setFormError('A password is required when creating a user.')
+      return
+    }
+    // Guard against duplicate workspace rows (the API replaces memberships wholesale).
+    const workspaceIds = formMemberships.map((m) => m.workspaceId)
+    if (new Set(workspaceIds).size !== workspaceIds.length) {
+      setFormError('Each workspace can only be assigned once.')
+      return
+    }
+
+    setSaving(true)
+    try {
+      let response: Response
+      if (formMode === 'create') {
+        const primary = formMemberships[0]
+        response = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formName.trim(),
+            email: formEmail.trim(),
+            password: formPassword,
+            isPlatformAdmin: formIsPlatformAdmin,
+            // Admin-created accounts are provisioned verified (no invitation email).
+            sendInvitation: false,
+            // The current POST persists a single primary membership; the full set
+            // is also sent so a memberships-aware POST can apply all of them.
+            ...(primary && { workspaceId: primary.workspaceId, role: primary.role }),
+            workspaceRoles: formMemberships,
+          }),
+        })
+      } else {
+        response = await fetch(`/api/admin/users/${editingUserId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formName.trim(),
+            email: formEmail.trim(),
+            isPlatformAdmin: formIsPlatformAdmin,
+            workspaceRoles: formMemberships,
+            // Leave additionalRoles/teamMemberships empty — the cut Role/Team
+            // catalogs are no longer part of the model (ADR-0004/0012).
+          }),
+        })
+      }
+
+      if (!response.ok) {
+        let message = `Request failed (${response.status})`
+        try {
+          const data = await response.json()
+          if (data?.error) message = data.error
+        } catch {
+          /* ignore body parse errors */
+        }
+        setFormError(message)
+        return
+      }
+
+      setShowUserModal(false)
+      setEditingUserId(null)
+      setNotice({
+        type: 'success',
+        message: formMode === 'create' ? 'User created successfully.' : 'User updated successfully.',
+      })
+      await fetchUsers()
+    } catch (error) {
+      console.error('Failed to save user:', error)
+      setFormError('An unexpected error occurred. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ----- Delete -----
+
+  const openDeleteModal = (user: User) => {
+    setDeleteTarget(user)
+    setHardDelete(false)
+    setDeleteError(null)
+  }
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const query = hardDelete ? '?hard=true' : ''
+      const response = await fetch(`/api/admin/users/${deleteTarget.id}${query}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        let message = `Request failed (${response.status})`
+        try {
+          const data = await response.json()
+          if (data?.error) message = data.error
+        } catch {
+          /* ignore body parse errors */
+        }
+        setDeleteError(message)
+        return
+      }
+
+      const result = await response.json().catch(() => ({}))
+      setDeleteTarget(null)
+      setSelectedUsers((prev) => prev.filter((id) => id !== deleteTarget.id))
+      setNotice({
+        type: 'success',
+        message: result?.action === 'deleted' ? 'User permanently deleted.' : 'User deactivated.',
+      })
+      await fetchUsers()
+    } catch (error) {
+      console.error('Failed to delete user:', error)
+      setDeleteError('An unexpected error occurred. Please try again.')
+    } finally {
+      setDeleting(false)
     }
   }
 
   return (
     <div className="p-6">
+      {/* Transient notification */}
+      {notice && (
+        <div
+          className={`mb-4 flex items-center justify-between rounded-lg border px-4 py-3 text-sm ${
+            notice.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-800'
+              : 'border-red-200 bg-red-50 text-red-800'
+          }`}
+        >
+          <span>{notice.message}</span>
+          <button onClick={() => setNotice(null)} className="ml-4 opacity-70 hover:opacity-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
@@ -175,7 +470,7 @@ export default function UserAdministrationPage() {
               </button>
             )}
             <button
-              onClick={() => setShowUserModal(true)}
+              onClick={openCreateModal}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center"
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -258,11 +553,11 @@ export default function UserAdministrationPage() {
               className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Roles</option>
-              <option value="OWNER">Owner</option>
-              <option value="ADMIN">Admin</option>
-              <option value="PUBLISHER">Publisher</option>
-              <option value="ANALYST">Analyst</option>
-              <option value="CLIENT_VIEWER">Client Viewer</option>
+              {WORKSPACE_ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
             </select>
             <select
               value={statusFilter}
@@ -274,6 +569,7 @@ export default function UserAdministrationPage() {
               <option value="verified">Verified</option>
               <option value="unverified">Unverified</option>
               <option value="2fa">2FA Enabled</option>
+              <option value="platform-admin">Platform Admin</option>
             </select>
           </div>
         </div>
@@ -293,8 +589,7 @@ export default function UserAdministrationPage() {
               <span className="ml-3 text-sm text-gray-700">
                 {selectedUsers.length > 0
                   ? `${selectedUsers.length} selected`
-                  : `${filteredUsers.length} users`
-                }
+                  : `${filteredUsers.length} users`}
               </span>
             </div>
           </div>
@@ -356,11 +651,7 @@ export default function UserAdministrationPage() {
                           />
                           <div className="flex items-center">
                             {user.image ? (
-                              <img
-                                src={user.image}
-                                alt=""
-                                className="h-10 w-10 rounded-full mr-3"
-                              />
+                              <img src={user.image} alt="" className="h-10 w-10 rounded-full mr-3" />
                             ) : (
                               <div className="h-10 w-10 bg-gray-300 rounded-full flex items-center justify-center mr-3">
                                 <span className="text-sm font-medium text-gray-700">
@@ -370,11 +661,9 @@ export default function UserAdministrationPage() {
                             )}
                             <div>
                               <div className="flex items-center">
-                                <p className="text-sm font-medium text-gray-900">
-                                  {user.name}
-                                </p>
+                                <p className="text-sm font-medium text-gray-900">{user.name}</p>
                                 {user.twoFactorEnabled && (
-                                  <Shield className="ml-2 h-4 w-4 text-green-500" title="2FA Enabled" />
+                                  <Shield className="ml-2 h-4 w-4 text-green-500" aria-label="2FA Enabled" />
                                 )}
                               </div>
                               <p className="text-sm text-gray-500">{user.email}</p>
@@ -391,6 +680,12 @@ export default function UserAdministrationPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="space-y-1">
+                          {user.isPlatformAdmin && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                              <ShieldCheck className="h-3 w-3 mr-1" />
+                              Platform Admin
+                            </span>
+                          )}
                           {user.workspaces.map((ws) => (
                             <div key={ws.workspace.id} className="flex items-center text-xs">
                               <Building className="h-3 w-3 mr-1 text-gray-400" />
@@ -398,23 +693,16 @@ export default function UserAdministrationPage() {
                               <span className="text-gray-500 ml-1">in {ws.workspace.name}</span>
                             </div>
                           ))}
-                          {user.userRoles.map((ur) => (
-                            <span
-                              key={ur.role.id}
-                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                              style={{
-                                backgroundColor: ur.role.color ? `${ur.role.color}20` : '#f3f4f6',
-                                color: ur.role.color || '#6b7280'
-                              }}
-                            >
-                              {ur.role.displayName}
-                            </span>
-                          ))}
+                          {user.workspaces.length === 0 && !user.isPlatformAdmin && (
+                            <span className="text-xs text-gray-400">No workspace access</span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="space-y-1">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadge.color}`}>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadge.color}`}
+                          >
                             {statusBadge.label}
                           </span>
                           {!user.emailVerified && (
@@ -440,16 +728,14 @@ export default function UserAdministrationPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end space-x-2">
                           <button
-                            onClick={() => {
-                              setSelectedUser(user)
-                              setShowUserModal(true)
-                            }}
+                            onClick={() => openEditModal(user)}
                             className="text-blue-600 hover:text-blue-900 transition-colors"
                             title="Edit User"
                           >
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
+                            onClick={() => openDeleteModal(user)}
                             className="text-red-600 hover:text-red-900 transition-colors"
                             title="Delete User"
                           >
@@ -466,33 +752,229 @@ export default function UserAdministrationPage() {
         </div>
       </div>
 
-      {/* Modals would be implemented here */}
-      {showUserModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
-            <h2 className="text-xl font-bold mb-4">
-              {selectedUser ? 'Edit User' : 'Add New User'}
-            </h2>
-            <p className="text-gray-600 mb-4">
-              User creation/editing modal would be implemented here
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowUserModal(false)
-                  setSelectedUser(null)
-                }}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                {selectedUser ? 'Update' : 'Create'} User
-              </button>
+      {/* Create / Edit user dialog */}
+      <Dialog open={showUserModal} onOpenChange={(open) => (open ? null : closeUserModal())}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{formMode === 'edit' ? 'Edit User' : 'Add New User'}</DialogTitle>
+            <DialogDescription>
+              {formMode === 'edit'
+                ? 'Update the account details, platform access, and workspace memberships.'
+                : 'Create a new account, set platform access, and assign workspace memberships.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {formError && (
+              <div className="flex items-start rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <AlertTriangle className="mr-2 mt-0.5 h-4 w-4 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="user-name">Name</Label>
+                <Input
+                  id="user-name"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="Jane Doe"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="user-email">Email</Label>
+                <Input
+                  id="user-email"
+                  type="email"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                  placeholder="jane@example.com"
+                />
+              </div>
+            </div>
+
+            {formMode === 'create' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="user-password">Password</Label>
+                <Input
+                  id="user-password"
+                  type="password"
+                  value={formPassword}
+                  onChange={(e) => setFormPassword(e.target.value)}
+                  placeholder="Set an initial password"
+                  autoComplete="new-password"
+                />
+                <p className="text-xs text-gray-500">
+                  The account is created already verified. Share this password securely or ask the
+                  user to reset it.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <Label htmlFor="user-platform-admin" className="text-sm font-medium">
+                  Platform administrator
+                </Label>
+                <p className="text-xs text-gray-500">
+                  Grants cross-tenant access to the admin console. Use sparingly.
+                </p>
+              </div>
+              <Switch
+                id="user-platform-admin"
+                checked={formIsPlatformAdmin}
+                onCheckedChange={setFormIsPlatformAdmin}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Workspace memberships</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addMembershipRow}
+                  disabled={workspaceOptions.length === 0}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add membership
+                </Button>
+              </div>
+
+              {workspaceOptions.length === 0 && (
+                <p className="text-xs text-gray-500">No workspaces available to assign.</p>
+              )}
+
+              {formMemberships.length === 0 ? (
+                <p className="text-xs text-gray-500">
+                  No workspace memberships. The user will have no workspace access.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {formMemberships.map((membership, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <Select
+                          value={membership.workspaceId}
+                          onValueChange={(value) => updateMembership(index, { workspaceId: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select workspace" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {workspaceOptions.map((w) => (
+                              <SelectItem key={w.id} value={w.id}>
+                                {w.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-44">
+                        <Select
+                          value={membership.role}
+                          onValueChange={(value) => updateMembership(index, { role: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {WORKSPACE_ROLES.map((r) => (
+                              <SelectItem key={r.value} value={r.value}>
+                                {r.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeMembershipRow(index)}
+                        title="Remove membership"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeUserModal} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleSubmitUser} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {formMode === 'edit' ? 'Update User' : 'Create User'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete user</DialogTitle>
+            <DialogDescription>
+              {deleteTarget && (
+                <>
+                  This will remove <span className="font-medium">{deleteTarget.name}</span> (
+                  {deleteTarget.email}) from all workspaces and end their sessions.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {deleteError && (
+              <div className="flex items-start rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <AlertTriangle className="mr-2 mt-0.5 h-4 w-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={hardDelete}
+                onChange={(e) => setHardDelete(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-red-600"
+              />
+              <span>
+                Permanently delete this account and all associated activity. This cannot be undone.
+                Leave unchecked to deactivate (soft delete).
+              </span>
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleDeleteUser} disabled={deleting}>
+              {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {hardDelete ? 'Delete permanently' : 'Deactivate user'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {showBulkModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

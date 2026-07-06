@@ -63,8 +63,7 @@ export async function GET(request: NextRequest) {
       avgResolutionTime,
       slaBreaches,
       agentPerformance,
-      dailyVolume,
-      satisfactionRatings
+      dailyVolume
     ] = await Promise.all([
       // Total tickets
       prisma.supportTicket.count({ where: baseWhere }),
@@ -167,16 +166,11 @@ export async function GET(request: NextRequest) {
         GROUP BY DATE(created_at)
         ORDER BY date DESC
         LIMIT 30
-      `,
-
-      // Mock satisfaction ratings (would be real in production)
-      Promise.resolve([
-        { rating: 5, count: 42 },
-        { rating: 4, count: 28 },
-        { rating: 3, count: 12 },
-        { rating: 2, count: 5 },
-        { rating: 1, count: 3 }
-      ])
+      `
+      // Satisfaction ratings intentionally omitted (ADR-0011 Phase 3, item 15):
+      // no rating-collection pipeline exists yet, so we report them as unavailable
+      // rather than fabricating figures. Real ratings will come from
+      // SupportChat.rating aggregation (ADR-0023 direction).
     ])
 
     // Calculate response time metrics
@@ -263,7 +257,9 @@ export async function GET(request: NextRequest) {
       performance: {
         sla: slaPerformance,
         agents: agentPerformance,
-        satisfaction: satisfactionRatings
+        // Honest: satisfaction tracking is not implemented yet (ADR-0011 item 15).
+        satisfaction: null,
+        satisfactionTracking: false
       },
       trends: {
         dailyVolume,

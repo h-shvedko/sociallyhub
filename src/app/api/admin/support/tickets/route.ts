@@ -317,7 +317,7 @@ export async function POST(request: NextRequest) {
       await prisma.ticketUpdate.create({
         data: {
           ticketId: ticket.id,
-          updateType: 'ASSIGNMENT',
+          updateType: 'ASSIGNMENT_CHANGE',
           message: `Ticket assigned to agent`,
           newAssignee: assignedAgentId,
           authorId: userId,
@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
     await prisma.ticketUpdate.create({
       data: {
         ticketId: ticket.id,
-        updateType: 'CREATED',
+        updateType: 'SYSTEM_UPDATE',
         message: `Ticket created by admin`,
         authorId: userId,
         authorType: 'admin',

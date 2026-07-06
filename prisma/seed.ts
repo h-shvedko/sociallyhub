@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { seedClientReports } from '../src/lib/seeders/client-reports-seeder'
 import { seedHelpContent } from '../src/lib/seeders/help-content-seeder'
 import { seedVideoTutorials } from '../src/lib/seeders/video-tutorial-seeder'
+import { seedSupport } from '../src/lib/seeders/support-seeder'
 
 const prisma = new PrismaClient()
 
@@ -780,6 +781,11 @@ async function main() {
   const videoTutorials = await seedVideoTutorials()
   console.log('✅ Video tutorials seeded')
 
+  // Seed support subsystem (ADR-0011 Phase 3): agents, tickets, timeline, chat
+  console.log('🎫 Seeding support data...')
+  const supportCounts = await seedSupport()
+  console.log('✅ Support data seeded')
+
   console.log('🎉 Comprehensive database seeding completed!')
   console.log(`
 📊 Final Statistics:
@@ -795,6 +801,9 @@ async function main() {
 - Clients: ${clients.length}
 - Campaigns: ${campaigns.length}
 - Video Tutorials: ${videoTutorials.length}
+- Support Agents: ${supportCounts.agents}
+- Support Tickets: ${supportCounts.tickets} (updates: ${supportCounts.updates}, notes: ${supportCounts.notes}, assignments: ${supportCounts.assignments})
+- Support Chats: ${supportCounts.chats} (messages: ${supportCounts.messages})
 `)
 }
 

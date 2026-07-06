@@ -1,378 +1,284 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { Prisma, TicketStatus } from '@prisma/client'
+
 import { requireAdmin } from '@/lib/auth'
-import { handleApiError } from '@/lib/api/respond'
+import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 
-// GET /api/admin/support-agents - Get all support agents
+// ADR-0011 (item 4): `/api/admin/support-agents` is rewritten on the canonical
+// `SupportAgent` model. The old `Role`/`UserRole` + string-permission paradigm
+// is deleted — RBAC (ADR-0004) governs WHO may call this admin route;
+// `SupportAgent` is the single source of truth for WHO IS an agent.
+
+/**
+ * Non-terminal ticket statuses. An agent's "open ticket" load is every
+ * assigned ticket that is not RESOLVED / CLOSED / CANCELLED.
+ */
+const OPEN_TICKET_STATUSES: TicketStatus[] = [
+  'OPEN',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'PENDING_USER',
+  'PENDING_AGENT',
+]
+
+/** Selection shared by every read path so the roster shape stays stable. */
+const agentSelect = {
+  id: true,
+  userId: true,
+  displayName: true,
+  title: true,
+  department: true,
+  isActive: true,
+  isOnline: true,
+  autoAssign: true,
+  maxConcurrentChats: true,
+  currentChatCount: true,
+  skills: true,
+  languages: true,
+  timezone: true,
+  statusMessage: true,
+  lastSeen: true,
+  createdAt: true,
+  updatedAt: true,
+  user: {
+    select: { id: true, name: true, email: true, image: true },
+  },
+  _count: {
+    select: {
+      assignedTickets: { where: { status: { in: OPEN_TICKET_STATUSES } } },
+    },
+  },
+} satisfies Prisma.SupportAgentSelect
+
+type AgentRow = Prisma.SupportAgentGetPayload<{ select: typeof agentSelect }>
+
+/** Flatten the Prisma row into the roster object the UI renders. */
+function toRoster(agent: AgentRow) {
+  const { _count, ...rest } = agent
+  return {
+    ...rest,
+    openTicketCount: _count.assignedTickets,
+  }
+}
+
+const listQuerySchema = z.object({
+  department: z.string().trim().min(1).optional(),
+  isOnline: z.enum(['true', 'false']).optional(),
+  // Default: all agents. `active=true` → only active; `active=false` → only deactivated.
+  active: z.enum(['true', 'false', 'all']).optional(),
+  search: z.string().trim().min(1).optional(),
+})
+
+const createAgentSchema = z.object({
+  userId: z.string().trim().min(1),
+  displayName: z.string().trim().min(1).max(120).optional(),
+  title: z.string().trim().max(120).optional(),
+  department: z.string().trim().min(1).max(60).optional(),
+  skills: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+  maxConcurrentChats: z.number().int().min(0).max(100).optional(),
+})
+
+const updateAgentSchema = z
+  .object({
+    agentId: z.string().trim().min(1),
+    isActive: z.boolean().optional(),
+    isOnline: z.boolean().optional(),
+    displayName: z.string().trim().min(1).max(120).optional(),
+    title: z.string().trim().max(120).optional(),
+    department: z.string().trim().min(1).max(60).optional(),
+    skills: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+    maxConcurrentChats: z.number().int().min(0).max(100).optional(),
+  })
+  .refine((d) => Object.keys(d).length > 1, {
+    message: 'No fields to update',
+  })
+
+// GET /api/admin/support-agents — SupportAgent-backed roster for the admin UI.
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin()
 
-    const searchParams = request.nextUrl.searchParams
-    const status = searchParams.get('status')
-    const department = searchParams.get('department')
-    const workspaceId = searchParams.get('workspaceId')
-    const includeStats = searchParams.get('includeStats') === 'true'
-
-    // Find users with support agent roles or specific support permissions
-    const supportRoles = await prisma.role.findMany({
-      where: {
-        OR: [
-          { name: { contains: 'support', mode: 'insensitive' } },
-          { permissions: { has: 'support_tickets_manage' } },
-          { permissions: { has: 'support_tickets_view' } }
-        ]
-      }
-    })
-
-    const supportRoleIds = supportRoles.map(role => role.id)
-
-    // Build where clause for support agents
-    const where: any = {
-      userRoles: {
-        some: {
-          roleId: { in: supportRoleIds },
-          isActive: true
-        }
-      }
-    }
-
-    if (workspaceId) {
-      where.workspaces = {
-        some: {
-          workspaceId
-        }
-      }
-    }
-
-    const supportAgents = await prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true,
-        timezone: true,
-        locale: true,
-        createdAt: true,
-        emailVerified: true,
-        userRoles: {
-          where: {
-            isActive: true,
-            roleId: { in: supportRoleIds }
-          },
-          include: {
-            role: {
-              select: {
-                id: true,
-                name: true,
-                displayName: true,
-                permissions: true
-              }
-            }
-          }
-        },
-        workspaces: {
-          include: {
-            workspace: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          }
-        },
-        userSessions: {
-          where: {
-            isActive: true
-          },
-          select: {
-            lastActiveAt: true
-          },
-          orderBy: {
-            lastActiveAt: 'desc'
-          },
-          take: 1
-        },
-        _count: includeStats ? {
-          select: {
-            userActivities: {
-              where: {
-                action: { in: ['ticket_created', 'ticket_updated', 'ticket_resolved'] }
-              }
-            }
-          }
-        } : undefined
-      }
-    })
-
-    // Enhance agents with support-specific data
-    const enhancedAgents = await Promise.all(
-      supportAgents.map(async (agent) => {
-        let ticketStats = undefined
-        let availability = 'offline'
-
-        if (includeStats) {
-          // Get ticket statistics for the last 30 days
-          const thirtyDaysAgo = new Date()
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-          const ticketActivities = await prisma.userActivity.findMany({
-            where: {
-              userId: agent.id,
-              action: { in: ['ticket_created', 'ticket_updated', 'ticket_resolved'] },
-              timestamp: {
-                gte: thirtyDaysAgo
-              }
-            }
-          })
-
-          ticketStats = {
-            totalActivities: ticketActivities.length,
-            resolved: ticketActivities.filter(a => a.action === 'ticket_resolved').length,
-            created: ticketActivities.filter(a => a.action === 'ticket_created').length,
-            updated: ticketActivities.filter(a => a.action === 'ticket_updated').length
-          }
-        }
-
-        // Determine availability based on last activity
-        const lastActivity = agent.userSessions[0]?.lastActiveAt
-        if (lastActivity) {
-          const minutesAgo = Math.floor((Date.now() - lastActivity.getTime()) / (1000 * 60))
-          if (minutesAgo < 15) {
-            availability = 'online'
-          } else if (minutesAgo < 60) {
-            availability = 'away'
-          } else {
-            availability = 'offline'
-          }
-        }
-
-        // Get support permissions
-        const supportPermissions = agent.userRoles.reduce((perms: string[], userRole) => {
-          const rolePerms = userRole.role.permissions.filter(p =>
-            p.includes('support') || p.includes('ticket')
-          )
-          return [...perms, ...rolePerms]
-        }, [])
-
-        // Determine department based on roles and permissions
-        let supportDepartment = 'general'
-        if (supportPermissions.includes('support_technical_manage')) {
-          supportDepartment = 'technical'
-        } else if (supportPermissions.includes('support_billing_manage')) {
-          supportDepartment = 'billing'
-        } else if (supportPermissions.includes('support_sales_manage')) {
-          supportDepartment = 'sales'
-        }
-
-        return {
-          ...agent,
-          availability,
-          department: supportDepartment,
-          supportPermissions,
-          ...(ticketStats && { ticketStats })
-        }
-      })
+    const parsed = listQuerySchema.safeParse(
+      Object.fromEntries(request.nextUrl.searchParams)
     )
+    if (!parsed.success) {
+      return jsonError(400, 'Invalid query parameters', {
+        code: 'VALIDATION_ERROR',
+        details: parsed.error.flatten(),
+      })
+    }
+    const { department, isOnline, active, search } = parsed.data
 
-    // Filter by status and department if specified
-    let filteredAgents = enhancedAgents
-
-    if (status) {
-      filteredAgents = filteredAgents.filter(agent => agent.availability === status)
+    const where: Prisma.SupportAgentWhereInput = {}
+    if (department) where.department = department
+    if (isOnline) where.isOnline = isOnline === 'true'
+    if (active === 'true') where.isActive = true
+    else if (active === 'false') where.isActive = false
+    if (search) {
+      where.OR = [
+        { displayName: { contains: search, mode: 'insensitive' } },
+        { user: { name: { contains: search, mode: 'insensitive' } } },
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+      ]
     }
 
-    if (department) {
-      filteredAgents = filteredAgents.filter(agent => agent.department === department)
-    }
-
-    // Calculate statistics
-    const stats = {
-      total: enhancedAgents.length,
-      online: enhancedAgents.filter(a => a.availability === 'online').length,
-      away: enhancedAgents.filter(a => a.availability === 'away').length,
-      offline: enhancedAgents.filter(a => a.availability === 'offline').length,
-      departments: {
-        general: enhancedAgents.filter(a => a.department === 'general').length,
-        technical: enhancedAgents.filter(a => a.department === 'technical').length,
-        billing: enhancedAgents.filter(a => a.department === 'billing').length,
-        sales: enhancedAgents.filter(a => a.department === 'sales').length
-      }
-    }
-
-    return NextResponse.json({
-      supportAgents: filteredAgents,
-      stats
+    const rows = await prisma.supportAgent.findMany({
+      where,
+      select: agentSelect,
+      orderBy: [{ isOnline: 'desc' }, { displayName: 'asc' }],
     })
+
+    const agents = rows.map(toRoster)
+    const stats = {
+      total: agents.length,
+      active: agents.filter((a) => a.isActive).length,
+      online: agents.filter((a) => a.isOnline).length,
+      openTickets: agents.reduce((sum, a) => sum + a.openTicketCount, 0),
+    }
+
+    return NextResponse.json({ agents, stats })
   } catch (error) {
     return handleApiError(error)
   }
 }
 
-// POST /api/admin/support-agents - Assign support agent role to user
+// POST /api/admin/support-agents — create or reactivate a SupportAgent profile.
 export async function POST(request: NextRequest) {
   try {
     const admin = await requireAdmin()
 
-    const body = await request.json()
-    const {
-      userId,
-      department = 'general',
-      permissions = [],
-      workspaceId
-    } = body
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      )
+    const parsed = createAgentSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return jsonError(400, 'Invalid request body', {
+        code: 'VALIDATION_ERROR',
+        details: parsed.error.flatten(),
+      })
     }
+    const { userId, displayName, title, department, skills, maxConcurrentChats } =
+      parsed.data
 
-    // Verify user exists
+    // The agent profile must belong to a real user.
     const user = await prisma.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
+      select: { id: true, name: true, email: true },
     })
-
     if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      )
+      return jsonError(404, 'User not found', { code: 'NOT_FOUND' })
     }
 
-    // Find or create appropriate support role based on department
-    let supportRoleName = 'support_agent'
-    let supportPermissions = ['support_tickets_view', 'support_tickets_update']
-
-    switch (department) {
-      case 'technical':
-        supportRoleName = 'support_technical'
-        supportPermissions = [
-          'support_tickets_view',
-          'support_tickets_update',
-          'support_tickets_resolve',
-          'support_technical_manage'
-        ]
-        break
-      case 'billing':
-        supportRoleName = 'support_billing'
-        supportPermissions = [
-          'support_tickets_view',
-          'support_tickets_update',
-          'support_tickets_resolve',
-          'support_billing_manage'
-        ]
-        break
-      case 'sales':
-        supportRoleName = 'support_sales'
-        supportPermissions = [
-          'support_tickets_view',
-          'support_tickets_update',
-          'support_sales_manage'
-        ]
-        break
-    }
-
-    // Add any additional permissions
-    if (permissions.length > 0) {
-      supportPermissions = [...new Set([...supportPermissions, ...permissions])]
-    }
-
-    // Find or create the support role
-    let supportRole = await prisma.role.findUnique({
-      where: { name: supportRoleName }
+    const existing = await prisma.supportAgent.findUnique({
+      where: { userId },
+      select: { id: true, isActive: true },
     })
 
-    if (!supportRole) {
-      supportRole = await prisma.role.create({
-        data: {
-          name: supportRoleName,
-          displayName: `Support Agent - ${department.charAt(0).toUpperCase() + department.slice(1)}`,
-          description: `Support agent role for ${department} department`,
-          permissions: supportPermissions,
-          isSystem: false,
-          isActive: true,
-          color: '#4F46E5',
-          priority: 5
-        }
-      })
-    }
+    const resolvedDisplayName =
+      displayName ?? user.name ?? user.email ?? 'Support Agent'
 
-    // Assign role to user
-    const result = await prisma.$transaction(async (tx) => {
-      // Check if user already has this role
-      const existingRole = await tx.userRole.findFirst({
-        where: {
-          userId,
-          roleId: supportRole.id,
-          isActive: true
-        }
-      })
-
-      if (existingRole) {
-        throw new Error('User already has this support role')
-      }
-
-      // Assign support role
-      const userRole = await tx.userRole.create({
-        data: {
-          userId,
-          roleId: supportRole.id,
-          assignedBy: admin.id,
-          assignedAt: new Date(),
-          isActive: true
-        }
-      })
-
-      // Add to workspace if specified
-      if (workspaceId) {
-        const existingWorkspace = await tx.userWorkspace.findFirst({
-          where: { userId, workspaceId }
-        })
-
-        if (!existingWorkspace) {
-          await tx.userWorkspace.create({
-            data: {
-              userId,
-              workspaceId,
-              role: 'ANALYST',
-              joinedAt: new Date()
-            }
-          })
-        }
-      }
-
-      return userRole
+    // Upsert on the unique userId: create a fresh profile, or reactivate +
+    // update an existing one (an agent is never duplicated).
+    const agent = await prisma.supportAgent.upsert({
+      where: { userId },
+      create: {
+        userId,
+        displayName: resolvedDisplayName,
+        ...(title !== undefined ? { title } : {}),
+        ...(department !== undefined ? { department } : {}),
+        ...(skills !== undefined ? { skills } : {}),
+        ...(maxConcurrentChats !== undefined ? { maxConcurrentChats } : {}),
+        isActive: true,
+      },
+      update: {
+        isActive: true,
+        ...(displayName !== undefined ? { displayName } : {}),
+        ...(title !== undefined ? { title } : {}),
+        ...(department !== undefined ? { department } : {}),
+        ...(skills !== undefined ? { skills } : {}),
+        ...(maxConcurrentChats !== undefined ? { maxConcurrentChats } : {}),
+      },
+      select: agentSelect,
     })
 
-    // Create audit log
     await prisma.auditLog.create({
       data: {
         userId: admin.id,
-        workspaceId,
-        action: 'support_agent_assigned',
-        resource: 'user',
-        resourceId: userId,
+        action: existing ? 'support_agent_reactivated' : 'support_agent_created',
+        resource: 'support_agent',
+        resourceId: agent.id,
         newValues: {
-          roleId: supportRole.id,
-          roleName: supportRole.name,
-          department,
-          permissions: supportPermissions
+          agentUserId: userId,
+          displayName: agent.displayName,
+          department: agent.department,
+          reactivated: Boolean(existing && existing.isActive === false),
         },
-        timestamp: new Date()
-      }
+        ipAddress: request.headers.get('x-forwarded-for') ?? undefined,
+        userAgent: request.headers.get('user-agent') ?? undefined,
+      },
     })
 
-    return NextResponse.json({
-      id: result.id,
-      userId,
-      roleId: supportRole.id,
-      roleName: supportRole.name,
-      department,
-      assignedAt: result.assignedAt
-    }, { status: 201 })
+    return NextResponse.json(
+      { agent: toRoster(agent) },
+      { status: existing ? 200 : 201 }
+    )
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+// PATCH /api/admin/support-agents — activate/deactivate or update an agent.
+export async function PATCH(request: NextRequest) {
+  try {
+    const admin = await requireAdmin()
+
+    const parsed = updateAgentSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return jsonError(400, 'Invalid request body', {
+        code: 'VALIDATION_ERROR',
+        details: parsed.error.flatten(),
+      })
+    }
+    const { agentId, ...updates } = parsed.data
+
+    const existing = await prisma.supportAgent.findUnique({
+      where: { id: agentId },
+      select: { id: true, isActive: true, isOnline: true },
+    })
+    if (!existing) {
+      return jsonError(404, 'Support agent not found', { code: 'NOT_FOUND' })
+    }
+
+    const data: Prisma.SupportAgentUpdateInput = {}
+    if (updates.isActive !== undefined) data.isActive = updates.isActive
+    if (updates.isOnline !== undefined) data.isOnline = updates.isOnline
+    if (updates.displayName !== undefined) data.displayName = updates.displayName
+    if (updates.title !== undefined) data.title = updates.title
+    if (updates.department !== undefined) data.department = updates.department
+    if (updates.skills !== undefined) data.skills = updates.skills
+    if (updates.maxConcurrentChats !== undefined) {
+      data.maxConcurrentChats = updates.maxConcurrentChats
+    }
+
+    const agent = await prisma.supportAgent.update({
+      where: { id: agentId },
+      data,
+      select: agentSelect,
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'support_agent_updated',
+        resource: 'support_agent',
+        resourceId: agent.id,
+        oldValues: { isActive: existing.isActive, isOnline: existing.isOnline },
+        changes: updates,
+        ipAddress: request.headers.get('x-forwarded-for') ?? undefined,
+        userAgent: request.headers.get('user-agent') ?? undefined,
+      },
+    })
+
+    return NextResponse.json({ agent: toRoster(agent) })
   } catch (error) {
     return handleApiError(error)
   }

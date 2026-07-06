@@ -4,37 +4,43 @@ import { useState, useEffect } from 'react'
 import {
   UserPlus,
   Users,
-  Shield,
   Building,
   Mail,
-  Download,
-  Upload,
   Play,
   CheckCircle,
   XCircle,
   AlertCircle,
   RefreshCw,
   FileText,
-  UserCheck
+  Search,
+  KeyRound,
+  Settings,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
-interface BulkOperation {
+// ADR-0012 (Phase 4 item 15): a real bulk-operations console.
+//
+// No fabricated identities: users come from GET /api/admin/users, the workspace
+// dropdown from GET /api/admin/workspaces, and role options from the
+// WorkspaceRole enum. CSV import is resolved server-side — known emails become
+// real selected users, unknown emails become invitations. There is no
+// `demo-user-1` seed and no `user_${localpart}` id fabrication.
+
+interface AdminUser {
   id: string
-  operation: string
-  userIds: string[]
-  data: Record<string, any>
-  results: {
-    success: number
-    failed: number
-    errors: string[]
-    processedUsers: Array<{
-      userId: string
-      status: 'success' | 'failed'
-      error?: string
-    }>
-  }
-  createdAt: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  email: string
+  name: string | null
+}
+
+interface WorkspaceOption {
+  id: string
+  name: string
+}
+
+interface OperationField {
+  name: 'workspaceId' | 'role'
+  type: 'workspaceSelect' | 'roleSelect'
+  required: boolean
 }
 
 interface OperationTemplate {
@@ -42,198 +48,327 @@ interface OperationTemplate {
   name: string
   description: string
   operation: string
-  icon: any
+  icon: LucideIcon
   color: string
-  fields: Array<{
-    name: string
-    type: string
-    required: boolean
-    options?: Array<{ value: string; label: string }>
-  }>
+  // Invitation operations act on emails (existing users + brand-new addresses);
+  // every other operation acts on selected existing users.
+  isInvitation?: boolean
+  fields: OperationField[]
 }
+
+interface OperationRecord {
+  operation: string
+  affected: number
+  createdAt: string
+  status: 'completed' | 'failed'
+  results: {
+    success: number
+    failed: number
+    errors: string[]
+    processedUsers: Array<{
+      userId?: string
+      email?: string
+      status: 'success' | 'skipped' | 'failed'
+      error?: string
+    }>
+  }
+}
+
+// The five WorkspaceRole values are the platform authorization primitive
+// (ADR-0004). OWNER is deliberately omitted from bulk grants to avoid
+// accidental ownership transfer; the API still validates any submitted role.
+const WORKSPACE_ROLE_OPTIONS = [
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'PUBLISHER', label: 'Publisher' },
+  { value: 'ANALYST', label: 'Analyst' },
+  { value: 'CLIENT_VIEWER', label: 'Client Viewer' },
+]
 
 const OPERATION_TEMPLATES: OperationTemplate[] = [
   {
-    id: 'assign_role',
-    name: 'Assign Roles',
-    description: 'Assign one or more roles to selected users',
-    operation: 'assign_role',
-    icon: Shield,
-    color: 'blue',
-    fields: [
-      {
-        name: 'roleIds',
-        type: 'multiselect',
-        required: true,
-        options: [] // Will be populated with actual roles
-      }
-    ]
-  },
-  {
     id: 'add_to_workspace',
     name: 'Add to Workspace',
-    description: 'Add users to a workspace with specified role',
+    description: 'Add selected users to a workspace with a role',
     operation: 'add_to_workspace',
     icon: Building,
     color: 'green',
     fields: [
-      {
-        name: 'workspaceId',
-        type: 'select',
-        required: true,
-        options: [] // Will be populated with workspaces
-      },
-      {
-        name: 'role',
-        type: 'select',
-        required: true,
-        options: [
-          { value: 'ANALYST', label: 'Analyst' },
-          { value: 'PUBLISHER', label: 'Publisher' },
-          { value: 'ADMIN', label: 'Admin' }
-        ]
-      }
-    ]
+      { name: 'workspaceId', type: 'workspaceSelect', required: true },
+      { name: 'role', type: 'roleSelect', required: true },
+    ],
+  },
+  {
+    id: 'remove_from_workspace',
+    name: 'Remove from Workspace',
+    description: 'Remove selected users from a workspace',
+    operation: 'remove_from_workspace',
+    icon: Building,
+    color: 'orange',
+    fields: [{ name: 'workspaceId', type: 'workspaceSelect', required: true }],
   },
   {
     id: 'send_invitation',
     name: 'Send Invitations',
-    description: 'Send workspace invitations to users',
+    description: 'Invite people (existing or new emails) to a workspace',
     operation: 'send_invitation',
     icon: Mail,
     color: 'purple',
+    isInvitation: true,
     fields: [
-      {
-        name: 'workspaceId',
-        type: 'select',
-        required: true,
-        options: []
-      },
-      {
-        name: 'role',
-        type: 'select',
-        required: true,
-        options: [
-          { value: 'ANALYST', label: 'Analyst' },
-          { value: 'PUBLISHER', label: 'Publisher' }
-        ]
-      },
-      {
-        name: 'message',
-        type: 'textarea',
-        required: false
-      }
-    ]
-  },
-  {
-    id: 'update_profile',
-    name: 'Update Profiles',
-    description: 'Update user profile settings in bulk',
-    operation: 'update_profile',
-    icon: UserCheck,
-    color: 'orange',
-    fields: [
-      {
-        name: 'timezone',
-        type: 'select',
-        required: false,
-        options: [
-          { value: 'UTC', label: 'UTC' },
-          { value: 'America/New_York', label: 'Eastern Time' },
-          { value: 'America/Chicago', label: 'Central Time' },
-          { value: 'America/Denver', label: 'Mountain Time' },
-          { value: 'America/Los_Angeles', label: 'Pacific Time' }
-        ]
-      },
-      {
-        name: 'locale',
-        type: 'select',
-        required: false,
-        options: [
-          { value: 'en', label: 'English' },
-          { value: 'es', label: 'Spanish' },
-          { value: 'fr', label: 'French' },
-          { value: 'de', label: 'German' }
-        ]
-      },
-      {
-        name: 'twoFactorEnabled',
-        type: 'checkbox',
-        required: false
-      }
-    ]
-  },
-  {
-    id: 'deactivate_users',
-    name: 'Deactivate Users',
-    description: 'Deactivate user accounts and revoke access',
-    operation: 'deactivate_users',
-    icon: XCircle,
-    color: 'red',
-    fields: []
+      { name: 'workspaceId', type: 'workspaceSelect', required: true },
+      { name: 'role', type: 'roleSelect', required: true },
+    ],
   },
   {
     id: 'activate_users',
     name: 'Activate Users',
-    description: 'Activate user accounts and restore access',
+    description: 'Restore sign-in access for selected users',
     operation: 'activate_users',
     icon: CheckCircle,
     color: 'green',
-    fields: []
-  }
+    fields: [],
+  },
+  {
+    id: 'deactivate_users',
+    name: 'Deactivate Users',
+    description: 'Revoke sign-in access for selected users',
+    operation: 'deactivate_users',
+    icon: XCircle,
+    color: 'red',
+    fields: [],
+  },
+  {
+    id: 'reset_passwords',
+    name: 'Send Password Reset',
+    description: 'Email a password reset link to selected users',
+    operation: 'reset_passwords',
+    icon: KeyRound,
+    color: 'blue',
+    fields: [],
+  },
 ]
 
 export default function BulkOperationsPage() {
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [selectedUsers, setSelectedUsers] = useState<AdminUser[]>([])
+  const [unknownEmails, setUnknownEmails] = useState<string[]>([])
   const [selectedOperation, setSelectedOperation] = useState<OperationTemplate | null>(null)
-  const [operationData, setOperationData] = useState<Record<string, any>>({})
-  const [recentOperations, setRecentOperations] = useState<BulkOperation[]>([])
+  const [operationData, setOperationData] = useState<Record<string, string>>({})
+  const [recentOperations, setRecentOperations] = useState<OperationRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [csvInput, setCsvInput] = useState('')
-  const [importMethod, setImportMethod] = useState<'csv' | 'manual'>('manual')
+  const [importMethod, setImportMethod] = useState<'manual' | 'csv'>('manual')
+  const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([])
+  const [workspacesError, setWorkspacesError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState<AdminUser[]>([])
+  const [searching, setSearching] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
-  const handleOperationSubmit = async () => {
-    if (!selectedOperation || selectedUsers.length === 0) return
+  // Load real workspaces for the dropdowns.
+  useEffect(() => {
+    let cancelled = false
+    const loadWorkspaces = async () => {
+      try {
+        const res = await fetch('/api/admin/workspaces')
+        if (!res.ok) throw new Error(`Failed to load workspaces (${res.status})`)
+        const data = await res.json()
+        const list: WorkspaceOption[] = (data.workspaces || []).map(
+          (w: { id: string; name: string }) => ({ id: w.id, name: w.name })
+        )
+        if (!cancelled) {
+          setWorkspaces(list)
+          setWorkspacesError(null)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setWorkspacesError(err instanceof Error ? err.message : 'Failed to load workspaces')
+        }
+      }
+    }
+    void loadWorkspaces()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Debounced real user search against GET /api/admin/users.
+  useEffect(() => {
+    const term = searchTerm.trim()
+    if (term.length === 0) {
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+
+    let cancelled = false
+    setSearching(true)
+    const runSearch = async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/users?search=${encodeURIComponent(term)}&limit=20`
+        )
+        if (!res.ok) throw new Error('search failed')
+        const data = await res.json()
+        const results: AdminUser[] = (data.users || []).map(
+          (u: { id: string; email: string; name: string | null }) => ({
+            id: u.id,
+            email: u.email,
+            name: u.name,
+          })
+        )
+        if (!cancelled) setSearchResults(results)
+      } catch {
+        if (!cancelled) setSearchResults([])
+      } finally {
+        if (!cancelled) setSearching(false)
+      }
+    }
+    const handle = setTimeout(() => void runSearch(), 300)
+
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+    }
+  }, [searchTerm])
+
+  const isSelected = (id: string) => selectedUsers.some((u) => u.id === id)
+
+  const toggleUser = (user: AdminUser) => {
+    setSelectedUsers((prev) =>
+      prev.some((u) => u.id === user.id)
+        ? prev.filter((u) => u.id !== user.id)
+        : [...prev, user]
+    )
+  }
+
+  const removeUser = (id: string) => {
+    setSelectedUsers((prev) => prev.filter((u) => u.id !== id))
+  }
+
+  const clearSelection = () => {
+    setSelectedUsers([])
+    setUnknownEmails([])
+  }
+
+  // Resolve pasted emails server-side: known -> real selected users,
+  // unknown -> candidates for invitation.
+  const handleCsvResolve = async () => {
+    const emails = csvInput
+      .split(/[\n,;]+/)
+      .map((line) => line.trim())
+      .filter((line) => line.includes('@'))
+
+    if (emails.length === 0) {
+      setNotice('Enter at least one email address.')
+      return
+    }
 
     try {
       setLoading(true)
-      const response = await fetch('/api/admin/bulk-operations', {
+      setNotice(null)
+      const res = await fetch('/api/admin/bulk-operations', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          operation: selectedOperation.operation,
-          userIds: selectedUsers,
-          data: operationData
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation: 'resolve_emails', data: { emails } }),
       })
+      if (!res.ok) throw new Error('Failed to resolve emails')
+      const data = await res.json()
+      const known: AdminUser[] = (data.known || []).map(
+        (u: { id: string; email: string; name: string | null }) => ({
+          id: u.id,
+          email: u.email,
+          name: u.name,
+        })
+      )
+      const unknown: string[] = data.unknown || []
 
-      if (response.ok) {
-        const result = await response.json()
-        // Add to recent operations
-        setRecentOperations(prev => [result, ...prev.slice(0, 9)])
-        // Reset form
-        setSelectedUsers([])
-        setSelectedOperation(null)
-        setOperationData({})
-      }
-    } catch (error) {
-      console.error('Failed to execute bulk operation:', error)
+      setSelectedUsers((prev) => {
+        const byId = new Map(prev.map((u) => [u.id, u]))
+        known.forEach((u) => byId.set(u.id, u))
+        return Array.from(byId.values())
+      })
+      setUnknownEmails((prev) => Array.from(new Set([...prev, ...unknown])))
+      setCsvInput('')
+      setNotice(
+        `Resolved ${known.length} existing user${known.length === 1 ? '' : 's'}; ` +
+          `${unknown.length} unknown email${unknown.length === 1 ? '' : 's'} (invite only).`
+      )
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'Failed to resolve emails')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCsvImport = () => {
-    const lines = csvInput.trim().split('\n')
-    const userIds = lines
-      .map(line => line.trim())
-      .filter(line => line && line.includes('@'))
-      .map(email => `user_${email.split('@')[0]}`) // Mock user ID generation
+  const invitationEmails = () =>
+    Array.from(
+      new Set([...selectedUsers.map((u) => u.email), ...unknownEmails])
+    )
 
-    setSelectedUsers(userIds)
-    setCsvInput('')
+  const canExecute = (): boolean => {
+    if (!selectedOperation || loading) return false
+    for (const field of selectedOperation.fields) {
+      if (field.required && !operationData[field.name]) return false
+    }
+    if (selectedOperation.isInvitation) {
+      return invitationEmails().length > 0
+    }
+    return selectedUsers.length > 0
+  }
+
+  const handleOperationSubmit = async () => {
+    if (!selectedOperation || !canExecute()) return
+
+    const op = selectedOperation
+    let payload: Record<string, unknown>
+
+    if (op.isInvitation) {
+      payload = {
+        operation: op.operation,
+        data: { ...operationData, emails: invitationEmails() },
+      }
+    } else {
+      payload = {
+        operation: op.operation,
+        userIds: selectedUsers.map((u) => u.id),
+        data: operationData,
+      }
+    }
+
+    try {
+      setLoading(true)
+      setNotice(null)
+      const response = await fetch('/api/admin/bulk-operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        setNotice(result?.error || 'Operation failed')
+        return
+      }
+
+      const record: OperationRecord = {
+        operation: op.operation,
+        affected: result.processedUsers?.length ?? 0,
+        createdAt: new Date().toISOString(),
+        status: result.failed > 0 && result.success === 0 ? 'failed' : 'completed',
+        results: result,
+      }
+      setRecentOperations((prev) => [record, ...prev.slice(0, 9)])
+
+      // Reset the form after a run.
+      clearSelection()
+      setSelectedOperation(null)
+      setOperationData({})
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Failed to execute bulk operation')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const getStatusIcon = (status: string) => {
@@ -249,27 +384,31 @@ export default function BulkOperationsPage() {
     }
   }
 
-  const getOperationColor = (operation: string) => {
-    const template = OPERATION_TEMPLATES.find(t => t.operation === operation)
-    return template?.color || 'gray'
-  }
+  const totalTargets = selectedOperation?.isInvitation
+    ? invitationEmails().length
+    : selectedUsers.length
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-              <UserPlus className="mr-3 h-6 w-6" />
-              Bulk User Operations
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Perform mass operations on multiple users efficiently
-            </p>
-          </div>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+          <UserPlus className="mr-3 h-6 w-6" />
+          Bulk User Operations
+        </h1>
+        <p className="text-gray-600 mt-1">
+          Perform mass operations on real users across the platform
+        </p>
       </div>
+
+      {notice && (
+        <div className="mb-4 flex items-start justify-between rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="ml-4 text-blue-600 hover:text-blue-800">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Operation Setup Panel */}
@@ -281,82 +420,170 @@ export default function BulkOperationsPage() {
               Select Users
             </h3>
 
-            <div className="mb-4">
-              <div className="flex space-x-4 mb-4">
-                <button
-                  onClick={() => setImportMethod('manual')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    importMethod === 'manual'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Manual Selection
-                </button>
-                <button
-                  onClick={() => setImportMethod('csv')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    importMethod === 'csv'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  CSV Import
-                </button>
-              </div>
-
-              {importMethod === 'csv' ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Paste user emails (one per line):
-                  </label>
-                  <textarea
-                    value={csvInput}
-                    onChange={(e) => setCsvInput(e.target.value)}
-                    placeholder="user1@example.com
-user2@example.com
-user3@example.com"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows={6}
-                  />
-                  <button
-                    onClick={handleCsvImport}
-                    className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                  >
-                    Import Users
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Manual user selection would be implemented here with a searchable user list,
-                    checkboxes, and filters for role, workspace, and status.
-                  </p>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                    <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">User selection interface would be here</p>
-                    <button
-                      onClick={() => setSelectedUsers(['demo-user-1', 'demo-user-2', 'demo-user-3'])}
-                      className="mt-4 bg-gray-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-700 transition-colors"
-                    >
-                      Select Demo Users (3)
-                    </button>
-                  </div>
-                </div>
-              )}
+            <div className="flex space-x-4 mb-4">
+              <button
+                onClick={() => setImportMethod('manual')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  importMethod === 'manual'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Search Users
+              </button>
+              <button
+                onClick={() => setImportMethod('csv')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  importMethod === 'csv'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Import Emails
+              </button>
             </div>
 
-            {selectedUsers.length > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-blue-600 mr-2" />
-                  <span className="text-sm font-medium text-blue-800">
-                    {selectedUsers.length} users selected for bulk operation
-                  </span>
+            {importMethod === 'manual' ? (
+              <div>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by name or email..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
                 </div>
-                <div className="mt-2 text-xs text-blue-700">
-                  {selectedUsers.slice(0, 3).join(', ')}
-                  {selectedUsers.length > 3 && ` and ${selectedUsers.length - 3} more`}
+
+                <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto divide-y">
+                  {searching && (
+                    <div className="p-4 text-sm text-gray-500 flex items-center">
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Searching...
+                    </div>
+                  )}
+                  {!searching && searchTerm.trim() === '' && (
+                    <div className="p-4 text-sm text-gray-500">
+                      Type to search for users by name or email.
+                    </div>
+                  )}
+                  {!searching && searchTerm.trim() !== '' && searchResults.length === 0 && (
+                    <div className="p-4 text-sm text-gray-500">No users found.</div>
+                  )}
+                  {searchResults.map((user) => (
+                    <label
+                      key={user.id}
+                      className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected(user.id)}
+                        onChange={() => toggleUser(user)}
+                        className="h-4 w-4 text-blue-600 rounded border-gray-300 mr-3"
+                      />
+                      <span className="flex-1">
+                        <span className="block text-sm font-medium text-gray-900">
+                          {user.name || user.email}
+                        </span>
+                        <span className="block text-xs text-gray-500">{user.email}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Paste emails (one per line or comma-separated):
+                </label>
+                <textarea
+                  value={csvInput}
+                  onChange={(e) => setCsvInput(e.target.value)}
+                  placeholder={'user1@example.com\nuser2@example.com'}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  rows={6}
+                />
+                <button
+                  onClick={() => void handleCsvResolve()}
+                  disabled={loading}
+                  className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  Resolve Emails
+                </button>
+                <p className="mt-2 text-xs text-gray-500">
+                  Known emails are matched to existing accounts. Unknown emails can
+                  only receive workspace invitations.
+                </p>
+              </div>
+            )}
+
+            {/* Selected users */}
+            {selectedUsers.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">
+                    {selectedUsers.length} user{selectedUsers.length === 1 ? '' : 's'} selected
+                  </span>
+                  <button
+                    onClick={clearSelection}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedUsers.map((user) => (
+                    <span
+                      key={user.id}
+                      className="inline-flex items-center bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-full px-3 py-1"
+                    >
+                      {user.name || user.email}
+                      <button
+                        onClick={() => removeUser(user.id)}
+                        className="ml-2 text-blue-500 hover:text-blue-700"
+                        aria-label={`Remove ${user.email}`}
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Unknown emails (invite-only) */}
+            {unknownEmails.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">
+                    {unknownEmails.length} unknown email{unknownEmails.length === 1 ? '' : 's'}{' '}
+                    (invitation only)
+                  </span>
+                  <button
+                    onClick={() => setUnknownEmails([])}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {unknownEmails.map((email) => (
+                    <span
+                      key={email}
+                      className="inline-flex items-center bg-purple-50 border border-purple-200 text-purple-800 text-xs rounded-full px-3 py-1"
+                    >
+                      {email}
+                      <button
+                        onClick={() =>
+                          setUnknownEmails((prev) => prev.filter((e) => e !== email))
+                        }
+                        className="ml-2 text-purple-500 hover:text-purple-700"
+                        aria-label={`Remove ${email}`}
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
                 </div>
               </div>
             )}
@@ -372,21 +599,23 @@ user3@example.com"
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {OPERATION_TEMPLATES.map((template) => {
                 const Icon = template.icon
-                const isSelected = selectedOperation?.id === template.id
-
+                const selected = selectedOperation?.id === template.id
                 return (
                   <button
                     key={template.id}
-                    onClick={() => setSelectedOperation(template)}
+                    onClick={() => {
+                      setSelectedOperation(template)
+                      setOperationData({})
+                    }}
                     className={`p-4 rounded-lg border-2 transition-colors text-left ${
-                      isSelected
+                      selected
                         ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center mb-2">
-                      <div className={`p-2 rounded-lg mr-3 bg-${template.color}-100`}>
-                        <Icon className={`h-5 w-5 text-${template.color}-600`} />
+                      <div className="p-2 rounded-lg mr-3 bg-gray-100">
+                        <Icon className="h-5 w-5 text-gray-700" />
                       </div>
                       <h4 className="font-medium text-gray-900">{template.name}</h4>
                     </div>
@@ -405,95 +634,86 @@ user3@example.com"
                 Configure Operation
               </h3>
 
+              {selectedOperation.isInvitation && unknownEmails.length === 0 && selectedUsers.length === 0 && (
+                <p className="mb-4 text-sm text-gray-500">
+                  Select users or import emails above to invite them.
+                </p>
+              )}
+              {!selectedOperation.isInvitation && unknownEmails.length > 0 && (
+                <p className="mb-4 text-sm text-orange-600">
+                  {unknownEmails.length} unknown email
+                  {unknownEmails.length === 1 ? '' : 's'} will be ignored — this
+                  operation only affects existing users.
+                </p>
+              )}
+
               <div className="space-y-4">
                 {selectedOperation.fields.map((field) => (
                   <div key={field.name}>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {field.name.charAt(0).toUpperCase() + field.name.slice(1).replace(/([A-Z])/g, ' $1')}
+                    <label className="block text-sm font-medium text-gray-700 mb-2 capitalize">
+                      {field.name === 'workspaceId' ? 'Workspace' : 'Role'}
                       {field.required && <span className="text-red-500 ml-1">*</span>}
                     </label>
 
-                    {field.type === 'select' && (
+                    {field.type === 'workspaceSelect' && (
+                      <>
+                        <select
+                          value={operationData.workspaceId || ''}
+                          onChange={(e) =>
+                            setOperationData((prev) => ({
+                              ...prev,
+                              workspaceId: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">Select a workspace</option>
+                          {workspaces.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.name}
+                            </option>
+                          ))}
+                        </select>
+                        {workspacesError && (
+                          <p className="mt-1 text-xs text-red-600">{workspacesError}</p>
+                        )}
+                      </>
+                    )}
+
+                    {field.type === 'roleSelect' && (
                       <select
-                        value={operationData[field.name] || ''}
-                        onChange={(e) => setOperationData(prev => ({ ...prev, [field.name]: e.target.value }))}
+                        value={operationData.role || ''}
+                        onChange={(e) =>
+                          setOperationData((prev) => ({ ...prev, role: e.target.value }))
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
-                        <option value="">Select {field.name}</option>
-                        {field.options?.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
+                        <option value="">Select a role</option>
+                        {WORKSPACE_ROLE_OPTIONS.map((r) => (
+                          <option key={r.value} value={r.value}>
+                            {r.label}
                           </option>
                         ))}
                       </select>
-                    )}
-
-                    {field.type === 'multiselect' && (
-                      <div className="border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto">
-                        <p className="text-sm text-gray-600 mb-2">Select multiple roles:</p>
-                        <div className="space-y-2">
-                          {['admin', 'publisher', 'analyst', 'client_viewer'].map((role) => (
-                            <label key={role} className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={(operationData[field.name] || []).includes(role)}
-                                onChange={(e) => {
-                                  const current = operationData[field.name] || []
-                                  const updated = e.target.checked
-                                    ? [...current, role]
-                                    : current.filter((r: string) => r !== role)
-                                  setOperationData(prev => ({ ...prev, [field.name]: updated }))
-                                }}
-                                className="h-4 w-4 text-blue-600 rounded border-gray-300 mr-2"
-                              />
-                              <span className="text-sm capitalize">{role.replace('_', ' ')}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {field.type === 'textarea' && (
-                      <textarea
-                        value={operationData[field.name] || ''}
-                        onChange={(e) => setOperationData(prev => ({ ...prev, [field.name]: e.target.value }))}
-                        placeholder={`Enter ${field.name}...`}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        rows={3}
-                      />
-                    )}
-
-                    {field.type === 'checkbox' && (
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={operationData[field.name] || false}
-                          onChange={(e) => setOperationData(prev => ({ ...prev, [field.name]: e.target.checked }))}
-                          className="h-4 w-4 text-blue-600 rounded border-gray-300 mr-2"
-                        />
-                        <span className="text-sm">
-                          Enable {field.name.replace(/([A-Z])/g, ' $1').toLowerCase()}
-                        </span>
-                      </label>
                     )}
                   </div>
                 ))}
 
                 <div className="pt-4 border-t">
                   <button
-                    onClick={handleOperationSubmit}
-                    disabled={!selectedOperation || selectedUsers.length === 0 || loading}
+                    onClick={() => void handleOperationSubmit()}
+                    disabled={!canExecute()}
                     className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                   >
                     {loading ? (
                       <>
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Executing Operation...
+                        Executing...
                       </>
                     ) : (
                       <>
                         <Play className="mr-2 h-4 w-4" />
-                        Execute Operation on {selectedUsers.length} Users
+                        {selectedOperation.name} ({totalTargets})
                       </>
                     )}
                   </button>
@@ -515,7 +735,7 @@ user3@example.com"
               <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-500">No recent operations</p>
               <p className="text-sm text-gray-400 mt-1">
-                Execute your first bulk operation to see results here
+                Execute a bulk operation to see results here
               </p>
             </div>
           ) : (
@@ -526,7 +746,9 @@ user3@example.com"
                     <div className="flex items-center">
                       {getStatusIcon(operation.status)}
                       <span className="ml-2 text-sm font-medium">
-                        {operation.operation.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {operation.operation
+                          .replace(/_/g, ' ')
+                          .replace(/\b\w/g, (l) => l.toUpperCase())}
                       </span>
                     </div>
                     <span className="text-xs text-gray-500">
@@ -535,23 +757,21 @@ user3@example.com"
                   </div>
 
                   <div className="text-xs text-gray-600 mb-2">
-                    {operation.userIds.length} users affected
+                    {operation.affected} target{operation.affected === 1 ? '' : 's'} processed
                   </div>
 
-                  {operation.results && (
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center">
-                        <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
-                        <span>{operation.results.success} successful</span>
-                      </div>
-                      <div className="flex items-center">
-                        <XCircle className="h-3 w-3 text-red-500 mr-1" />
-                        <span>{operation.results.failed} failed</span>
-                      </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center">
+                      <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                      <span>{operation.results.success} successful</span>
                     </div>
-                  )}
+                    <div className="flex items-center">
+                      <XCircle className="h-3 w-3 text-red-500 mr-1" />
+                      <span>{operation.results.failed} failed</span>
+                    </div>
+                  </div>
 
-                  {operation.results?.errors && operation.results.errors.length > 0 && (
+                  {operation.results.errors.length > 0 && (
                     <div className="mt-2 text-xs text-red-600">
                       {operation.results.errors.slice(0, 2).map((error, i) => (
                         <div key={i}>• {error}</div>

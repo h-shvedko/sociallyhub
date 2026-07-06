@@ -49,7 +49,8 @@ const navigation: NavItem[] = [
     href: '/dashboard/admin/support',
     icon: MessageSquare,
     children: [
-      { name: 'Tickets', href: '/dashboard/admin/support/tickets', icon: Ticket }
+      { name: 'Tickets', href: '/dashboard/admin/support/tickets', icon: Ticket },
+      { name: 'Agents', href: '/dashboard/admin/support/agents', icon: Users }
     ]
   },
   {

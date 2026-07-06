@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       }
     }
     const sessionWhereClause: any = {
-      createdAt: {
+      startTime: {
         gte: startDate
       }
     }
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
         ...userWhereClause,
         userSessions: {
           some: {
-            lastActiveAt: {
+            lastActivity: {
               gte: startDate
             }
           }
@@ -107,8 +107,8 @@ export async function GET(request: NextRequest) {
     const loginSessions = await prisma.userSession.findMany({
       where: sessionWhereClause,
       select: {
-        createdAt: true,
-        lastActiveAt: true,
+        startTime: true,
+        lastActivity: true,
         user: {
           select: {
             id: true,
@@ -120,13 +120,13 @@ export async function GET(request: NextRequest) {
 
     // Analyze login patterns
     const loginsByDay = loginSessions.reduce((acc: any, session) => {
-      const day = session.createdAt.toISOString().split('T')[0]
+      const day = session.startTime.toISOString().split('T')[0]
       acc[day] = (acc[day] || 0) + 1
       return acc
     }, {})
 
     const loginsByHour = loginSessions.reduce((acc: any, session) => {
-      const hour = session.createdAt.getHours()
+      const hour = session.startTime.getHours()
       acc[hour] = (acc[hour] || 0) + 1
       return acc
     }, {})
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
             },
             userSessions: {
               where: {
-                createdAt: {
+                startTime: {
                   gte: startDate
                 }
               }
@@ -186,15 +186,15 @@ export async function GET(request: NextRequest) {
         },
         userSessions: {
           where: {
-            createdAt: {
+            startTime: {
               gte: startDate
             }
           },
           select: {
-            lastActiveAt: true
+            lastActivity: true
           },
           orderBy: {
-            lastActiveAt: 'desc'
+            lastActivity: 'desc'
           },
           take: 1
         }
@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
       const activities = user._count.userActivities
       const sessions = user._count.userSessions
       const daysSinceCreated = Math.max(1, Math.ceil((now.getTime() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24)))
-      const lastActive = user.userSessions[0]?.lastActiveAt
+      const lastActive = user.userSessions[0]?.lastActivity
       const daysSinceActive = lastActive ? Math.ceil((now.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24)) : 999
 
       const engagementScore = Math.round(
