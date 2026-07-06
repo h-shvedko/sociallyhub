@@ -1,7 +1,7 @@
 # ADR-0009: Social Platform Integration Completion Strategy
 
 - Date: 2026-07-02
-- Status: Proposed — **Foundations + honesty cleanup implemented 2026-07-04** (live-API verification deferred pending real platform credentials)
+- Status: Accepted — **Foundations + honesty cleanup implemented 2026-07-04** (live-API verification deferred pending real platform credentials). *Promoted from Proposed on implementation + merge (2026-07-06); the depth-first Option 2 decision was executed and shipped.*
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
 
 > **Implementation note (2026-07-04).** ADR-0009's full end-to-end scope requires external

@@ -1,10 +1,10 @@
 # ADR-0010: Realtime Transport and Notification Delivery
 
 - Date: 2026-07-02
-- Status: Proposed — **Implemented 2026-07-04** (live browser web-push + nginx SSE tuning deferred)
+- Status: Accepted — **Implemented 2026-07-06** (live browser web-push + nginx SSE tuning deferred). *Promoted from Proposed on implementation + merge; the SSE-over-Redis Option 1 decision was executed and shipped.*
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
 
-> **Implementation note (2026-07-04).** Delivered all four phases: **SSE transport** over Redis
+> **Implementation note (2026-07-06).** Delivered all four phases: **SSE transport** over Redis
 > pub/sub (`GET /api/notifications/stream` + `src/lib/notifications/realtime.ts` `publishToUser`),
 > replacing the dead socket.io client; **persist-first `notifyUser`** (`src/lib/notifications/notify.ts`)
 > — create the `Notification` row, then Redis nudge for SSE, then a best-effort dispatch job, so in-app

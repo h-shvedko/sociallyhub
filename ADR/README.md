@@ -4,7 +4,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 **Owner decisions binding this set (2026-07-02):** deployment standardizes on self-hosted Docker (Vercel removed) · repair Support + Admin RBAC now, defer Community / Documentation / Discord behind feature flags · Stripe billing is in scope now.
 
-**Progress: 15 of 25 ADRs implemented** (0002–0015 — the entire foundation-through-support-and-admin arc, plus the three deferral flag-offs). 10 remain decided-but-not-built.
+**Progress: 14 of the 24 decision ADRs implemented** (0002–0015 — the entire foundation → security → pipeline → support/admin arc, plus the three deferral flag-offs). The remaining 10 (0016–0025) are decided-but-not-built or still proposed. ADR-0001 is the record-keeping process itself (always in effect).
 
 ## Index
 
@@ -26,8 +26,8 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 |---|---|---|---|
 | [0007](ADR-0007-media-storage-and-serving.md) | Media Storage, Uploads & Serving | ✅ Phases 0–2 implemented (2026-07-04) | Single storage abstraction (private local-disk now, MinIO/S3 in prod), one upload endpoint, one authenticated serving route; ticket attachments went private. S3/MinIO driver, ClamAV scanning, and the full `/api/images` repurpose deferred to ADR-0022/0008/0024. |
 | [0008](ADR-0008-background-jobs-and-publishing.md) | Background Jobs & the Publishing Pipeline | ✅ Implemented (2026-07-04) | Dedicated worker container (`src/worker.ts`, same image); enqueue from `/api/posts` with deterministic job IDs; DB-backed account/token resolution; honest processor success-handling (never fakes success); client-report schedules became repeatable jobs. Real provider posting is ADR-0009. |
-| [0009](ADR-0009-social-platform-integrations.md) | Social Platform Integration Completion | ⚠️ Foundations + honesty implemented (2026-07-04) — **Status: Proposed** | Depth-first Twitter/X + Meta: real PKCE, replies, refresh, Meta webhook ingestion (proven end-to-end), honest analytics (all fabricated `generateMockAnalytics` removed), LinkedIn/TikTok/YouTube flagged unavailable, demo fabrication gated. Live posting/media/analytics against real platforms deferred — needs a paid X tier + Meta App Review + real credentials (external dependency, not a defect). |
-| [0010](ADR-0010-realtime-and-notifications.md) | Realtime Transport & Notification Delivery | ⚠️ Implemented (2026-07-06) — **Status: Proposed** | SSE from a Next route backed by Redis pub/sub (proven live: event received in real time, persist-first); DB-backed `Notification` model; in-app + email + web-push channels; SMS cut; fastify/socket.io-client removed. Live browser push delivery + nginx SSE tuning deferred. |
+| [0009](ADR-0009-social-platform-integrations.md) | Social Platform Integration Completion | ✅ Foundations + honesty implemented (2026-07-04) | Depth-first Twitter/X + Meta: real PKCE, replies, refresh, Meta webhook ingestion (proven end-to-end), honest analytics (all fabricated `generateMockAnalytics` removed), LinkedIn/TikTok/YouTube flagged unavailable, demo fabrication gated. Live posting/media/analytics against real platforms deferred — needs a paid X tier + Meta App Review + real credentials (external dependency, not a defect). |
+| [0010](ADR-0010-realtime-and-notifications.md) | Realtime Transport & Notification Delivery | ✅ Implemented (2026-07-06) | SSE from a Next route backed by Redis pub/sub (proven live: event received in real time, persist-first); DB-backed `Notification` model; in-app + email + web-push channels; SMS cut; fastify/socket.io-client removed. Live browser push delivery + nginx SSE tuning deferred. |
 
 ### Subsystem repairs and deferrals — ✅ repairs done, ✅ deferral flags built
 | ADR | Title | Status | Decision in one line |
@@ -60,7 +60,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 - **✅ Implemented** — code landed, tested (unit + static + live runtime proof), committed and pushed to `main`.
 - **✅ Phases N–M implemented** — a bounded subset of the ADR's phases landed; remaining phases explicitly deferred to a named follow-up ADR.
-- **⚠️ Implemented but Status: Proposed** — ADR-0009 and ADR-0010 were never formally flipped to `Accepted` before implementation (both had external-dependency or scope-boundary reasons to stay `Proposed`); the code is live and tested regardless. Their in-file implementation notes are the source of truth.
+- **Promoted on implementation** — ADR-0009 and ADR-0010 were drafted `Proposed` but were implemented, tested, and merged; on 2026-07-06 their status was promoted to `Accepted` to match reality (implementation-and-merge is the acceptance signal). Their in-file implementation notes record the promotion and any deferred sub-scope.
 - **Accepted — not yet implemented** — the decision is final and binding; no code has shipped against it yet.
 - **Proposed** — drafted and reviewed, not yet a binding decision, not implemented.
 
