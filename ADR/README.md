@@ -4,7 +4,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 **Owner decisions binding this set (2026-07-02):** deployment standardizes on self-hosted Docker (Vercel removed) · repair Support + Admin RBAC now, defer Community / Documentation / Discord behind feature flags · Stripe billing is in scope now.
 
-**Progress: 16 of the 24 decision ADRs implemented** (0002–0017 — the entire foundation → security → pipeline → support/admin arc, the three deferral flag-offs, ADR-0016's real admin settings/backups, and ADR-0017's user settings/personalization). The remaining 8 (0018–0025) are decided-but-not-built or still proposed. ADR-0001 is the record-keeping process itself (always in effect); ADR-0026/0027 are follow-up stubs filed from ADR-0017.
+**Progress: 17 of the 24 decision ADRs implemented** (0002–0017 plus 0024 — foundation → security → pipeline → support/admin, the three deferral flag-offs, real admin settings/backups, user settings/personalization, and the hygiene sweep that produced the first-ever green `next build`). The remaining 7 (0018–0023, 0025) are decided-but-not-built or still proposed. ADR-0001 is the record-keeping process itself (always in effect); ADR-0026/0027 are follow-up stubs filed from ADR-0017.
 
 ## Index
 
@@ -53,7 +53,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | [0021](ADR-0021-testing-strategy-and-quality-gates.md) | Testing Strategy & Honest Quality Gates | Accepted — not yet implemented | Fix Jest/Playwright config bugs; replace the unattainable 70% gate with a measured coverage ratchet; targeted pyramid (authz/crypto/entitlements units, per-route auth-triple integration net, five chromium golden paths). |
 | [0022](ADR-0022-cicd-and-deployment.md) | CI/CD & Self-Hosted Docker Deployment | Accepted — not yet implemented | Single-VM compose topology (nginx+certbot, app, worker, migrate job); build-once GHCR image, SSH deploy, sha tags + one-command rollback; delete Vercel workflow and unmaintained k8s manifests; honest CI stages incl. typecheck + schema gates. |
 | [0023](ADR-0023-observability-and-monitoring.md) | Observability: Real Metrics, Logging & Health | Proposed | prom-client singleton at `/api/metrics`; repair the Prometheus/Grafana/Loki compose stack; real readiness checks; replace every Math.random metric endpoint with real sources or remove it. |
-| [0024](ADR-0024-codebase-hygiene.md) | Codebase Hygiene & Dead Code Removal | Accepted — not yet implemented | Delete (not quarantine) all verified-dead files/routes/deps/models in blast-radius order with zero-import re-verification; docs consolidated (CLAUDE.md Current State + ADRs canonical); knip gate in CI. |
+| [0024](ADR-0024-codebase-hygiene.md) | Codebase Hygiene & Dead Code Removal | ✅ Implemented (2026-07-06) | All verified-dead files/routes/pages deleted (re-verified at execution); missing live-surface deps fixed; **first-ever green `next build`** (241 pages — five deferred docs routes had parse errors, so no prior tree ever compiled); docs consolidated (README 2,722→125); knip baseline landed. |
 | [0025](ADR-0025-seeding-and-demo-mode.md) | Seeding Strategy & Explicit Demo Mode | Proposed | One `DEMO_MODE` flag through one server-only helper with an enumerated registry of demo behaviors; tiered modular seeders (minimal/demo/test), prod-runnable minimal seed, generated credentials. |
 
 ### Follow-up ADRs filed from implementation

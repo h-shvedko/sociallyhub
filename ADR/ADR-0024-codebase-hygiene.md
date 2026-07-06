@@ -1,8 +1,37 @@
 # ADR-0024: Codebase Hygiene: Dead Code, Duplicates, and Repo Cleanup
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-06** (all 7 phases; Phase 5 had already landed via ADR-0016)
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+> **Implementation note (2026-07-06, commit `f16f63c`).** All phases executed with the
+> mandatory re-verify-then-delete procedure; no surprise importers found. **Deleted:** every
+> Phase-1 dead file (incl. `lazy-components` + its 6 dead component dependents), the showcase/
+> customers/about pages + nav entries, the fake API-versioning layer, the schema-broken mock
+> admin video suite (13 routes + page + components; public `/api/video-tutorials` intact), the
+> mock FAQ auto-generate endpoint + panel, committed `logs/` (now gitignored + untracked), and
+> two knip-confirmed orphans (`material-design-showcase`, syntax-broken `performance-dashboard`).
+> **Honesty repairs:** FAQ analytics fabricated blocks stripped; help search now actually sorts
+> by its computed `relevanceScore`; dead `puppeteer` import removed. **Config:** single
+> `next.config.js` (Docker watch-polling merged in, guarded); compose now bind-mounts
+> `package.json`/lock so container installs see the current manifest. **Docs:** README
+> 2,722→125, TODO.md reconciled with per-ADR pointers, TODO_HELP_DASHBOARD → 35-line pointer.
+> **Gate:** `knip.config.ts` + `npm run knip` (honest 33-unused-file baseline, non-blocking for
+> one sprint; CI wiring in ADR-0022).
+>
+> **The headline: `next build` completes (EXIT=0, 241 pages) for the FIRST TIME in the repo's
+> recorded history** — five deferred documentation routes carried duplicate `export POST`
+> declarations (parse errors), so no prior tree could ever have compiled. Getting there
+> surfaced and fixed, beyond the audit's list: 6 more undeclared live-surface deps
+> (`remark-breaks`, `rehype-highlight`, `rehype-raw`, `@dnd-kit/modifiers`,
+> `react-syntax-highlighter`, `cmdk`) + 2 missing shadcn components (`ui/alert-dialog`,
+> `ui/table`); 2 community-route identifier typos; an invalid `GET_TEMPLATES` route export;
+> `withApiAuth`'s optional context param (rejected by Next 15.5 route validators — fixed for
+> all 7 wrapped dynamic routes); and 5 pages calling `useSearchParams()` without the Suspense
+> boundary Next 15 requires for prerender. `eslint`/`typescript` checks inside the build are
+> deferred to their own CI stages with loud comments (pre-existing ~1.4k-lint / ~1.1k
+> deferred-subsystem-type backlogs would make the gate permanently red; module resolution +
+> compilation — the class that caught the `sonner` incident — is fully enforced).
 
 ## Context and Problem Statement
 
