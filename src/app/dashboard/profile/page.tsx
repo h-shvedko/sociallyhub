@@ -1,33 +1,112 @@
 "use client"
 
 import { useSession } from "next-auth/react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { CalendarDays, Mail, MapPin, Building, Phone } from "lucide-react"
+import { CalendarDays } from "lucide-react"
+
+interface Profile {
+  name: string | null
+  image: string | null
+  email: string | null
+  createdAt: string | null
+}
 
 export default function ProfilePage() {
-  const { data: session } = useSession()
-  const [isEditing, setIsEditing] = useState(false)
-  const [formData, setFormData] = useState({
-    name: session?.user?.name || "",
-    email: session?.user?.email || "",
-    phone: "",
-    company: "",
-    location: "",
-    bio: ""
-  })
+  const { data: session, update: updateSession } = useSession()
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // TODO: Implement profile update logic
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [name, setName] = useState("")
+  const [image, setImage] = useState("")
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      try {
+        const res = await fetch("/api/user/profile")
+        if (!res.ok) throw new Error("Failed to load profile")
+        const data: Profile = await res.json()
+        if (!active) return
+        setProfile(data)
+        setName(data.name ?? "")
+        setImage(data.image ?? "")
+      } catch {
+        if (active) toast.error("Could not load your profile")
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const startEdit = () => {
+    setName(profile?.name ?? "")
+    setImage(profile?.image ?? "")
+    setIsEditing(true)
+  }
+
+  const cancelEdit = () => {
+    setName(profile?.name ?? "")
+    setImage(profile?.image ?? "")
     setIsEditing(false)
   }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (name.trim().length === 0) {
+      toast.error("Name cannot be empty")
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), image: image.trim() || null }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to update profile")
+      }
+      const updated: Profile = await res.json()
+      setProfile(updated)
+      setIsEditing(false)
+      // Reflect the new display name/avatar in the NextAuth session.
+      try {
+        await updateSession({ name: updated.name, image: updated.image })
+      } catch {
+        // Session refresh is best-effort; the saved value is already persisted.
+      }
+      toast.success("Profile updated")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update profile")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const displayName = profile?.name || session?.user?.name || "User"
+  const displayEmail = profile?.email || session?.user?.email || ""
+  const displayImage = profile?.image || session?.user?.image || ""
+  const memberSince = profile?.createdAt
+    ? new Date(profile.createdAt).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : null
 
   return (
     <div className="space-y-6">
@@ -44,23 +123,24 @@ export default function ProfilePage() {
           <CardContent className="pt-6">
             <div className="flex items-start space-x-4">
               <Avatar className="h-20 w-20">
-                <AvatarImage src={session?.user?.image || ""} />
+                <AvatarImage src={displayImage} />
                 <AvatarFallback className="text-lg">
-                  {session?.user?.name?.charAt(0) || session?.user?.email?.charAt(0)}
+                  {displayName.charAt(0) || displayEmail.charAt(0)}
                 </AvatarFallback>
               </Avatar>
               <div className="space-y-2">
                 <div>
-                  <h2 className="text-2xl font-semibold">{session?.user?.name || "User"}</h2>
-                  <p className="text-muted-foreground">{session?.user?.email}</p>
+                  <h2 className="text-2xl font-semibold">{displayName}</h2>
+                  <p className="text-muted-foreground">{displayEmail}</p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Badge variant="secondary">Free Plan</Badge>
-                  <Badge variant="outline">
-                    <CalendarDays className="w-3 h-3 mr-1" />
-                    Member since Dec 2023
-                  </Badge>
-                </div>
+                {memberSince && (
+                  <div className="flex items-center space-x-2">
+                    <Badge variant="outline">
+                      <CalendarDays className="w-3 h-3 mr-1" />
+                      Member since {memberSince}
+                    </Badge>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
@@ -73,128 +153,68 @@ export default function ProfilePage() {
               <div>
                 <CardTitle>Personal Information</CardTitle>
                 <CardDescription>
-                  Update your personal details and contact information.
+                  Update your display name and avatar.
                 </CardDescription>
               </div>
-              <Button 
-                variant={isEditing ? "outline" : "default"}
-                onClick={() => setIsEditing(!isEditing)}
-              >
-                {isEditing ? "Cancel" : "Edit Profile"}
-              </Button>
+              {!isEditing && (
+                <Button variant="default" onClick={startEdit} disabled={loading}>
+                  Edit Profile
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Full Name</Label>
                   <Input
                     id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    disabled={!isEditing}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={!isEditing || saving}
+                    maxLength={200}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    disabled={!isEditing}
-                  />
+                  <Input id="email" type="email" value={displayEmail} disabled readOnly />
+                  <p className="text-xs text-muted-foreground">
+                    Email changes require re-verification and are not available here.
+                  </p>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
+                  <Label htmlFor="image">Avatar URL</Label>
                   <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                    disabled={!isEditing}
-                    placeholder="Enter phone number"
+                    id="image"
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                    disabled={!isEditing || saving}
+                    placeholder="https://example.com/avatar.png"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="company">Company</Label>
-                  <Input
-                    id="company"
-                    value={formData.company}
-                    onChange={(e) => setFormData({...formData, company: e.target.value})}
-                    disabled={!isEditing}
-                    placeholder="Enter company name"
-                  />
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData({...formData, location: e.target.value})}
-                  disabled={!isEditing}
-                  placeholder="Enter your location"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
-                <textarea
-                  id="bio"
-                  className="w-full min-h-[100px] px-3 py-2 border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 rounded-md resize-none"
-                  value={formData.bio}
-                  onChange={(e) => setFormData({...formData, bio: e.target.value})}
-                  disabled={!isEditing}
-                  placeholder="Tell us about yourself..."
-                />
-              </div>
-
-              {isEditing && (
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">
-                    Save Changes
-                  </Button>
-                </div>
-              )}
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Account Stats */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Account Statistics</CardTitle>
-            <CardDescription>
-              Your activity and usage overview.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold">12</div>
-                <div className="text-sm text-muted-foreground">Connected Accounts</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">248</div>
-                <div className="text-sm text-muted-foreground">Posts Published</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">1.2K</div>
-                <div className="text-sm text-muted-foreground">Total Engagement</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">3</div>
-                <div className="text-sm text-muted-foreground">Active Campaigns</div>
-              </div>
-            </div>
+                {isEditing && (
+                  <div className="flex justify-end space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={cancelEdit}
+                      disabled={saving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving…" : "Save Changes"}
+                    </Button>
+                  </div>
+                )}
+              </form>
+            )}
           </CardContent>
         </Card>
       </div>

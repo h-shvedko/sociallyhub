@@ -12,6 +12,7 @@
     "start": "next start",
     "lint": "eslint --cache --cache-strategy content",
     "db:seed": "tsx prisma/seed.ts",
+    "i18n:generate": "tsx scripts/i18n-generate.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",

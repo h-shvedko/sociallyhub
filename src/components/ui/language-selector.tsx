@@ -8,11 +8,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Badge } from '@/components/ui/badge'
 import { Globe, Check, Loader2 } from 'lucide-react'
 import { useLocale } from '@/contexts/locale-context'
 import { useDictionary } from '@/hooks/use-dictionary'
-import { locales, localeNames, Locale } from '@/lib/i18n'
+import { enabledLocales, isEnabledLocale, localeNames, defaultLocale, Locale } from '@/lib/i18n'
 
 interface LanguageSelectorProps {
   variant?: 'button' | 'compact'
@@ -47,6 +46,11 @@ export function LanguageSelector({
 
   const isLoading = localeLoading || dictionaryLoading
 
+  // ADR-0017 (Decision D3): only locales in `enabledLocales` ship today (just
+  // 'en' — the others were served via unreviewed runtime machine-translation,
+  // now cut). If a stale/persisted locale isn't enabled, treat it as English.
+  const effectiveLocale: Locale = isEnabledLocale(locale) ? locale : defaultLocale
+
   const handleLocaleChange = (newLocale: Locale) => {
     setLocale(newLocale)
   }
@@ -60,14 +64,14 @@ export function LanguageSelector({
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                {showFlag && <span className="mr-1">{getFlag(locale)}</span>}
-                <span className="uppercase text-xs font-medium">{locale}</span>
+                {showFlag && <span className="mr-1">{getFlag(effectiveLocale)}</span>}
+                <span className="uppercase text-xs font-medium">{effectiveLocale}</span>
               </>
             )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          {locales.map((loc) => (
+          {enabledLocales.map((loc) => (
             <DropdownMenuItem
               key={loc}
               onClick={() => handleLocaleChange(loc)}
@@ -77,7 +81,7 @@ export function LanguageSelector({
                 {showFlag && <span className="mr-2">{getFlag(loc)}</span>}
                 <span>{localeNames[loc]}</span>
               </div>
-              {locale === loc && <Check className="h-4 w-4" />}
+              {effectiveLocale === loc && <Check className="h-4 w-4" />}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -94,8 +98,8 @@ export function LanguageSelector({
           ) : (
             <>
               <Globe className="h-4 w-4 mr-2" />
-              {showFlag && <span className="mr-2">{getFlag(locale)}</span>}
-              <span>{localeNames[locale]}</span>
+              {showFlag && <span className="mr-2">{getFlag(effectiveLocale)}</span>}
+              <span>{localeNames[effectiveLocale]}</span>
             </>
           )}
         </Button>
@@ -104,7 +108,7 @@ export function LanguageSelector({
         <div className="px-2 py-1 text-sm font-medium text-muted-foreground border-b mb-1">
           {t('settings.language', 'Language')}
         </div>
-        {locales.map((loc) => (
+        {enabledLocales.map((loc) => (
           <DropdownMenuItem
             key={loc}
             onClick={() => handleLocaleChange(loc)}
@@ -118,20 +122,10 @@ export function LanguageSelector({
               </div>
             </div>
             <div className="flex items-center">
-              {locale === loc && <Check className="h-4 w-4" />}
-              {locale !== loc && loc !== 'en' && (
-                <Badge variant="secondary" className="text-xs">
-                  {t('common.ai', 'AI')}
-                </Badge>
-              )}
+              {effectiveLocale === loc && <Check className="h-4 w-4" />}
             </div>
           </DropdownMenuItem>
         ))}
-        <div className="px-2 py-1 mt-1 border-t">
-          <p className="text-xs text-muted-foreground">
-            {t('settings.translationNote', 'Translations powered by AI')}
-          </p>
-        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )

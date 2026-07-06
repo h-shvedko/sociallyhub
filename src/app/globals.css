@@ -126,6 +126,55 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Font scale — driven by --font-scale set on <html> by SettingsProvider
+     (small 0.9 / normal 1.0 / large 1.1). Scales the root em so the whole
+     rem-based type system tracks the user's preference. */
+  html {
+    font-size: calc(1rem * var(--font-scale, 1));
+  }
+}
+
+/* Compact mode — SettingsProvider toggles the `.compact-mode` class on <html>.
+   Tightens vertical density (spacing, control heights, table cells) so the UI
+   is visibly denser without changing colors or breaking layout. */
+.compact-mode {
+  --compact-space-scale: 0.75;
+}
+
+.compact-mode .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 1rem;
+}
+
+.compact-mode .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.625rem;
+}
+
+.compact-mode .p-6 {
+  padding: 1rem;
+}
+
+.compact-mode .p-4 {
+  padding: 0.625rem;
+}
+
+.compact-mode .py-4 {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+
+.compact-mode .gap-6 {
+  gap: 1rem;
+}
+
+.compact-mode .gap-4 {
+  gap: 0.625rem;
+}
+
+.compact-mode table th,
+.compact-mode table td {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
 }
 
 @layer utilities {

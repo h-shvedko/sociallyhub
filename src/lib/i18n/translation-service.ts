@@ -1,3 +1,17 @@
+/**
+ * OFFLINE translation tool — NOT called at request time (ADR-0017, Decision D3).
+ *
+ * This module machine-translates the en.json dictionary through the OpenAI API.
+ * It used to run on every non-en page request (via get-dictionary.ts), which
+ * shipped unreviewed MT as if it were localization, and silently served English
+ * when OPENAI_API_KEY was unset. That request-path usage was removed.
+ *
+ * It now exists solely as an OFFLINE generator, invoked by
+ * `scripts/i18n-generate.ts` (npm run i18n:generate) to produce DRAFT
+ * dictionaries/<locale>.json files. Those drafts MUST be reviewed by a human
+ * before being committed and enabled (see enabledLocales in config.ts).
+ * Do NOT import this into any request/render path.
+ */
 import { Locale, translationConfig } from './config'
 
 interface TranslationCache {

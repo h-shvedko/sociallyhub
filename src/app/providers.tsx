@@ -5,7 +5,9 @@ import { SessionProvider } from "next-auth/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 import { useState } from "react"
+import { ThemeProvider } from "next-themes"
 import { LocaleProvider } from "@/contexts/locale-context"
+import { SettingsProvider } from "@/contexts/settings-context"
 
 interface ProvidersProps {
   children: ReactNode
@@ -38,14 +40,18 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <LocaleProvider>
-      <QueryClientProvider client={queryClient}>
-        <SessionProvider>
-          {children}
-          {process.env.NODE_ENV === 'development' && (
-            <ReactQueryDevtools initialIsOpen={false} />
-          )}
-        </SessionProvider>
-      </QueryClientProvider>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <QueryClientProvider client={queryClient}>
+          <SessionProvider>
+            <SettingsProvider>
+              {children}
+              {process.env.NODE_ENV === 'development' && (
+                <ReactQueryDevtools initialIsOpen={false} />
+              )}
+            </SettingsProvider>
+          </SessionProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </LocaleProvider>
   )
 }

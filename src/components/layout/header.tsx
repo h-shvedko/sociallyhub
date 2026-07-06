@@ -150,13 +150,7 @@ export function Header({ className }: HeaderProps) {
             >
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem 
-              onClick={() => router.push('/dashboard/workspace')}
-              className="cursor-pointer hover:bg-primary/10 transition-colors duration-200"
-            >
-              Switch Workspace
-            </DropdownMenuItem>
-            <DropdownMenuItem 
+            <DropdownMenuItem
               onClick={() => router.push('/dashboard/billing')}
               className="cursor-pointer hover:bg-primary/10 transition-colors duration-200"
             >

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { UserSettings, NotificationPreferences } from '@prisma/client'
 import { useSession } from 'next-auth/react'
+import { useTheme } from 'next-themes'
 import { formatDateWithPreferences, formatTimeWithPreferences, formatDateTimeWithPreferences } from '@/lib/utils/date-time'
 
 interface SettingsContextType {
@@ -37,6 +38,7 @@ interface SettingsProviderProps {
 
 export function SettingsProvider({ children }: SettingsProviderProps) {
   const { data: session, status } = useSession()
+  const { setTheme } = useTheme()
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null)
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null)
   const [loading, setLoading] = useState(true)
@@ -92,10 +94,11 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
       if (response.ok) {
         const data = await response.json()
         setUserSettings(data.settings)
-        
-        // Apply theme changes immediately if theme-related settings were updated
-        if (updates.theme || updates.colorScheme || updates.fontScale) {
-          applyTheme()
+
+        // Push a theme change into next-themes immediately (the settings-change
+        // effect also re-applies font-scale/compact once state updates).
+        if (updates.theme) {
+          setTheme(updates.theme)
         }
       } else {
         throw new Error('Failed to update settings')
@@ -106,7 +109,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     } finally {
       setSaving(false)
     }
-  }, [session?.user?.id])
+  }, [session?.user?.id, setTheme])
 
   // Update notification preferences
   const updateNotificationPreferences = useCallback(async (updates: Partial<NotificationPreferences>) => {
@@ -179,26 +182,17 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     )
   }, [userSettings])
 
-  // Apply theme to document
+  // Apply theme to document.
+  // Theme (light/dark/system) is delegated to next-themes via setTheme — it owns
+  // the `dark` class on <html> and system-preference tracking (no-flash SSR).
+  // The DB preference is authoritative: we push it into next-themes here.
   const applyTheme = useCallback(() => {
     if (typeof window === 'undefined' || !userSettings) return
 
     const root = document.documentElement
-    
-    // Apply theme
-    if (userSettings.theme === 'light') {
-      root.classList.remove('dark')
-    } else if (userSettings.theme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      // System theme
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      if (prefersDark) {
-        root.classList.add('dark')
-      } else {
-        root.classList.remove('dark')
-      }
-    }
+
+    // Delegate light/dark/system to next-themes
+    setTheme(userSettings.theme)
 
     // Apply font scale
     const fontScaleMap = {
@@ -222,7 +216,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     } else {
       root.classList.remove('sidebar-collapsed')
     }
-  }, [userSettings])
+  }, [userSettings, setTheme])
 
   // Get theme classes for components
   const getThemeClasses = useCallback(() => {
@@ -247,22 +241,13 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     }
   }, [status, fetchSettings])
 
-  // Apply theme when settings change
+  // Apply theme when settings change (also syncs next-themes on settings load,
+  // keeping the DB preference authoritative post-login). next-themes owns
+  // system-preference tracking, so no prefers-color-scheme listener is needed here.
   useEffect(() => {
     if (userSettings) {
       applyTheme()
     }
-  }, [userSettings, applyTheme])
-
-  // Listen for system theme changes
-  useEffect(() => {
-    if (typeof window === 'undefined' || !userSettings || userSettings.theme !== 'system') return
-
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    const handleChange = () => applyTheme()
-    
-    mediaQuery.addEventListener('change', handleChange)
-    return () => mediaQuery.removeEventListener('change', handleChange)
   }, [userSettings, applyTheme])
 
   const value: SettingsContextType = {
