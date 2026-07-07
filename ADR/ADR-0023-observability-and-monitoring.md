@@ -1,8 +1,71 @@
 # ADR-0023: Observability: Real Metrics, Logging, and Health
 
 - Date: 2026-07-02
-- Status: Proposed
+- Status: **Implemented (2026-07-07)** — Option 2. Phase 4 error-tracking (GlitchTip/Sentry) wired but dormant-by-default.
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+## Implementation note (2026-07-07)
+
+Option 2 (prom-client + repaired self-hosted Prometheus/Grafana/Loki + guarded Sentry)
+shipped via a 5-track workflow + wire-check + test tracks, then independent verification.
+Much of Phases 0/2 had already landed incrementally — `logs/` gitignored and
+`src/lib/monitoring/alerts.ts` deleted (ADR-0024), the jobs endpoints
+(`/api/jobs/stats|health|details`) rewritten on real BullMQ handles (ADR-0008), and the
+worker's `worker:heartbeat` write (ADR-0008) — so this ADR delivered what remained.
+
+**Metrics core (Phase 1):** one `globalThis`-guarded prom-client `Registry`
+(`src/lib/observability/metrics.ts`, the `prisma.ts` singleton pattern so dev hot-reload
+never double-registers) with `http_requests_total{method,route,status}`,
+`http_request_duration_seconds{method,route}`, DB-backed business gauges
+(`sociallyhub_{users,posts,workspaces}_total`, async `collect()` + 15s cache, fail-safe),
+and `collectDefaultMetrics()`. `route` is ALWAYS a bounded pattern via
+`normalizeRoutePattern()` (the one cardinality funnel). `/api/metrics` rewritten as a
+standard exposition endpoint (deleted the per-scrape `MetricsCollector`/`new
+PrismaClient()`/Redis; the old bug reset every counter to 1 per scrape) with a
+`METRICS_TOKEN` bearer. `withLogging` is the single seam recording both instruments.
+`src/instrumentation.ts` (the repo's first) inits the registry once per process.
+**Proven live:** `/api/metrics` serves real accumulating counters + gauges
+(`sociallyhub_posts_total 1602`), content-type `text/plain; version=0.0.4`.
+
+**Honest health + system metrics (Phase 2):** `/api/health` is a real readiness check —
+singleton prisma `SELECT 1`, a module-scope shared ioredis `PING`, worker-heartbeat
+freshness gated by `WORKER_EXPECTED` (`disabled` until the worker is expected), the
+misleading cwd/tmp write test deleted; degrades (never 500s) unless the DB is down.
+`/api/monitoring/metrics` derives errorRate/avgResponseTime from the registry
+(`getHttpSummary()`, `null`→"—", never a fake 0) and reports `process.uptime()` — the
+`'99.9%'` string and both UI `99.9` fallbacks are gone. The last unowned fabricated
+*business* numbers are swept: `/api/analytics/platform` errorRate/responseTime dropped,
+`/api/clients/stats` revenue/industry/satisfaction/acquisition dropped (real counts stay),
+`/api/campaigns/analytics` age/gender/location demographics dropped — with a CI grep guard
+(`scripts/check-no-fabricated-metrics.sh`, blocking Build-gate step) keeping the class out.
+**Verification also caught a fabrication the plan didn't name** — the monitoring
+dashboard's hardcoded "System Health Overview" bars (98/100/67/34%) and a `|| 127`
+active-users fallback — now derived from real data or dropped.
+
+**Stack (Phase 3):** `docker/monitoring/prometheus.yml` repaired (invalid top-level
+`recording_rules:` removed → mounted `rules/` dir; scrape targets trimmed to
+app/worker/self; alertmanager block dropped in favor of Grafana unified alerting).
+`promtool check config` **validates SUCCESS** (2 rule files, 4 alert + 3 recording rules).
+Grafana provisioning (Prometheus+Loki datasources, a starter dashboard) + compose mounts
+now resolve; `LOG_TO_STDOUT` mode strips winston file transports in containers; the worker
+exposes prom-client on internal `:9464`.
+
+**Error tracking (Phase 4):** `@sentry/nextjs` wired via `instrumentation.ts`
+`register()`/`onRequestError`, DORMANT without `SENTRY_DSN` (guarded dynamic import, no
+`withSentryConfig` — a keyless build is a total no-op); GlitchTip added to compose under
+the `monitoring` profile. Grafana alert rules (5xx rate, p95 latency, target/worker down)
+shipped in `rules/alerts.yml`.
+
+**Verification:** 24 new Jest tests (registry singleton, route normalization, getHttpSummary,
+health/metrics/monitoring endpoints, fabrication-absence assertions) — full suite 19 suites
+/ 270 green; `next build` + `build:worker` green; e2e `g8-observability` (health+metrics
+endpoints, no-99.9% dashboard, no-demographics) green; `promtool` config validation;
+live-container proof of `/api/metrics`, `/api/health`, and the honest dashboard.
+
+**Deferred (by design):** exporters (postgres/redis/node) as real compose services;
+OpenTelemetry tracing (Option 3 upgrade path, not foreclosed); turning Sentry/GlitchTip
+*on* (needs a DSN + adding `@sentry/nextjs` to standalone tracing per ADR-0022); real
+per-platform publish success rates (await ADR-0008/0009 live posting).
 
 ## Context and Problem Statement
 

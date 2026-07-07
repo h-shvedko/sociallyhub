@@ -62,7 +62,7 @@ Each item is owned by an ADR — read the ADR before starting.
 - Missing prod compose mounts (nginx/grafana configs); nginx SSE tuning; S3/MinIO storage driver
 
 ### Observability — **ADR-0023**
-- Real monitoring/alerting (replace `Math.random` simulations in admin settings health/perf handlers)
+- ✅ ~~Real monitoring/alerting (replace `Math.random` simulations)~~ — implemented 2026-07-07: prom-client singleton at `/api/metrics` (real accumulating counters + DB gauges, bearer-protected); honest `/api/health` readiness; every fabricated metric (`'99.9%'`, monitoring-dashboard hardcoded bars, platform/clients/campaigns `Math.random`) removed with a **blocking CI grep guard**; Prometheus/Grafana/Loki config `promtool`-validated; worker `:9464`; Sentry/GlitchTip dormant without a DSN. Deferred: real exporters as compose services, OTel tracing, turning Sentry on.
 
 ### Seeding & demo mode — **ADR-0025**
 - Demo-token gating for publish jobs; seed strategy for newer subsystems; retire `prisma/seed.js`
