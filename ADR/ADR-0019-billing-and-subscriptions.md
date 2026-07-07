@@ -1,7 +1,23 @@
 # ADR-0019: Billing and Subscriptions with Stripe
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-07** (Option A; live checkout/portal await real Stripe keys, by design)
+
+> **Implementation note (2026-07-07, commit `cfe02a4`).** All five phases shipped. Models
+> migrated (`20260707082411_0019_billing_subscriptions`); `src/lib/billing/` (lazy Stripe
+> client — module-scope constructors are banned per the ADR-0022 build lesson; plans;
+> entitlements with the pure `resolveEffectiveTier` matrix and the 402 `limit_exceeded`
+> contract); all four routes; server-side enforcement at accounts/posts/team-invite/AI-service;
+> 14-day no-card PRO trial at signup (**proven live**: a browser signup created the
+> `TRIALING` row, `trialEndsAt = now+14d`); `/dashboard/billing` rebuilt on live data (mock
+> plans/invoices/VISA-4242 deleted; honest `stripe_not_configured` notice without keys —
+> no mock fallback). **Tested per ADR-0021**: 14/14 billing integration tests (auth triples;
+> webhook signature/tamper/idempotency-replay via Stripe's `generateTestHeaderString`, no
+> network; FREE workspace's 4th account → 402) + entitlements unit matrix + a real-browser
+> billing golden path (seeded Business plan renders, no fabricated data). Stripe v22
+> "dahlia" API shapes (periods on subscription items; `invoice.parent.subscription_details`).
+> **Deferred (needs real keys):** live Checkout/Portal redirect flows, golden-path-5 checkout
+> e2e, Stripe dashboard config (step 19); reconciliation scheduling → ADR-0023.
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
 
 ## Context and Problem Statement

@@ -1,7 +1,27 @@
 # ADR-0021: Testing Strategy and Honest Quality Gates
 
 - Date: 2026-07-02
-- Status: Accepted
+- Status: Accepted — **Implemented 2026-07-07** (phases 0–5; ratchet raises continue with future suites)
+
+> **Implementation note (2026-07-07, commit `cfe02a4`).** The suite runs green for the first
+> time: **12/12 suites, 158/158 tests**. Root cause of the never-ran state: the jest
+> `projects[]` array bypassed `next/jest` wrapping entirely — fixed by wrapping each project
+> individually. The 70% fantasy gate is replaced by the measured ratchet (global floor 1%,
+> `src/lib/encryption.ts` pinned at its real 82/75/83/82; up-only rule documented in the
+> config). Pyramid delivered: unit (entitlements matrix, plans, backup-cron evaluator,
+> client-report schedule, crypto tamper, storage traversal, auth helpers), integration
+> (route-handler harness + auth triples for billing/user-settings + webhook
+> signature/idempotency against real Postgres), e2e (deterministic `prisma/seed-e2e.ts`
+> fixtures; golden paths **proven in a live chromium session**: signup→Mailhog→verify→signin
+> →dashboard, inbox honest-failure, client report create+render, billing live data — 17/17
+> specs; axe accessibility over 4 pages passes after fixing real `button-name` criticals;
+> `color-contrast` excluded with a design-tokens TODO). visual-regression/performance
+> projects deleted; broken seed-require fallback deleted. **The CI Jest job is flipped to
+> blocking** ('Jest (gate — ratcheted coverage)'). The new tests found real bugs: the
+> date-fns `zh` import error, unnamed a11y-critical buttons, a stale verify-page redirect
+> assumption. **Remaining:** e2e job flips blocking after proving green in CI (runs against
+> the prod image); golden path 2's worker assertion (ADR-0008 stub providers) and path 5
+> checkout (Stripe keys) pending.
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
 
 ## Context and Problem Statement
