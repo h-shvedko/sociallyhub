@@ -19,8 +19,9 @@
 > projects deleted; broken seed-require fallback deleted. **The CI Jest job is flipped to
 > blocking** ('Jest (gate — ratcheted coverage)'). The new tests found real bugs: the
 > date-fns `zh` import error, unnamed a11y-critical buttons, a stale verify-page redirect
-> assumption. **Remaining:** e2e job flips blocking after proving green in CI (runs against
-> the prod image); golden path 2's worker assertion (ADR-0008 stub providers) and path 5
+> assumption. **Update (same day):** the e2e smoke job proved green in CI against the prod
+> image and was flipped to blocking ('E2E smoke (gate — chromium auth spec vs the prod
+> image)', commit `40bdcc0`). **Remaining:** golden path 2's worker assertion (ADR-0008 stub providers) and path 5
 > checkout (Stripe keys) pending.
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
 
