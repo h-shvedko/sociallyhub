@@ -3,11 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions, requireWorkspaceRole } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
-import OpenAI from 'openai'
-
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}) : null
+import { getOpenAIClient, getAIModel, estimateCostCents } from '@/lib/ai/config'
+import { getAIAvailability } from '@/lib/ai/availability'
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +21,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify workspace access (ADR-0004): any member of THIS workspace.
-    await requireWorkspaceRole(workspaceId)
+    // The membership row carries the normalized userId for usage tracking.
+    const membership = await requireWorkspaceRole(workspaceId)
 
     // Get recent posts for content analysis
     const recentPosts = await prisma.post.findMany({
@@ -46,24 +44,35 @@ export async function GET(request: NextRequest) {
       take: 20
     })
 
-    if (!openai) {
+    // ADR-0018: this route calls OpenAI directly, so it only runs when the
+    // real provider is available. Demo-mode 'mock' cannot honestly serve a
+    // content analysis, so both 'mock' and 'none' return enabled:false.
+    const availability = getAIAvailability()
+    if (availability.provider !== 'openai') {
       return NextResponse.json({
         enabled: false,
         suggestions: [],
         trends: [],
         gaps: [],
-        message: 'OpenAI API key not configured'
+        aiProvider: availability.provider,
+        simulated: false,
+        message: availability.reason || 'Configure OPENAI_API_KEY to enable AI features'
       })
     }
 
     // Analyze content with OpenAI
-    const contentAnalysis = await analyzeContentWithAI(recentPosts)
+    const contentAnalysis = await analyzeContentWithAI(recentPosts, {
+      workspaceId,
+      userId: membership.userId
+    })
 
     return NextResponse.json({
       enabled: true,
       suggestions: contentAnalysis.suggestions,
       trends: contentAnalysis.trends,
       gaps: contentAnalysis.gaps,
+      aiProvider: 'openai',
+      simulated: false,
       lastAnalyzed: new Date().toISOString()
     })
   } catch (error) {
@@ -114,9 +123,9 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      return NextResponse.json({ 
+      return NextResponse.json({
         message: 'Content Intelligence enabled successfully',
-        ruleId: rule.id 
+        ruleId: rule.id
       })
     }
 
@@ -126,29 +135,66 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function analyzeContentWithAI(posts: any[]): Promise<{
+/**
+ * Best-effort AIUsageTracking write. NOTE: AIFeatureType has no
+ * automation/analysis-specific value, so this is recorded as
+ * CONTENT_GENERATION (the closest valid enum member).
+ */
+async function trackContentIntelligenceUsage(params: {
+  workspaceId: string
+  userId: string
+  model: string
+  tokensUsed: number
+  costCents: number
+  responseTimeMs: number
+  successful: boolean
+  errorMessage?: string
+}): Promise<void> {
+  try {
+    await prisma.aIUsageTracking.create({
+      data: {
+        workspaceId: params.workspaceId,
+        userId: params.userId,
+        featureType: 'CONTENT_GENERATION',
+        tokensUsed: params.tokensUsed,
+        costCents: params.costCents,
+        responseTimeMs: params.responseTimeMs,
+        model: params.model,
+        successful: params.successful,
+        errorMessage: params.errorMessage
+      }
+    })
+  } catch (trackingError) {
+    // Tracking must never break the primary flow
+    console.error('Failed to record AI usage for content intelligence:', trackingError)
+  }
+}
+
+async function analyzeContentWithAI(
+  posts: any[],
+  usage: { workspaceId: string; userId: string }
+): Promise<{
   suggestions: any[]
   trends: any[]
   gaps: any[]
 }> {
-  if (!openai || posts.length === 0) {
+  if (posts.length === 0) {
     return { suggestions: [], trends: [], gaps: [] }
   }
 
-  try {
-    // Prepare content for analysis
-    const contentSummary = posts.map(post => ({
-      content: post.content,
-      platform: post.variants[0]?.socialAccount?.provider || 'unknown',
-      engagement: {
-        likes: post.likes || 0,
-        comments: post.comments || 0,
-        shares: post.shares || 0
-      },
-      publishedAt: post.publishedAt
-    }))
+  // Prepare content for analysis
+  const contentSummary = posts.map(post => ({
+    content: post.content,
+    platform: post.variants[0]?.socialAccount?.provider || 'unknown',
+    engagement: {
+      likes: post.likes || 0,
+      comments: post.comments || 0,
+      shares: post.shares || 0
+    },
+    publishedAt: post.publishedAt
+  }))
 
-    const prompt = `Analyze this social media content performance data and provide insights:
+  const prompt = `Analyze this social media content performance data and provide insights:
 
 ${JSON.stringify(contentSummary, null, 2)}
 
@@ -183,8 +229,13 @@ Format as JSON with this structure:
   ]
 }`
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+  const model = getAIModel()
+  const startTime = Date.now()
+
+  try {
+    const client = getOpenAIClient()
+    const completion = await client.chat.completions.create({
+      model,
       messages: [
         {
           role: "system",
@@ -199,33 +250,38 @@ Format as JSON with this structure:
       temperature: 0.7
     })
 
+    await trackContentIntelligenceUsage({
+      workspaceId: usage.workspaceId,
+      userId: usage.userId,
+      model,
+      tokensUsed: completion.usage?.total_tokens ?? 0,
+      costCents: estimateCostCents(
+        model,
+        completion.usage?.prompt_tokens ?? 0,
+        completion.usage?.completion_tokens ?? 0
+      ),
+      responseTimeMs: Date.now() - startTime,
+      successful: true
+    })
+
     const analysis = JSON.parse(completion.choices[0].message.content || '{"suggestions":[],"trends":[],"gaps":[]}')
     return analysis
   } catch (error) {
+    await trackContentIntelligenceUsage({
+      workspaceId: usage.workspaceId,
+      userId: usage.userId,
+      model,
+      tokensUsed: 0,
+      costCents: 0,
+      responseTimeMs: Date.now() - startTime,
+      successful: false,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error'
+    })
+
+    // HONESTY (ADR-0018): the previous hardcoded "fallback insights" were
+    // fabricated analysis presented as real. A clear error beats fake data —
+    // propagate so the route's handleApiError answers honestly.
     console.error('Error in AI content analysis:', error)
-    return {
-      suggestions: [
-        {
-          title: "Increase Engagement",
-          description: "Try posting during peak hours (9-11 AM, 7-9 PM) to maximize reach",
-          priority: "medium",
-          category: "timing"
-        }
-      ],
-      trends: [
-        {
-          topic: "AI & Automation",
-          relevance: "Growing interest in automation tools",
-          actionable: "Share tips about social media automation"
-        }
-      ],
-      gaps: [
-        {
-          area: "Video Content",
-          opportunity: "Video posts typically get 2x more engagement",
-          recommendation: "Create short-form video content weekly"
-        }
-      ]
-    }
+    throw error
   }
 }

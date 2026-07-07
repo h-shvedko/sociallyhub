@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { abTestingService } from '@/lib/ai/ab-testing-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ABTestStatus } from '@prisma/client'
@@ -15,7 +16,8 @@ const updateABTestSchema = z.object({
   autoPublish: z.boolean().optional()
 })
 
-// Get A/B Test Details
+// Get A/B Test Details (purely DB read — no provider call, so no availability
+// guard; responses still carry provider metadata)
 export async function GET(request: NextRequest, props: { params: Promise<{ testId: string }> }) {
   const params = await props.params;
   try {
@@ -57,7 +59,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ testI
     // Calculate confidence intervals and statistical data
     const statisticalData = calculateStatisticalData(abTest.executionLogs, abTest.confidenceLevel)
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         test: {
@@ -108,7 +110,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ testI
           timeline: generateTimelineData(abTest.executionLogs)
         }
       }
-    })
+    }))
 
   } catch (error) {
     console.error('Get A/B test details API error:', error)
@@ -123,10 +125,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ tes
   const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
 
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId: session.user.id },
@@ -166,15 +172,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ tes
       await abTestingService.startABTest(params.testId)
     }
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         test: updatedTest,
         message: 'A/B test updated successfully'
       }
-    })
+    }))
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',
@@ -194,10 +203,14 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ te
   const params = await props.params;
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
 
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId: session.user.id },
@@ -233,12 +246,15 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ te
       where: { id: params.testId }
     })
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       message: 'A/B test deleted successfully'
-    })
+    }))
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     console.error('Delete A/B test API error:', error)
     return NextResponse.json({
       error: 'Internal server error'

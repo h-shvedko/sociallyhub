@@ -4,10 +4,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { aiService } from '@/lib/ai/ai-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SocialProvider } from '@prisma/client'
-import { LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 const suggestHashtagsSchema = z.object({
   content: z.string().min(1).max(2000),
@@ -25,12 +25,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
+    const userId = session.user.id
+
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       include: { workspace: true }
@@ -69,15 +69,16 @@ export async function POST(request: NextRequest) {
             }
           },
           update: {
-            lastUpdated: new Date(),
-            performanceScore: Math.random() * 100 // TODO: Calculate based on actual performance
+            lastUpdated: new Date()
+            // ADR-0018 honesty: no fabricated performance scores — scores stay
+            // null until computed from real performance data
           },
           create: {
             workspaceId: userWorkspace.workspaceId,
             hashtag: hashtag,
             platform: validatedData.platform,
-            trendingScore: Math.random() * 100, // TODO: Get from trending API
-            performanceScore: Math.random() * 100,
+            trendingScore: null, // honest: unknown until a real trending source exists
+            performanceScore: null,
             category: validatedData.industry
           }
         })
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
       await Promise.all(hashtagPromises)
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: {
           hashtags: result.hashtags,
@@ -97,14 +98,12 @@ export async function POST(request: NextRequest) {
             model: result.usage.model
           }
         }
-      })
+      }))
 
     } catch (aiError) {
-      // ADR-0019: plan limit reached is not a service failure — map to 402
-      // (limit_exceeded) without recording a failed-usage row.
-      if (aiError instanceof LimitExceededError) {
-        return limitExceededResponse(aiError)
-      }
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      const mapped = mapAIError(aiError)
+      if (mapped) return mapped
 
       // Track failed usage
       await prisma.aIUsageTracking.create({
@@ -125,6 +124,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',
@@ -139,7 +141,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Get trending hashtags for a platform
+// Get trending hashtags for a platform (purely DB read — no provider call, so
+// no availability guard; responses still carry provider metadata)
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -159,14 +162,8 @@ export async function GET(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
+      where: { userId: session.user.id },
       include: { workspace: true }
     })
 
@@ -218,7 +215,7 @@ export async function GET(request: NextRequest) {
       usageCount: statsMap.get(hashtag.hashtag) || 0
     }))
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         hashtags: enrichedHashtags,
@@ -226,7 +223,7 @@ export async function GET(request: NextRequest) {
         category,
         total: enrichedHashtags.length
       }
-    })
+    }))
 
   } catch (error) {
     console.error('Get trending hashtags API error:', error)

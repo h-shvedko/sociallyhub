@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  UsersRound,
 } from "lucide-react"
 
 const navigation = [
@@ -32,6 +33,7 @@ const navigation = [
   { name: "Calendar", href: "/dashboard/calendar", icon: Calendar, color: "text-purple-600" },
   { name: "Inbox", href: "/dashboard/inbox", icon: Inbox, color: "text-orange-600" },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, color: "text-indigo-600" },
+  { name: "Audience", href: "/dashboard/audience", icon: UsersRound, color: "text-fuchsia-600" },
 ]
 
 const resources = [

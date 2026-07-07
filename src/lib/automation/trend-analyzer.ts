@@ -1,5 +1,12 @@
-import { openai } from '@/lib/ai/config'
+import { getOpenAIClient, getAIModel } from '@/lib/ai/config'
+import { AIUnavailableError } from '@/lib/ai/availability'
 import { prisma } from '@/lib/prisma'
+
+// AIUsageTracking NOTE: no usage rows are written in this file. Both public
+// entry points (analyzeTrends(workspaceId, ...) and
+// generateContentSuggestions(workspaceId, trendId, contentType)) carry a
+// workspaceId but NO userId, and AIUsageTracking.userId is a REQUIRED field —
+// a row cannot be written without fabricating a user.
 import { TrendSource, TrendStatus, ContentType } from '@prisma/client'
 import { z } from 'zod'
 
@@ -81,6 +88,7 @@ export class TrendAnalyzer {
       
       return trends
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error analyzing trends:', error)
       throw new Error('Failed to analyze trends')
     }
@@ -169,8 +177,9 @@ Return your analysis as a JSON object with a "trends" array.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -198,8 +207,9 @@ Return your analysis as a JSON object with a "trends" array.
         source: TrendSource.NEWS // Default to NEWS source
       }))
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error in AI trend analysis:', error)
-      
+
       // Fallback analysis
       return this.getFallbackTrends(newsSources, options)
     }
@@ -335,8 +345,9 @@ For each suggestion, provide:
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -367,6 +378,7 @@ For each suggestion, provide:
 
       return suggestions
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error generating content suggestions:', error)
       throw new Error('Failed to generate content suggestions')
     }

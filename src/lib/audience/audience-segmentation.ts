@@ -1,29 +1,16 @@
-import { OpenAI } from 'openai'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+// ADR-0018: shared lazy client replaces the local ADR-0022 Proxy block.
+// getOpenAIClient() is constructed at call time and throws a typed
+// AIUnavailableError when no key is configured (same honest semantics).
+import { getOpenAIClient, getAIModel } from '@/lib/ai/config'
+import { AIUnavailableError } from '@/lib/ai/availability'
 
-// LAZY client (ADR-0022 build fix): constructing OpenAI at module scope
-// throws when OPENAI_API_KEY is unset, which killed `next build` page-data
-// collection in key-less environments (Docker image build, CI). The Proxy
-// defers construction to first USE; call sites are unchanged. Honest
-// unavailability policy is ADR-0018 scope.
-let _openaiClient: OpenAI | null = null
-function _getOpenAI(): OpenAI {
-  if (!_openaiClient) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not set — AI features are unavailable')
-    }
-    _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  }
-  return _openaiClient
-}
-const openai = new Proxy({} as OpenAI, {
-  get(_t, prop) {
-    const c = _getOpenAI() as unknown as Record<PropertyKey, unknown>
-    const v = c[prop]
-    return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(c) : v
-  },
-})
+// AIUsageTracking NOTE: no usage rows are written in this file. Both
+// completions call sites are reached from entry points that carry a
+// workspaceId but NO userId (clusterAudience, generatePersonalizedRecommendations),
+// and AIUsageTracking.userId is a REQUIRED field — a row cannot be written
+// without fabricating a user attribution.
 
 // Audience cluster analysis schema
 const audienceClusterSchema = z.object({
@@ -342,8 +329,9 @@ Please return a JSON response with the following structure:
 Return only valid JSON, no additional text.`
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           { role: 'system', content: 'You are an expert audience analyst specializing in social media segmentation.' },
           { role: 'user', content: prompt }
@@ -358,8 +346,9 @@ Return only valid JSON, no additional text.`
       const parsed = JSON.parse(response)
       return audienceClusterSchema.parse(parsed)
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('AI clustering failed:', error)
-      
+
       // Fallback to rule-based clustering
       return this.performRuleBasedClustering(audienceData)
     }
@@ -521,8 +510,9 @@ Generate 3-5 content recommendations in JSON format:
 Return only valid JSON.`
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           { role: 'system', content: 'You are a content strategist specializing in personalized recommendations.' },
           { role: 'user', content: prompt }
@@ -535,6 +525,7 @@ Return only valid JSON.`
       const parsed = JSON.parse(response || '{}')
       return parsed.recommendations || []
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('AI recommendation generation failed:', error)
       return this.getFallbackRecommendations(segment, contentGoal)
     }

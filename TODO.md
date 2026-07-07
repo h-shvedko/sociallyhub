@@ -45,8 +45,9 @@ Each item is owned by an ADR — read the ADR before starting.
 - Replace the static `/dashboard/billing` mock (hardcoded plans, fake VISA •••• 4242)
 
 ### AI feature mounting — **ADR-0018**
-- Mount the orphaned `src/components/ai/*` and `src/components/audience/*` UI (APIs are real)
-- Integrate AI hashtag suggestions + content generation into the post composer
+- ✅ ~~Mount the orphaned `src/components/audience/*` UI~~ — `/dashboard/audience` mounted (ADR-0018 Track D, 2026-07-07): Segments / Posting Times / Sentiment tabs, availability-gated via `GET /api/ai/status` (honest full-page state when no provider; "Simulated (demo)" badge in demo mode). `AudienceIntelligenceDashboard` deliberately NOT mounted — its Overview is 100% hardcoded fabricated data and its other tabs duplicate the mounted dashboards; delete or rewrite honestly.
+- ✅ ~~Mount `src/components/ai/visual/visual-analytics-dashboard`~~ — "Visual Insights" tab added to the Analytics dashboard (same availability gating). `image-analyzer`/`image-optimizer` were already mounted via the post composer's Visual AI section.
+- ✅ ~~Integrate AI hashtag suggestions + content generation into the post composer~~ — was already built (`AIContentGenerator`, `HashtagSuggestions`, `ToneAnalyzer`, `PerformancePredictor` render from the AI Assistant / AI Analysis toggles); Track D added availability gating (toggles disabled with "AI unavailable — configure OPENAI_API_KEY" when provider is `none`; "Simulated (demo)" badges when `mock`).
 - Apply `AI_MOCK_DATA.md` Priority-1 fix (`/api/ai/performance/predict`, `/api/ai/tone/analyze` bypass the mock-fallback layer)
 
 ### Client Portal — **ADR-0020**

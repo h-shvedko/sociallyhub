@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { ImageOptimizer } from '@/lib/visual/image-optimizer'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { ratelimit } from '@/lib/utils/rate-limit'
@@ -29,17 +30,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
+    // ADR-0018: use the authenticated user id directly (demo identity is
+    // ADR-0025 scope — no hardcoded remaps)
+    const userId = session.user.id
 
     // Ensure user exists in database (same as image analysis fix)
     let existingUser = await prisma.user.findUnique({
       where: { id: userId }
     })
-    
+
     if (!existingUser) {
       // Check if user exists by email (in case of ID mismatch)
       const userByEmail = await prisma.user.findUnique({
@@ -215,14 +218,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       results: optimizationResults
-    })
+    }))
 
   } catch (error) {
     console.error('Image optimization error:', error)
-    
+
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Invalid request data', details: error.errors },
@@ -237,6 +243,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Get recent optimizations (purely DB read — no provider call, so no
+// availability guard; responses still carry provider metadata)
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -244,17 +252,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
+    const userId = session.user.id
 
     // Ensure user exists in database
     let existingUser = await prisma.user.findUnique({
       where: { id: userId }
     })
-    
+
     if (!existingUser) {
       existingUser = await prisma.user.create({
         data: {
@@ -277,10 +281,10 @@ export async function GET(request: NextRequest) {
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ 
+      return NextResponse.json(withAIMeta({
         success: true,
-        optimizations: [] 
-      })
+        optimizations: []
+      }))
     }
     
     // Get recent optimizations for user (note: correct table name)
@@ -293,10 +297,10 @@ export async function GET(request: NextRequest) {
       take: limit
     })
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       optimizations
-    })
+    }))
 
   } catch (error) {
     console.error('Get image optimizations error:', error)

@@ -7,6 +7,13 @@ import { AICache } from './cache'
 import { ContentSafetyFilter } from './safety-filter'
 import { prisma } from '../prisma'
 import { assertWithinLimit } from '../billing/entitlements'
+import { isDemoMode } from '@/lib/config/demo'
+import {
+  AIAvailability,
+  AIQuotaExceededError,
+  AIUnavailableError,
+  getAIAvailability,
+} from './availability'
 import {
   AIProvider,
   AIServiceConfig,
@@ -17,6 +24,7 @@ import {
 
 export class AIService {
   private providers: Map<string, AIProvider> = new Map()
+  private providersInitialized = false
   private cache: AICache
   private safetyFilter: ContentSafetyFilter
   private config: AIServiceConfig
@@ -25,38 +33,72 @@ export class AIService {
     this.config = config
     this.cache = new AICache(config.cacheTTL || 3600)
     this.safetyFilter = new ContentSafetyFilter()
-    
-    // Initialize providers based on config
-    this.initializeProviders()
+    // Providers are initialized LAZILY on first use — no env-dependent
+    // client construction at module scope (ADR-0022 build lesson).
+  }
+
+  /** Availability contract (ADR-0018) — see src/lib/ai/availability.ts. */
+  getAvailability(): AIAvailability {
+    return getAIAvailability()
   }
 
   private initializeProviders(): void {
-    // Initialize OpenAI provider if API key is available
+    // Real OpenAI when a genuine key is present.
     const openaiKey = process.env.OPENAI_API_KEY
-    if (openaiKey && openaiKey !== 'your-openai-api-key-here' && (this.config.provider === 'openai' || !this.config.provider)) {
+    if (openaiKey && openaiKey !== 'your-openai-api-key-here') {
       const provider = new OpenAIProvider(
         openaiKey,
         this.config.rateLimitRPM || 60,
         this.config.rateLimitTPM || 40000
       )
       this.providers.set('openai', provider)
-      console.log('✅ OpenAI provider initialized')
-    } else {
-      // Use mock provider for development when OpenAI is not configured
-      const mockProvider = new MockAIProvider(500) // 500ms delay for realistic simulation
-      this.providers.set('openai', mockProvider)
-      console.log('🚧 Using mock AI provider (OpenAI API key not configured)')
+      return
     }
 
-    // TODO: Add other providers (Anthropic, Google, Azure) as needed
+    // Mock ONLY in demo mode (NODE_ENV=development or ENABLE_DEMO='true');
+    // its output is labeled simulated by withAIMeta(). Otherwise register
+    // NOTHING — getProvider() throws AIUnavailableError and routes 503.
+    if (isDemoMode()) {
+      const mockProvider = new MockAIProvider(500) // 500ms delay for realistic simulation
+      this.providers.set('openai', mockProvider)
+    }
   }
 
   private getProvider(): AIProvider {
-    const provider = this.providers.get(this.config.provider || 'openai')
+    if (!this.providersInitialized) {
+      this.initializeProviders()
+      this.providersInitialized = true
+    }
+    const provider = this.providers.get('openai')
     if (!provider) {
-      throw new Error(`AI provider ${this.config.provider || 'openai'} not initialized`)
+      throw new AIUnavailableError()
     }
     return provider
+  }
+
+  /**
+   * Workspace monthly SPEND backstop (default OFF). When
+   * AI_MONTHLY_COST_LIMIT_CENTS is set (> 0), reject provider calls once the
+   * workspace's tracked AIUsageTracking.costCents for the current calendar
+   * month reaches the ceiling. Plan-tier credit limits (ADR-0019
+   * assertWithinLimit) remain the primary control.
+   */
+  private async assertWithinCostCeiling(workspaceId: string): Promise<void> {
+    const raw = process.env.AI_MONTHLY_COST_LIMIT_CENTS
+    if (!raw) return
+    const limitCents = Number.parseInt(raw, 10)
+    if (!Number.isFinite(limitCents) || limitCents <= 0) return
+
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const aggregate = await prisma.aIUsageTracking.aggregate({
+      where: { workspaceId, createdAt: { gte: monthStart } },
+      _sum: { costCents: true },
+    })
+    const usedCents = aggregate._sum.costCents ?? 0
+    if (usedCents >= limitCents) {
+      throw new AIQuotaExceededError(limitCents, usedCents)
+    }
   }
 
   async generateContent(
@@ -107,6 +149,7 @@ export class AIService {
     }
 
     // Generate content using AI provider
+    await this.assertWithinCostCeiling(workspaceId)
     const provider = this.getProvider()
     const result = await provider.generateContent(prompt, options)
 
@@ -192,6 +235,7 @@ export class AIService {
       }
     }
 
+    await this.assertWithinCostCeiling(workspaceId)
     const provider = this.getProvider()
     const result = await provider.suggestHashtags(options)
 
@@ -237,6 +281,7 @@ export class AIService {
     // ADR-0019: AI-credit metering (see generateContent)
     await assertWithinLimit(workspaceId, 'aiCreditsPerMonth')
 
+    await this.assertWithinCostCeiling(workspaceId)
     const provider = this.getProvider()
     const result = await provider.analyzeTone(content)
 
@@ -286,6 +331,7 @@ export class AIService {
     // ADR-0019: AI-credit metering (see generateContent)
     await assertWithinLimit(workspaceId, 'aiCreditsPerMonth')
 
+    await this.assertWithinCostCeiling(workspaceId)
     const provider = this.getProvider()
     const result = await provider.optimizeForPlatform(content, platform, options)
 
@@ -331,6 +377,7 @@ export class AIService {
     // Get historical data for better predictions
     const historicalData = await this.getHistoricalData(workspaceId, platform)
     
+    await this.assertWithinCostCeiling(workspaceId)
     const provider = this.getProvider()
     const result = await provider.predictPerformance(content, platform, historicalData)
 

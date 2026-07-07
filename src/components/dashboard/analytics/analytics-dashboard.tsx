@@ -6,17 +6,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { 
-  BarChart3, 
-  TrendingUp, 
-  Users, 
-  Activity, 
+import {
+  BarChart3,
+  TrendingUp,
+  Users,
+  Activity,
   Download,
   RefreshCw,
   Settings,
   Eye,
   Zap,
-  Calendar
+  Calendar,
+  Sparkles,
+  Bot
 } from "lucide-react"
 import { format } from "date-fns"
 
@@ -27,6 +29,8 @@ import { PerformanceComparison } from "./performance-comparison"
 import { RealTimeAnalytics } from "./real-time-analytics"
 import { ExportReports } from "./export-reports"
 import { CustomDashboard } from "./custom-dashboard"
+import { VisualAnalyticsDashboard } from "@/components/ai/visual/visual-analytics-dashboard"
+import { useAIStatus } from "@/hooks/use-ai-status"
 
 interface AnalyticsDashboardProps {
   initialTab?: string
@@ -43,6 +47,7 @@ export function AnalyticsDashboard({
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [analyticsData, setAnalyticsData] = useState<any>(null)
   const [mounted, setMounted] = useState(false)
+  const { status: aiStatus, loading: aiStatusLoading } = useAIStatus()
 
   useEffect(() => {
     setMounted(true)
@@ -136,7 +141,7 @@ export function AnalyticsDashboard({
 
       {/* Main Analytics Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview" className="flex items-center space-x-1">
             <BarChart3 className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -160,6 +165,10 @@ export function AnalyticsDashboard({
           <TabsTrigger value="custom" className="flex items-center space-x-1">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Custom</span>
+          </TabsTrigger>
+          <TabsTrigger value="visual" className="flex items-center space-x-1">
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">Visual Insights</span>
           </TabsTrigger>
         </TabsList>
 
@@ -241,6 +250,38 @@ export function AnalyticsDashboard({
         {/* Custom Dashboard Tab */}
         <TabsContent value="custom" className="space-y-6">
           <CustomDashboard />
+        </TabsContent>
+
+        {/* Visual Insights Tab (AI, ADR-0018) — availability-gated, honest when unavailable */}
+        <TabsContent value="visual" className="space-y-6">
+          {aiStatusLoading ? (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                Checking AI availability…
+              </CardContent>
+            </Card>
+          ) : !aiStatus || aiStatus.provider === 'none' ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Bot className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                <h3 className="font-semibold mb-1">
+                  AI features are unavailable — configure OPENAI_API_KEY
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {aiStatus?.reason ?? 'Configure OPENAI_API_KEY to enable AI features'}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {aiStatus.provider === 'mock' && (
+                <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">
+                  Simulated (demo)
+                </Badge>
+              )}
+              <VisualAnalyticsDashboard />
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

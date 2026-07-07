@@ -3,7 +3,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
-import { simpleAIService } from '@/lib/ai/simple-ai-service'
+import { aiService } from '@/lib/ai/ai-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SocialProvider } from '@prisma/client'
@@ -17,28 +18,24 @@ const predictPerformanceSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
+    const userId = session.user.id
+
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       include: { workspace: true }
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ 
-        error: 'No workspace found', 
-        debug: { userId: session.user.id, mappedUserId: userId },
-        help: 'Make sure you are logged in with the demo account: demo@sociallyhub.com / demo123456'
-      }, { status: 404 })
+      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -63,7 +60,9 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now()
 
     try {
-      const result = await simpleAIService.predictPerformance(
+      // ADR-0018: route through the metered aiService (AI-credit limit is
+      // enforced inside aiService.predictPerformance — ADR-0019).
+      const result = await aiService.predictPerformance(
         validatedData.content,
         validatedData.platform,
         userWorkspace.workspaceId,
@@ -83,7 +82,7 @@ export async function POST(request: NextRequest) {
         validatedData.platform
       )
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: {
           prediction: {
@@ -108,9 +107,13 @@ export async function POST(request: NextRequest) {
             model: result.usage.model
           }
         }
-      })
+      }))
 
     } catch (aiError) {
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      const mapped = mapAIError(aiError)
+      if (mapped) return mapped
+
       // Track failed usage
       await prisma.aIUsageTracking.create({
         data: {
@@ -130,6 +133,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',
@@ -144,11 +150,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Get performance prediction history and accuracy
+// Get performance prediction history and accuracy (purely DB read — no
+// provider call, so no availability guard; responses still carry provider metadata)
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -158,14 +165,8 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
+      where: { userId: session.user.id },
       include: { workspace: true }
     })
 
@@ -238,7 +239,7 @@ export async function GET(request: NextRequest) {
     // Calculate prediction accuracy statistics
     const accuracyStats = calculateAccuracyStats(predictions)
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         predictions: predictions.map(pred => ({
@@ -272,7 +273,7 @@ export async function GET(request: NextRequest) {
           hasMore: offset + limit < total
         }
       }
-    })
+    }))
 
   } catch (error) {
     console.error('Get performance predictions API error:', error)
@@ -367,7 +368,7 @@ function generatePerformanceRecommendations(prediction: any, historical: any, pl
 
 function calculateAccuracyStats(predictions: any[]) {
   const predictionsWithActuals = predictions.filter(p => p.actualEngagementRate !== null)
-  
+
   if (predictionsWithActuals.length === 0) {
     return {
       totalPredictions: predictions.length,
@@ -381,10 +382,10 @@ function calculateAccuracyStats(predictions: any[]) {
   const accuracies = predictionsWithActuals.map(pred => {
     const predicted = pred.predictedEngagementRate || 0
     const actual = pred.actualEngagementRate || 0
-    
+
     if (actual === 0 && predicted === 0) return 1
     if (actual === 0) return 0
-    
+
     return 1 - Math.abs((predicted - actual) / actual)
   }).filter(acc => acc >= 0 && acc <= 1)
 

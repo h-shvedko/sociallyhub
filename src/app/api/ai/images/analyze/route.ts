@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { AIImageAnalyzer } from '@/lib/ai/image-analyzer'
+import { AIImageAnalyzer, ImageAnalysisTrackingContext } from '@/lib/ai/image-analyzer'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { ratelimit } from '@/lib/utils/rate-limit'
@@ -22,66 +23,31 @@ const analyzeImageSchema = z.object({
   brandGuidelineId: z.string().optional()
 })
 
-// Real AI image analysis function using OpenAI Vision API
-async function analyzeImageWithAI(imageUrl: string, options: any) {
+// Real AI image analysis using the OpenAI Vision API.
+// ADR-0018 honesty: no fabricated fallback analysis — if the AI call fails,
+// the error propagates and the client gets an honest 5xx/503, never invented scores.
+async function analyzeImageWithAI(
+  imageUrl: string,
+  options: { platform?: string; analysisType: string; brandGuidelineId?: string },
+  tracking: ImageAnalysisTrackingContext
+) {
   const analyzer = new AIImageAnalyzer()
-  
-  console.log(`Starting AI analysis for image: ${imageUrl}`)
-  console.log(`Platform: ${options.platform || 'general'}, Analysis type: ${options.analysisType}`)
-  
-  try {
-    // Get comprehensive AI analysis
-    const analysis = await analyzer.analyzeImage(imageUrl, options.platform)
-    
-    console.log(`AI analysis completed successfully. Aesthetic score: ${analysis.aestheticScore}`)
-    
-    // Add brand consistency analysis for detailed/brand analysis types
-    if (options.analysisType === 'detailed' || options.analysisType === 'brand') {
-      if (!analysis.brandConsistency) {
-        // If not provided by AI, calculate based on color analysis and aesthetic score
-        analysis.brandConsistency = {
-          overallScore: Math.min(analysis.aestheticScore + 10, 95),
-          colorMatch: analysis.colorAnalysis.vibrance,
-          styleMatch: analysis.compositionAnalysis.balance
-        }
+
+  const analysis = await analyzer.analyzeImage(imageUrl, options.platform, tracking)
+
+  // Add brand consistency analysis for detailed/brand analysis types
+  if (options.analysisType === 'detailed' || options.analysisType === 'brand') {
+    if (!analysis.brandConsistency) {
+      // If not provided by AI, calculate based on color analysis and aesthetic score
+      analysis.brandConsistency = {
+        overallScore: Math.min(analysis.aestheticScore + 10, 95),
+        colorMatch: analysis.colorAnalysis.vibrance,
+        styleMatch: analysis.compositionAnalysis.balance
       }
     }
-    
-    return analysis
-    
-  } catch (error) {
-    console.error('AI image analysis failed:', error)
-    
-    // Fallback to basic analysis if AI fails
-    console.log('Falling back to basic image analysis')
-    
-    return {
-      aestheticScore: 75,
-      colorAnalysis: {
-        dominantColors: ['#FF6B35', '#004E89', '#FFD23F'],
-        colorHarmony: 'balanced',
-        vibrance: 80,
-        contrast: 75
-      },
-      compositionAnalysis: {
-        rule: 'rule-of-thirds',
-        balance: 80,
-        focusPoints: [{ x: 33, y: 33, confidence: 0.8 }]
-      },
-      safetyAnalysis: {
-        overallScore: 95,
-        appropriateContent: true,
-        issues: []
-      },
-      textOverlayAnalysis: {
-        hasText: false,
-        readabilityScore: 85,
-        suggestions: ['AI analysis unavailable - consider manual review']
-      },
-      tags: ['professional', 'image', 'content'],
-      optimizationSuggestions: ['AI optimization unavailable - manual review recommended']
-    }
   }
+
+  return analysis
 }
 
 export async function POST(request: NextRequest) {
@@ -91,17 +57,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
     // Ensure user exists in database (handles both demo and regular users)
     let existingUser = await prisma.user.findUnique({
       where: { id: session.user.id }
     })
-    
+
     if (!existingUser) {
       // Check if user exists by email (in case of ID mismatch)
       const userByEmail = await prisma.user.findUnique({
         where: { email: session.user.email }
       })
-      
+
       if (userByEmail) {
         console.log(`User exists by email but different ID. Session ID: ${session.user.id}, DB ID: ${userByEmail.id}`)
         existingUser = userByEmail
@@ -199,13 +169,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not access workspace' }, { status: 404 })
     }
 
-    // Real AI image analysis using OpenAI Vision API
-    console.log('Starting real AI image analysis...')
-    const analysis = await analyzeImageWithAI(imageUrl, {
-      platform: platform || undefined,
-      analysisType,
-      brandGuidelineId
-    })
+    // Real AI image analysis using OpenAI Vision API (usage tracked per call)
+    const analysis = await analyzeImageWithAI(
+      imageUrl,
+      {
+        platform: platform || undefined,
+        analysisType,
+        brandGuidelineId
+      },
+      { workspaceId: userWorkspace.workspaceId, userId: existingUser.id }
+    )
 
     // Create asset record first (required for image_analysis)
     const asset = await prisma.asset.create({
@@ -244,21 +217,24 @@ export async function POST(request: NextRequest) {
         brandScore: analysis.brandConsistency?.overallScore || null,
         logoDetected: false,
         brandColors: analysis.colorAnalysis?.dominantColors || null,
-        fontAnalysis: analysis.textOverlayAnalysis || null,
+        fontAnalysis: analysis.textOverlayAnalysis ?? undefined,
         aestheticScore: analysis.aestheticScore || null,
         compositonScore: analysis.compositionAnalysis?.balance || null
       }
     })
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       analysisId: imageAnalysis.id,
       analysis
-    })
+    }))
 
   } catch (error) {
     console.error('Image analysis error:', error)
-    
+
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Invalid request data', details: error.errors },
@@ -273,6 +249,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Get a stored image analysis (purely DB read — no provider call, so no
+// availability guard; responses still carry provider metadata)
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -280,45 +258,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Ensure user exists in database (handles both demo and regular users)
-    let existingUser = await prisma.user.findUnique({
-      where: { id: session.user.id }
-    })
-    
-    if (!existingUser) {
-      // Try finding by email (handles demo user case)
-      const userByEmail = await prisma.user.findUnique({
-        where: { email: session.user.email || 'demo@sociallyhub.com' }
-      })
-      
-      if (userByEmail) {
-        console.log(`User exists by email but different ID. Session ID: ${session.user.id}, DB ID: ${userByEmail.id}`)
-        existingUser = userByEmail
-      } else {
-        // Create user record if it doesn't exist
-        existingUser = await prisma.user.create({
-          data: {
-            id: session.user.id,
-            email: session.user.email || 'unknown@sociallyhub.com',
-            name: session.user.name || 'User',
-            emailVerified: new Date()
-          }
-        })
-      }
-    }
-
     const { searchParams } = new URL(request.url)
     const analysisId = searchParams.get('id')
-    
+
     if (!analysisId) {
       return NextResponse.json({ error: 'Analysis ID required' }, { status: 400 })
     }
 
-    // Get analysis from database
+    // Workspace-scoped lookup (ImageAnalysis rows belong to a workspace, not a user)
+    const memberships = await prisma.userWorkspace.findMany({
+      where: { userId: session.user.id },
+      select: { workspaceId: true }
+    })
+
     const analysis = await prisma.imageAnalysis.findFirst({
       where: {
         id: analysisId,
-        userId: existingUser.id
+        workspaceId: { in: memberships.map(m => m.workspaceId) }
       }
     })
 
@@ -326,10 +282,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Analysis not found' }, { status: 404 })
     }
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       analysis
-    })
+    }))
 
   } catch (error) {
     console.error('Get image analysis error:', error)

@@ -1,29 +1,15 @@
-import { OpenAI } from 'openai'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+// ADR-0018: shared lazy client replaces the local ADR-0022 Proxy block.
+// getOpenAIClient() is constructed at call time and throws a typed
+// AIUnavailableError when no key is configured (same honest semantics).
+import { getOpenAIClient, getAIModel } from '@/lib/ai/config'
+import { AIUnavailableError } from '@/lib/ai/availability'
 
-// LAZY client (ADR-0022 build fix): constructing OpenAI at module scope
-// throws when OPENAI_API_KEY is unset, which killed `next build` page-data
-// collection in key-less environments (Docker image build, CI). The Proxy
-// defers construction to first USE; call sites are unchanged. Honest
-// unavailability policy is ADR-0018 scope.
-let _openaiClient: OpenAI | null = null
-function _getOpenAI(): OpenAI {
-  if (!_openaiClient) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not set — AI features are unavailable')
-    }
-    _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  }
-  return _openaiClient
-}
-const openai = new Proxy({} as OpenAI, {
-  get(_t, prop) {
-    const c = _getOpenAI() as unknown as Record<PropertyKey, unknown>
-    const v = c[prop]
-    return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(c) : v
-  },
-})
+// AIUsageTracking NOTE: no usage rows are written in this file. The
+// completions call site (analyzeSentiment(content, options)) has NEITHER a
+// workspaceId NOR a userId in its call context — both are REQUIRED fields on
+// AIUsageTracking, so a row cannot be written without fabricating identity.
 
 // Sentiment analysis result schema
 const sentimentResultSchema = z.object({
@@ -75,8 +61,9 @@ export class SentimentAnalyzer {
     try {
       const prompt = this.buildSentimentPrompt(content, options)
       
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -102,8 +89,11 @@ export class SentimentAnalyzer {
 
       return result
     } catch (error) {
+      // Typed unavailability propagates so routes can answer an honest 503
+      // instead of silently serving the keyword fallback.
+      if (error instanceof AIUnavailableError) throw error
       console.error('Sentiment analysis failed:', error)
-      
+
       // Fallback to basic analysis
       return this.getFallbackSentiment(content, options)
     }
@@ -127,6 +117,7 @@ export class SentimentAnalyzer {
           const result = await this.analyzeSentiment(item.text, item.options)
           return { id: item.id, result }
         } catch (error) {
+          if (error instanceof AIUnavailableError) throw error
           console.error(`Failed to analyze sentiment for item ${item.id}:`, error)
           return {
             id: item.id,

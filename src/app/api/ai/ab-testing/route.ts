@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { abTestingService } from '@/lib/ai/ab-testing-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ABTestType, ABTestStatus, SocialProvider } from '@prisma/client'
@@ -35,17 +36,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // ADR-0018: variant generation calls the AI provider — no provider
+    // configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId: session.user.id },
       include: { workspace: true }
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ 
-        error: 'No workspace found', 
-        debug: { userId: session.user.id },
-        help: 'Make sure you are logged in with the demo account: demo@sociallyhub.com / demo123456'
-      }, { status: 404 })
+      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -61,34 +63,38 @@ export async function POST(request: NextRequest) {
         ...validatedData
       })
 
-      // Track AI usage
+      // Track AI usage (A/B variant generation is content generation).
+      // ADR-0018 honesty: no fabricated token/cost estimates — real counts are
+      // tracked at the provider boundary; this row records the call itself.
       await prisma.aIUsageTracking.create({
         data: {
           workspaceId: userWorkspace.workspaceId,
           userId: session.user.id,
-          featureType: 'AB_TEST_CREATION',
-          tokensUsed: 500, // Estimated tokens for variant generation
-          costCents: 2, // Estimated cost
+          featureType: 'CONTENT_GENERATION',
           responseTimeMs: Date.now() - startTime,
           successful: true
         }
       })
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: {
           testId,
           message: 'A/B test created successfully with AI-generated variants'
         }
-      })
+      }))
 
     } catch (aiError) {
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      const mapped = mapAIError(aiError)
+      if (mapped) return mapped
+
       // Track failed usage
       await prisma.aIUsageTracking.create({
         data: {
           workspaceId: userWorkspace.workspaceId,
           userId: session.user.id,
-          featureType: 'AB_TEST_CREATION',
+          featureType: 'CONTENT_GENERATION',
           responseTimeMs: Date.now() - startTime,
           successful: false,
           errorMessage: aiError instanceof Error ? aiError.message : 'Unknown error'
@@ -102,6 +108,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',
@@ -116,7 +125,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Get A/B Tests for workspace
+// Get A/B Tests for workspace (purely DB read — no provider call, so no
+// availability guard; responses still carry provider metadata)
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -195,7 +205,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         tests: testsWithMetrics,
@@ -206,7 +216,7 @@ export async function GET(request: NextRequest) {
           hasMore: offset + limit < total
         }
       }
-    })
+    }))
 
   } catch (error) {
     console.error('Get A/B tests API error:', error)

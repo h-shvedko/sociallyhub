@@ -1,5 +1,12 @@
-import { openai } from '@/lib/ai/config'
+import { getOpenAIClient, getAIModel } from '@/lib/ai/config'
+import { AIUnavailableError } from '@/lib/ai/availability'
 import { prisma } from '@/lib/prisma'
+
+// AIUsageTracking NOTE: no usage rows are written in this file because the
+// entire public call chain (generateResponse(workspaceId, ...)) carries no
+// userId, and AIUsageTracking.userId is a REQUIRED field — writing a row
+// would mean fabricating a user attribution. If a userId is ever threaded
+// through the callers, add the write at the two completions call sites below.
 import { Platform, ResponseStatus, ResponseTone, ResponseType } from '@prisma/client'
 import { z } from 'zod'
 
@@ -107,6 +114,7 @@ export class SmartResponseSystem {
       
       return responses
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error generating smart responses:', error)
       throw new Error('Failed to generate smart responses')
     }
@@ -184,8 +192,9 @@ Return analysis as JSON with structured insights.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -203,6 +212,7 @@ Return analysis as JSON with structured insights.
       const response = completion.choices[0]?.message?.content
       return response ? JSON.parse(response) : {}
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error analyzing message:', error)
       return {
         intent: 'general_inquiry',
@@ -278,8 +288,9 @@ Return as JSON with "responses" array.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -304,8 +315,9 @@ Return as JSON with "responses" array.
 
       return validatedResponse.responses
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error generating AI responses:', error)
-      
+
       // Fallback responses
       return this.getFallbackResponses(messageContext, options)
     }

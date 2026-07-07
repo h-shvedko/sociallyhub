@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { abTestingService } from '@/lib/ai/ab-testing-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ABTestStatus } from '@prisma/client'
@@ -31,6 +32,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ test
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // ADR-0018: analyze/optimize actions call the AI provider — no provider
+    // configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
 
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId: session.user.id },
@@ -111,15 +117,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ test
           const insights = await abTestingService.analyzeTestResults(params.testId)
           result.insights = insights
           result.message = 'A/B test analysis completed'
-          
-          // Track AI usage for analysis
+
+          // Track AI usage for analysis (closest valid AIFeatureType; the old
+          // 'AB_TEST_ANALYSIS' literal is not in the enum and always threw).
+          // ADR-0018 honesty: no fabricated token/cost estimates.
           await prisma.aIUsageTracking.create({
             data: {
               workspaceId: userWorkspace.workspaceId,
               userId: session.user.id,
-              featureType: 'AB_TEST_ANALYSIS',
-              tokensUsed: 300,
-              costCents: 1,
+              featureType: 'PERFORMANCE_PREDICTION',
               responseTimeMs: Date.now() - startTime,
               successful: true
             }
@@ -180,19 +186,23 @@ export async function POST(request: NextRequest, props: { params: Promise<{ test
         )
       }
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: result
-      })
+      }))
 
     } catch (actionError) {
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      const mapped = mapAIError(actionError)
+      if (mapped) return mapped
+
       // Track failed AI usage for analysis actions
       if (action === 'analyze') {
         await prisma.aIUsageTracking.create({
           data: {
             workspaceId: userWorkspace.workspaceId,
             userId: session.user.id,
-            featureType: 'AB_TEST_ANALYSIS',
+            featureType: 'PERFORMANCE_PREDICTION',
             responseTimeMs: Date.now() - startTime,
             successful: false,
             errorMessage: actionError instanceof Error ? actionError.message : 'Unknown error'
@@ -207,6 +217,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ test
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',

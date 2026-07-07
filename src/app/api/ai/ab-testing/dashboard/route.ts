@@ -3,10 +3,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { withAIMeta } from '@/lib/ai/route-guard'
 import { prisma } from '@/lib/prisma'
 import { abTestingService } from '@/lib/ai/ab-testing-service'
 import { ABTestStatus, ABTestType, SocialProvider } from '@prisma/client'
 
+// Purely DB read (aggregates stored test rows) — no provider call, so no
+// availability guard; responses still carry provider metadata via withAIMeta.
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -49,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Get test recommendations
     const recommendations = await getTestRecommendations(userWorkspace.workspaceId)
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         summary: dashboardData.summary,
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
         recommendations,
         timeframe
       }
-    })
+    }))
 
   } catch (error) {
     console.error('A/B testing dashboard API error:', error)

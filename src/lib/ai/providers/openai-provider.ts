@@ -11,6 +11,7 @@ import {
   AIUsageMetrics 
 } from '../types'
 import { RateLimiter } from '../rate-limiter'
+import { estimateCostCents, getAIModel } from '../config'
 
 export class OpenAIProvider implements AIProvider {
   private client: OpenAI
@@ -33,10 +34,11 @@ export class OpenAIProvider implements AIProvider {
     await this.rateLimiter.acquire()
 
     const systemPrompt = this.buildContentGenerationPrompt(options)
-    
+    const model = getAIModel()
+
     try {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
@@ -50,9 +52,13 @@ export class OpenAIProvider implements AIProvider {
       const content = response.choices[0]?.message?.content || ''
       const usage: AIUsageMetrics = {
         tokensUsed: response.usage?.total_tokens || 0,
-        costCents: this.calculateCost(response.usage?.total_tokens || 0, 'gpt-4o-mini'),
+        costCents: estimateCostCents(
+          model,
+          response.usage?.prompt_tokens || 0,
+          response.usage?.completion_tokens || 0
+        ),
         responseTimeMs: Date.now() - startTime,
-        model: 'gpt-4o-mini'
+        model
       }
 
       return { content, usage }
@@ -80,9 +86,11 @@ export class OpenAIProvider implements AIProvider {
     ${options.industry ? `- Focus on ${options.industry} industry` : ''}
     ${options.location ? `- Include location-based hashtags for ${options.location}` : ''}`
 
+    const model = getAIModel()
+
     try {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Generate hashtags for this content: "${options.content}"` }
@@ -100,9 +108,13 @@ export class OpenAIProvider implements AIProvider {
 
       const usage: AIUsageMetrics = {
         tokensUsed: response.usage?.total_tokens || 0,
-        costCents: this.calculateCost(response.usage?.total_tokens || 0, 'gpt-4o-mini'),
+        costCents: estimateCostCents(
+          model,
+          response.usage?.prompt_tokens || 0,
+          response.usage?.completion_tokens || 0
+        ),
         responseTimeMs: Date.now() - startTime,
-        model: 'gpt-4o-mini'
+        model
       }
 
       return { hashtags, usage }
@@ -137,9 +149,11 @@ export class OpenAIProvider implements AIProvider {
     
     Return only the JSON, no explanations.`
 
+    const model = getAIModel()
+
     try {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: content }
@@ -153,9 +167,13 @@ export class OpenAIProvider implements AIProvider {
 
       const usage: AIUsageMetrics = {
         tokensUsed: response.usage?.total_tokens || 0,
-        costCents: this.calculateCost(response.usage?.total_tokens || 0, 'gpt-4o-mini'),
+        costCents: estimateCostCents(
+          model,
+          response.usage?.prompt_tokens || 0,
+          response.usage?.completion_tokens || 0
+        ),
         responseTimeMs: Date.now() - startTime,
-        model: 'gpt-4o-mini'
+        model
       }
 
       return { analysis, usage }
@@ -183,9 +201,11 @@ export class OpenAIProvider implements AIProvider {
     
     Return only the optimized content, no explanations.`
 
+    const model = getAIModel()
+
     try {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: content }
@@ -198,9 +218,13 @@ export class OpenAIProvider implements AIProvider {
 
       const usage: AIUsageMetrics = {
         tokensUsed: response.usage?.total_tokens || 0,
-        costCents: this.calculateCost(response.usage?.total_tokens || 0, 'gpt-4o-mini'),
+        costCents: estimateCostCents(
+          model,
+          response.usage?.prompt_tokens || 0,
+          response.usage?.completion_tokens || 0
+        ),
         responseTimeMs: Date.now() - startTime,
-        model: 'gpt-4o-mini'
+        model
       }
 
       return { content: optimizedContent, usage }
@@ -239,15 +263,17 @@ export class OpenAIProvider implements AIProvider {
     
     Return only the JSON, no explanations.`
 
+    const model = getAIModel()
+
     try {
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { 
-            role: 'user', 
+          {
+            role: 'user',
             content: `Predict performance for this ${platform} content: "${content}"
-            ${historicalData ? `Historical context: ${JSON.stringify(historicalData.slice(0, 5))}` : ''}` 
+            ${historicalData ? `Historical context: ${JSON.stringify(historicalData.slice(0, 5))}` : ''}`
           }
         ],
         max_tokens: 200,
@@ -259,9 +285,13 @@ export class OpenAIProvider implements AIProvider {
 
       const usage: AIUsageMetrics = {
         tokensUsed: response.usage?.total_tokens || 0,
-        costCents: this.calculateCost(response.usage?.total_tokens || 0, 'gpt-4o-mini'),
+        costCents: estimateCostCents(
+          model,
+          response.usage?.prompt_tokens || 0,
+          response.usage?.completion_tokens || 0
+        ),
         responseTimeMs: Date.now() - startTime,
-        model: 'gpt-4o-mini'
+        model
       }
 
       return { prediction, usage }
@@ -319,28 +349,6 @@ export class OpenAIProvider implements AIProvider {
       TIKTOK: "- Trend-aware content\n- Quick hooks in first 3 seconds\n- Use popular sounds\n- Vertical video format"
     }
     
-    return guidelines[platform] || "Follow general social media best practices"
-  }
-
-  private calculateCost(tokens: number, model: string): number {
-    // GPT-4o-mini pricing (approximate as of 2024)
-    const prices = {
-      'gpt-4o-mini': {
-        input: 0.00015, // per 1K tokens
-        output: 0.0006  // per 1K tokens
-      }
-    }
-    
-    const modelPricing = prices[model as keyof typeof prices]
-    if (!modelPricing) return 0
-    
-    // Assuming 50/50 split for input/output tokens
-    const inputTokens = tokens * 0.5
-    const outputTokens = tokens * 0.5
-    
-    const inputCost = (inputTokens / 1000) * modelPricing.input
-    const outputCost = (outputTokens / 1000) * modelPricing.output
-    
-    return Math.round((inputCost + outputCost) * 100) // Convert to cents
+    return guidelines[platform as keyof typeof guidelines] || "Follow general social media best practices"
   }
 }

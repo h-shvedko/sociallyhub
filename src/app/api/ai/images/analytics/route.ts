@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { withAIMeta } from '@/lib/ai/route-guard'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -10,6 +11,9 @@ const visualAnalyticsSchema = z.object({
   metricType: z.enum(['engagement', 'reach', 'aesthetics', 'brand_consistency']).optional()
 })
 
+// Purely DB read (aggregates stored ImageAnalysis / VisualPerformanceMetric
+// rows) — no provider call, so no availability guard; responses still carry
+// provider metadata via withAIMeta.
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -168,7 +172,7 @@ export async function GET(request: NextRequest) {
       avgBrandConsistency: stats.avgBrandConsistency / stats.totalPosts || 0
     }))
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       analytics: {
         summary: {
@@ -188,7 +192,7 @@ export async function GET(request: NextRequest) {
         platformComparison: platformStats,
         recentMetrics: visualMetrics.slice(0, 10)
       }
-    })
+    }))
 
   } catch (error) {
     console.error('Visual analytics error:', error)

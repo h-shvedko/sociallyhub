@@ -4,10 +4,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { aiService } from '@/lib/ai/ai-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SocialProvider } from '@prisma/client'
-import { LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 const optimizeContentSchema = z.object({
   content: z.string().min(1).max(5000),
@@ -26,6 +26,10 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
 
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId: session.user.id },
@@ -64,7 +68,7 @@ export async function POST(request: NextRequest) {
         validatedData.platform
       )
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: {
           originalContent: validatedData.content,
@@ -79,14 +83,12 @@ export async function POST(request: NextRequest) {
             model: result.usage.model
           }
         }
-      })
+      }))
 
     } catch (aiError) {
-      // ADR-0019: plan limit reached is not a service failure — map to 402
-      // (limit_exceeded) without recording a failed-usage row.
-      if (aiError instanceof LimitExceededError) {
-        return limitExceededResponse(aiError)
-      }
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      const mapped = mapAIError(aiError)
+      if (mapped) return mapped
 
       // Track failed usage
       await prisma.aIUsageTracking.create({
@@ -114,6 +116,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',

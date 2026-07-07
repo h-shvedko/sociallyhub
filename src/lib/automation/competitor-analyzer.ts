@@ -1,5 +1,12 @@
-import { openai } from '@/lib/ai/config'
+import { getOpenAIClient, getAIModel } from '@/lib/ai/config'
+import { AIUnavailableError } from '@/lib/ai/availability'
 import { prisma } from '@/lib/prisma'
+
+// AIUsageTracking NOTE: no usage rows are written in this file. All public
+// entry points (analyzeCompetitor / analyzeMultipleCompetitors /
+// generateCompetitiveReport) carry a workspaceId but NO userId, and
+// AIUsageTracking.userId is a REQUIRED field — a row cannot be written
+// without fabricating a user.
 import { Platform, CompetitorAnalysisStatus, ContentType } from '@prisma/client'
 import { z } from 'zod'
 
@@ -115,6 +122,7 @@ export class CompetitorAnalyzer {
       
       return analysis
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error analyzing competitor:', error)
       throw new Error('Failed to analyze competitor')
     }
@@ -241,8 +249,9 @@ Return your analysis as a JSON object following the required schema.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -267,8 +276,9 @@ Return your analysis as a JSON object following the required schema.
 
       return validatedResponse.analysis
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error in AI competitor analysis:', error)
-      
+
       // Fallback analysis
       return this.getFallbackAnalysis(competitorData, ourBrandContext)
     }
@@ -304,8 +314,9 @@ Focus on actionable insights that can be implemented in social media strategy.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -341,6 +352,7 @@ Focus on actionable insights that can be implemented in social media strategy.
           .slice(0, 5)
       }
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error in comparative analysis:', error)
       return {
         marketPosition: 'Comparative analysis not available',
@@ -508,8 +520,9 @@ Format as a professional business report suitable for stakeholders.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -525,6 +538,7 @@ Format as a professional business report suitable for stakeholders.
 
       return completion.choices[0]?.message?.content || 'Report generation failed'
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error generating competitive report:', error)
       throw new Error('Failed to generate competitive report')
     }

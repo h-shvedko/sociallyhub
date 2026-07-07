@@ -1,8 +1,55 @@
 // AI-Powered A/B Testing Service
 
-import { openai } from './config'
+import { getOpenAIClient, getAIModel, estimateCostCents } from './config'
+import { AIUnavailableError } from './availability'
 import { prisma } from '@/lib/prisma'
 import { ABTestType, ABTestStatus, SocialProvider } from '@prisma/client'
+
+/**
+ * Call-context identity for AIUsageTracking rows. Both fields are REQUIRED
+ * (non-nullable FKs) on the AIUsageTracking model, so a usage row can only
+ * be written when the caller genuinely has both — never fabricated.
+ */
+export interface AIUsageContext {
+  workspaceId: string
+  userId: string
+}
+
+/**
+ * Best-effort usage write. NOTE: the AIFeatureType enum has no A/B-testing
+ * value (CONTENT_GENERATION | HASHTAG_SUGGESTION | TONE_ANALYSIS |
+ * PERFORMANCE_PREDICTION | IMAGE_ANALYSIS | TRANSLATION), so A/B variant
+ * generation is recorded as CONTENT_GENERATION rather than inventing an
+ * unpersistable 'ab_testing' value.
+ */
+async function trackABTestingUsage(params: {
+  context: AIUsageContext
+  model: string
+  tokensUsed: number
+  costCents: number
+  responseTimeMs: number
+  successful: boolean
+  errorMessage?: string
+}): Promise<void> {
+  try {
+    await prisma.aIUsageTracking.create({
+      data: {
+        workspaceId: params.context.workspaceId,
+        userId: params.context.userId,
+        featureType: 'CONTENT_GENERATION',
+        tokensUsed: params.tokensUsed,
+        costCents: params.costCents,
+        responseTimeMs: params.responseTimeMs,
+        model: params.model,
+        successful: params.successful,
+        errorMessage: params.errorMessage
+      }
+    })
+  } catch (trackingError) {
+    // Tracking must never break the primary flow
+    console.error('Failed to record AI usage for A/B testing:', trackingError)
+  }
+}
 
 export interface ABTestConfig {
   workspaceId: string
@@ -53,19 +100,28 @@ class ABTestingService {
     controlContent: string,
     platform: SocialProvider,
     variantCount: number = 3,
-    testType: ABTestType = ABTestType.CONTENT
+    testType: ABTestType = ABTestType.CONTENT,
+    // Optional trailing param (backward-compatible): when provided, a real
+    // AIUsageTracking row is written for the completions call. Existing
+    // 4-arg callers are unaffected; without it no row can be written because
+    // workspaceId/userId are required on the model.
+    usageContext?: AIUsageContext
   ): Promise<ContentVariant[]> {
-    
+
     const prompt = this.buildVariantGenerationPrompt(
-      controlContent, 
-      platform, 
-      testType, 
+      controlContent,
+      platform,
+      testType,
       variantCount
     )
-    
+
+    const model = getAIModel()
+    const startTime = Date.now()
+
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const response = await client.chat.completions.create({
+        model,
         messages: [
           {
             role: 'system',
@@ -80,12 +136,42 @@ class ABTestingService {
         max_tokens: 2000
       })
 
+      if (usageContext) {
+        await trackABTestingUsage({
+          context: usageContext,
+          model,
+          tokensUsed: response.usage?.total_tokens ?? 0,
+          costCents: estimateCostCents(
+            model,
+            response.usage?.prompt_tokens ?? 0,
+            response.usage?.completion_tokens ?? 0
+          ),
+          responseTimeMs: Date.now() - startTime,
+          successful: true
+        })
+      }
+
       const result = response.choices[0]?.message?.content
       if (!result) throw new Error('No response from AI service')
 
       return this.parseVariantResponse(result)
-      
+
     } catch (error) {
+      // Typed unavailability propagates so routes can answer an honest 503
+      if (error instanceof AIUnavailableError) throw error
+
+      if (usageContext) {
+        await trackABTestingUsage({
+          context: usageContext,
+          model,
+          tokensUsed: 0,
+          costCents: 0,
+          responseTimeMs: Date.now() - startTime,
+          successful: false,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        })
+      }
+
       console.error('AI variant generation error:', error)
       // Fallback to rule-based variant generation
       return this.generateFallbackVariants(controlContent, variantCount)
@@ -97,12 +183,13 @@ class ABTestingService {
    */
   async createABTest(config: ABTestConfig): Promise<string> {
     
-    // Generate AI variants
+    // Generate AI variants (config carries workspaceId/userId → usage tracked)
     const variants = await this.generateContentVariants(
       config.controlContent,
       config.platform || SocialProvider.TWITTER,
       3,
-      config.testType
+      config.testType,
+      { workspaceId: config.workspaceId, userId: config.userId }
     )
 
     // Calculate traffic split
@@ -622,9 +709,14 @@ Provide:
 Format as JSON with keys: keyInsights[], recommendations[], nextTestSuggestions[]
 `
 
+    // AIUsageTracking NOT written here: this is reached from
+    // analyzeTestResults(testId) where only abTest.workspaceId is available —
+    // userId is a REQUIRED field on AIUsageTracking and no acting user exists
+    // in this call context, so a row cannot be written without fabricating one.
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const response = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -652,8 +744,9 @@ Format as JSON with keys: keyInsights[], recommendations[], nextTestSuggestions[
       }
 
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('AI insights generation error:', error)
-      
+
       // Fallback insights
       return {
         winningVariant: statisticalAnalysis.bestVariant,

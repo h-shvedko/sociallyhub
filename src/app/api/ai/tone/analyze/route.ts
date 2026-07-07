@@ -3,10 +3,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
-import { simpleAIService } from '@/lib/ai/simple-ai-service'
+import { aiService } from '@/lib/ai/ai-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { assertWithinLimit, LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 const analyzeToneSchema = z.object({
   content: z.string().min(1).max(5000),
@@ -16,28 +16,24 @@ const analyzeToneSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
+    const userId = session.user.id
+
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       include: { workspace: true }
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ 
-        error: 'No workspace found', 
-        debug: { userId: session.user.id, mappedUserId: userId },
-        help: 'Make sure you are logged in with the demo account: demo@sociallyhub.com / demo123456'
-      }, { status: 404 })
+      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -59,26 +55,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ADR-0019: this route bypasses the metered aiService (it calls
-    // simpleAIService directly), so enforce the AI-credit limit here.
-    try {
-      await assertWithinLimit(userWorkspace.workspaceId, 'aiCreditsPerMonth')
-    } catch (e) {
-      if (e instanceof LimitExceededError) return limitExceededResponse(e)
-      throw e
-    }
-
     const startTime = Date.now()
 
     try {
-      const result = await simpleAIService.analyzeTone(
+      // ADR-0018: route through the metered aiService (AI-credit limit is
+      // enforced inside aiService.analyzeTone — ADR-0019).
+      const result = await aiService.analyzeTone(
         validatedData.content,
         userWorkspace.workspaceId,
         userId,
         validatedData.postId
       )
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: {
           analysis: {
@@ -96,9 +85,13 @@ export async function POST(request: NextRequest) {
           },
           recommendations: generateToneRecommendations(result.analysis)
         }
-      })
+      }))
 
     } catch (aiError) {
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      const mapped = mapAIError(aiError)
+      if (mapped) return mapped
+
       // Track failed usage
       await prisma.aIUsageTracking.create({
         data: {
@@ -118,6 +111,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',
@@ -132,11 +128,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Get tone analysis history for workspace
+// Get tone analysis history for workspace (purely DB read — no provider call,
+// so no availability guard; responses still carry provider metadata)
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -146,14 +143,8 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const tone = searchParams.get('tone')
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
+      where: { userId: session.user.id },
       include: { workspace: true }
     })
 
@@ -211,7 +202,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         analyses: analyses.map(analysis => ({
@@ -239,7 +230,7 @@ export async function GET(request: NextRequest) {
           hasMore: offset + limit < total
         }
       }
-    })
+    }))
 
   } catch (error) {
     console.error('Get tone analyses API error:', error)

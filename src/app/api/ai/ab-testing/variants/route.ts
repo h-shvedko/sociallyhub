@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { abTestingService } from '@/lib/ai/ab-testing-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ABTestType, SocialProvider } from '@prisma/client'
@@ -30,17 +31,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId: session.user.id },
       include: { workspace: true }
     })
 
     if (!userWorkspace) {
-      return NextResponse.json({ 
-        error: 'No workspace found', 
-        debug: { userId: session.user.id },
-        help: 'Make sure you are logged in with the demo account: demo@sociallyhub.com / demo123456'
-      }, { status: 404 })
+      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -78,20 +79,20 @@ export async function POST(request: NextRequest) {
         })
       )
 
-      // Track AI usage
+      // Track AI usage (variant generation is content generation; the old
+      // 'VARIANT_GENERATION' literal is not in the AIFeatureType enum and
+      // always threw). ADR-0018 honesty: no fabricated token/cost estimates.
       await prisma.aIUsageTracking.create({
         data: {
           workspaceId: userWorkspace.workspaceId,
           userId: session.user.id,
-          featureType: 'VARIANT_GENERATION',
-          tokensUsed: 400 * (validatedData.variantCount || 3), // Estimated tokens
-          costCents: Math.ceil(1.5 * (validatedData.variantCount || 3)), // Estimated cost
+          featureType: 'CONTENT_GENERATION',
           responseTimeMs: Date.now() - startTime,
           successful: true
         }
       })
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: {
           originalContent: validatedData.content,
@@ -104,15 +105,19 @@ export async function POST(request: NextRequest) {
           },
           recommendations: generateVariantRecommendations(variantsWithEstimates)
         }
-      })
+      }))
 
     } catch (aiError) {
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      const mapped = mapAIError(aiError)
+      if (mapped) return mapped
+
       // Track failed usage
       await prisma.aIUsageTracking.create({
         data: {
           workspaceId: userWorkspace.workspaceId,
           userId: session.user.id,
-          featureType: 'VARIANT_GENERATION',
+          featureType: 'CONTENT_GENERATION',
           responseTimeMs: Date.now() - startTime,
           successful: false,
           errorMessage: aiError instanceof Error ? aiError.message : 'Unknown error'
@@ -126,6 +131,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',

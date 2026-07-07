@@ -1,6 +1,13 @@
-import { openai } from './openai-client'
+import { getOpenAIClient, getAIVisionModel, estimateCostCents } from './config'
+import { prisma } from '@/lib/prisma'
 import fs from 'fs'
 import path from 'path'
+
+// Optional per-call context so each vision call is recorded in AIUsageTracking
+export interface ImageAnalysisTrackingContext {
+  workspaceId: string
+  userId: string
+}
 
 export interface ImageAnalysisResult {
   aestheticScore: number
@@ -58,7 +65,13 @@ export interface PlatformOptimizationSuggestions {
 }
 
 export class AIImageAnalyzer {
-  async analyzeImage(imageUrl: string, platform?: string): Promise<ImageAnalysisResult> {
+  async analyzeImage(
+    imageUrl: string,
+    platform?: string,
+    tracking?: ImageAnalysisTrackingContext
+  ): Promise<ImageAnalysisResult> {
+    const startTime = Date.now()
+    const model = getAIVisionModel()
     try {
       // Convert local paths to data URLs or ensure external URLs for OpenAI API
       const processedImageUrl = await this.getImageForOpenAI(imageUrl)
@@ -103,8 +116,11 @@ export class AIImageAnalyzer {
       
       Be specific and actionable in your suggestions.`
 
+      // Lazy client construction (never at module scope — ADR-0022 build lesson);
+      // throws AIUnavailableError when no key is configured.
+      const openai = getOpenAIClient()
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini", // Using gpt-4o-mini for cost efficiency with vision
+        model,
         messages: [
           {
             role: "user",
@@ -126,6 +142,8 @@ export class AIImageAnalyzer {
         max_tokens: 1500,
         temperature: 0.3
       })
+
+      await this.trackVisionUsage(tracking, model, response.usage, true, Date.now() - startTime)
 
       const content = response.choices[0]?.message?.content
       if (!content) {
@@ -153,15 +171,22 @@ export class AIImageAnalyzer {
 
     } catch (error) {
       console.error('OpenAI Vision API error:', error)
-      throw new Error(`Image analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      await this.trackVisionUsage(
+        tracking, model, undefined, false, Date.now() - startTime,
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+      throw error
     }
   }
 
   async getOptimizationSuggestions(
-    imageUrl: string, 
+    imageUrl: string,
     platform: string,
-    currentAnalysis?: ImageAnalysisResult
+    currentAnalysis?: ImageAnalysisResult,
+    tracking?: ImageAnalysisTrackingContext
   ): Promise<PlatformOptimizationSuggestions> {
+    const startTime = Date.now()
+    const model = getAIVisionModel()
     try {
       // Convert local paths to data URLs or ensure external URLs for OpenAI API
       const processedImageUrl = await this.getImageForOpenAI(imageUrl)
@@ -206,8 +231,9 @@ export class AIImageAnalyzer {
       
       Focus on making this image perform better on ${platform} specifically.`
 
+      const openai = getOpenAIClient()
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model,
         messages: [
           {
             role: "user",
@@ -230,6 +256,8 @@ export class AIImageAnalyzer {
         temperature: 0.3
       })
 
+      await this.trackVisionUsage(tracking, model, response.usage, true, Date.now() - startTime)
+
       const content = response.choices[0]?.message?.content
       if (!content) {
         throw new Error('No optimization suggestions from OpenAI')
@@ -250,7 +278,42 @@ export class AIImageAnalyzer {
 
     } catch (error) {
       console.error('OpenAI optimization suggestions error:', error)
-      throw new Error(`Optimization suggestions failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      await this.trackVisionUsage(
+        tracking, model, undefined, false, Date.now() - startTime,
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+      throw error
+    }
+  }
+
+  // Record every vision call in AIUsageTracking (real token counts from the
+  // API response when present, 0 otherwise — never estimated/fabricated).
+  private async trackVisionUsage(
+    tracking: ImageAnalysisTrackingContext | undefined,
+    model: string,
+    usage: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } | undefined | null,
+    successful: boolean,
+    responseTimeMs: number,
+    errorMessage?: string
+  ): Promise<void> {
+    if (!tracking) return
+    try {
+      await prisma.aIUsageTracking.create({
+        data: {
+          workspaceId: tracking.workspaceId,
+          userId: tracking.userId,
+          featureType: 'IMAGE_ANALYSIS',
+          tokensUsed: usage?.total_tokens ?? 0,
+          costCents: estimateCostCents(model, usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0),
+          responseTimeMs,
+          model,
+          successful,
+          errorMessage
+        }
+      })
+    } catch (trackingError) {
+      // Telemetry must never break the analysis call itself
+      console.error('Failed to record image-analysis usage:', trackingError)
     }
   }
 

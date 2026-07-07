@@ -1,5 +1,12 @@
-import { openai } from '@/lib/ai/config'
+import { getOpenAIClient, getAIModel } from '@/lib/ai/config'
+import { AIUnavailableError } from '@/lib/ai/availability'
 import { prisma } from '@/lib/prisma'
+
+// AIUsageTracking NOTE: no usage rows are written in this file. Both public
+// entry points (analyzeContentGaps(workspaceId, ...) and
+// generateActionPlan(workspaceId, gapId)) have a workspaceId but NO userId,
+// and AIUsageTracking.userId is a REQUIRED field — a row cannot be written
+// without fabricating a user. Thread a userId through the callers to enable it.
 import { ContentType, Platform, GapAnalysisStatus } from '@prisma/client'
 import { z } from 'zod'
 
@@ -94,6 +101,7 @@ export class ContentGapAnalyzer {
       
       return gaps
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error analyzing content gaps:', error)
       throw new Error('Failed to analyze content gaps')
     }
@@ -244,8 +252,9 @@ Return your analysis as a JSON object with a "gaps" array.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -270,8 +279,9 @@ Return your analysis as a JSON object with a "gaps" array.
 
       return validatedResponse.gaps
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error in AI gap analysis:', error)
-      
+
       // Fallback analysis
       return this.getFallbackGaps(contentAnalytics, options)
     }
@@ -420,8 +430,9 @@ Make the plan practical and actionable for a social media team.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -437,6 +448,7 @@ Make the plan practical and actionable for a social media team.
 
       return completion.choices[0]?.message?.content || ''
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error generating action plan:', error)
       throw new Error('Failed to generate action plan')
     }

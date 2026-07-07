@@ -1,5 +1,13 @@
-import { openai } from '@/lib/ai/config'
+import { getOpenAIClient, getAIModel, estimateCostCents } from '@/lib/ai/config'
+import { AIUnavailableError } from '@/lib/ai/availability'
 import { prisma } from '@/lib/prisma'
+
+// AIUsageTracking NOTE: usage is tracked for generateImplementationPlan
+// (reached from applyOptimization, which carries both workspaceId AND userId).
+// The performOptimizationAnalysis call site is NOT tracked: its public entry
+// point optimizeContentCalendar(workspaceId, ...) has no userId, and
+// AIUsageTracking.userId is a REQUIRED field — a row cannot be written
+// without fabricating a user.
 import { Platform, ContentType, OptimizationStatus } from '@prisma/client'
 import { z } from 'zod'
 
@@ -108,6 +116,7 @@ export class ContentCalendarOptimizer {
       
       return optimizations
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error optimizing content calendar:', error)
       throw new Error('Failed to optimize content calendar')
     }
@@ -290,8 +299,9 @@ Return your analysis as a JSON object with an "optimizations" array.
 `
 
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model: getAIModel(),
         messages: [
           {
             role: 'system',
@@ -316,8 +326,9 @@ Return your analysis as a JSON object with an "optimizations" array.
 
       return validatedResponse.optimizations
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
       console.error('Error in AI optimization analysis:', error)
-      
+
       // Fallback optimizations
       return this.getFallbackOptimizations(calendarAnalytics, options)
     }
@@ -432,8 +443,8 @@ Return your analysis as a JSON object with an "optimizations" array.
       throw new Error('Optimization not found')
     }
 
-    // Generate implementation plan
-    const implementationPlan = await this.generateImplementationPlan(optimization)
+    // Generate implementation plan (workspaceId + userId available → usage tracked)
+    const implementationPlan = await this.generateImplementationPlan(optimization, workspaceId, userId)
 
     // Update optimization status
     await prisma.contentCalendarOptimization.update({
@@ -448,7 +459,7 @@ Return your analysis as a JSON object with an "optimizations" array.
     return implementationPlan
   }
 
-  private async generateImplementationPlan(optimization: any) {
+  private async generateImplementationPlan(optimization: any, workspaceId: string, userId: string) {
     const prompt = `
 Create a detailed step-by-step implementation plan for this calendar optimization:
 
@@ -470,9 +481,13 @@ Create a detailed implementation plan that includes:
 Make it practical and actionable for a social media team.
 `
 
+    const model = getAIModel()
+    const startTime = Date.now()
+
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+      const client = getOpenAIClient()
+      const completion = await client.chat.completions.create({
+        model,
         messages: [
           {
             role: 'system',
@@ -486,10 +501,72 @@ Make it practical and actionable for a social media team.
         temperature: 0.4
       })
 
+      await this.trackUsage({
+        workspaceId,
+        userId,
+        model,
+        tokensUsed: completion.usage?.total_tokens ?? 0,
+        costCents: estimateCostCents(
+          model,
+          completion.usage?.prompt_tokens ?? 0,
+          completion.usage?.completion_tokens ?? 0
+        ),
+        responseTimeMs: Date.now() - startTime,
+        successful: true
+      })
+
       return completion.choices[0]?.message?.content || ''
     } catch (error) {
+      if (error instanceof AIUnavailableError) throw error
+
+      await this.trackUsage({
+        workspaceId,
+        userId,
+        model,
+        tokensUsed: 0,
+        costCents: 0,
+        responseTimeMs: Date.now() - startTime,
+        successful: false,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      })
+
       console.error('Error generating implementation plan:', error)
       return 'Implementation plan generation failed. Please create manually based on optimization recommendations.'
+    }
+  }
+
+  /**
+   * Best-effort AIUsageTracking write. NOTE: AIFeatureType has no
+   * calendar/automation-specific value, so this is recorded as
+   * CONTENT_GENERATION (the closest valid enum member).
+   */
+  private async trackUsage(params: {
+    workspaceId: string
+    userId: string
+    model: string
+    tokensUsed: number
+    costCents: number
+    responseTimeMs: number
+    successful: boolean
+    errorMessage?: string
+  }): Promise<void> {
+    try {
+      await prisma.aIUsageTracking.create({
+        data: {
+          workspaceId: params.workspaceId,
+          userId: params.userId,
+          featureType: 'CONTENT_GENERATION',
+          tokensUsed: params.tokensUsed,
+          costCents: params.costCents,
+          responseTimeMs: params.responseTimeMs,
+          model: params.model,
+          successful: params.successful,
+          errorMessage: params.errorMessage
+        }
+      })
+    } catch (trackingError) {
+      // Tracking must never break the primary flow
+      console.error('Failed to record AI usage for calendar optimization:', trackingError)
     }
   }
 

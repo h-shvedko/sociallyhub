@@ -4,10 +4,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { aiService } from '@/lib/ai/ai-service'
+import { guardAIAvailability, withAIMeta, mapAIError } from '@/lib/ai/route-guard'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SocialProvider } from '@prisma/client'
-import { LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 const generateContentSchema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -29,12 +29,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's workspace (handle demo user ID compatibility)
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
+    // ADR-0018: no provider configured → honest 503 before any work
+    const unavailable = guardAIAvailability()
+    if (unavailable) return unavailable
+
+    // ADR-0018: use the authenticated user id directly (demo identity is
+    // ADR-0025 scope — no hardcoded remaps)
+    const userId = session.user.id
+
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: { userId },
       include: { workspace: true }
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
         userId
       )
 
-      return NextResponse.json({
+      return NextResponse.json(withAIMeta({
         success: true,
         data: {
           content: result.content,
@@ -81,14 +83,14 @@ export async function POST(request: NextRequest) {
             model: result.usage.model
           }
         }
-      })
+      }))
 
     } catch (aiError) {
-      // ADR-0019: plan limit reached is not a service failure — map to 402
-      // (limit_exceeded) without recording a failed-usage row.
-      if (aiError instanceof LimitExceededError) {
-        return limitExceededResponse(aiError)
-      }
+      // AIUnavailableError → 503, LimitExceededError → 402, quota → 429
+      // (mapped before recording a failed-usage row — a plan limit or a
+      // missing provider is not a service failure)
+      const mapped = mapAIError(aiError)
+      if (mapped) return mapped
 
       // Track failed usage
       await aiService['trackUsage']({
@@ -114,6 +116,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
+    const mapped = mapAIError(error)
+    if (mapped) return mapped
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({
         error: 'Invalid request data',
@@ -128,7 +133,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Get content generation history
+// Get content generation history (purely DB read — no provider call, so no
+// availability guard; responses still carry provider metadata)
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -142,14 +148,8 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const platform = searchParams.get('platform') as SocialProvider | null
 
-    // Handle demo user ID compatibility
-    let userId = session.user.id
-    if (userId === 'demo-user-id') {
-      userId = 'cmesceft00000r6gjl499x7dl' // Use actual demo user ID from database
-    }
-    
     const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: { userId },
+      where: { userId: session.user.id },
       include: { workspace: true }
     })
 
@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({
+    return NextResponse.json(withAIMeta({
       success: true,
       data: {
         suggestions: suggestions.map(s => ({
@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
           hasMore: offset + limit < total
         }
       }
-    })
+    }))
 
   } catch (error) {
     console.error('Get content suggestions API error:', error)

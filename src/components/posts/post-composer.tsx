@@ -37,6 +37,7 @@ import { ToneAnalyzer } from "@/components/ai/tone-analyzer"
 import { PerformancePredictor } from "@/components/ai/performance-predictor"
 import { ImageAnalyzer } from "@/components/ai/visual/image-analyzer"
 import { ImageOptimizer } from "@/components/ai/visual/image-optimizer"
+import { useAIStatus } from "@/hooks/use-ai-status"
 import { cn } from "@/lib/utils"
 
 // Social platform configurations
@@ -169,10 +170,14 @@ export default function PostComposer({
   const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  // AI Features State
+  // AI Features State (availability-gated, ADR-0018: honest 'unavailable' beats fake output)
   const [showAIAssistant, setShowAIAssistant] = useState(false)
   const [showAIAnalysis, setShowAIAnalysis] = useState(false)
   const [showVisualOptimization, setShowVisualOptimization] = useState(false)
+  const { status: aiStatus } = useAIStatus()
+  const aiUnavailable = aiStatus !== null && aiStatus.provider === 'none'
+  const aiSimulated = aiStatus?.provider === 'mock'
+  const aiUnavailableHint = 'AI unavailable — configure OPENAI_API_KEY'
 
   // Character count for selected platforms
   const getCharacterCounts = () => {
@@ -665,41 +670,56 @@ export default function PostComposer({
                 )}
               </Button>
               
-              {/* AI Assistant Buttons */}
+              {/* AI Assistant Buttons (disabled with an honest hint when no provider is configured) */}
               <Button
                 type="button"
                 variant={showAIAssistant ? "default" : "outline"}
                 size="sm"
                 className="flex items-center gap-2"
                 onClick={() => setShowAIAssistant(!showAIAssistant)}
+                disabled={aiUnavailable}
+                title={aiUnavailable ? aiUnavailableHint : ""}
               >
                 <Sparkles className="h-4 w-4" />
                 AI Assistant
               </Button>
-              
+
               <Button
                 type="button"
                 variant={showAIAnalysis ? "default" : "outline"}
                 size="sm"
                 className="flex items-center gap-2"
                 onClick={() => setShowAIAnalysis(!showAIAnalysis)}
+                disabled={aiUnavailable}
+                title={aiUnavailable ? aiUnavailableHint : ""}
               >
                 <Brain className="h-4 w-4" />
                 AI Analysis
               </Button>
-              
+
               <Button
                 type="button"
                 variant={showVisualOptimization ? "default" : "outline"}
                 size="sm"
                 className="flex items-center gap-2"
                 onClick={() => setShowVisualOptimization(!showVisualOptimization)}
-                disabled={content.media.length === 0}
-                title={content.media.length === 0 ? "Add images to use visual optimization" : ""}
+                disabled={content.media.length === 0 || aiUnavailable}
+                title={
+                  aiUnavailable
+                    ? aiUnavailableHint
+                    : content.media.length === 0
+                      ? "Add images to use visual optimization"
+                      : ""
+                }
               >
                 <Image className="h-4 w-4" />
                 Visual AI
               </Button>
+              {aiUnavailable && (
+                <span className="text-xs text-muted-foreground self-center">
+                  {aiUnavailableHint}
+                </span>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -761,42 +781,80 @@ export default function PostComposer({
       </Card>
 
       {/* AI Assistant Section */}
-      {showAIAssistant && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <AIContentGenerator
-            onContentGenerated={handleAIContentGenerated}
-            selectedPlatforms={Array.from(selectedPlatforms)}
-            initialPrompt=""
-          />
-          
-          <HashtagSuggestions
-            content={content.text}
-            selectedPlatforms={Array.from(selectedPlatforms)}
-            currentHashtags={content.hashtags}
-            onHashtagAdd={handleHashtagAdd}
-            onHashtagRemove={handleHashtagRemove}
-          />
+      {showAIAssistant && !aiUnavailable && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              AI Assistant
+            </h3>
+            {aiSimulated && (
+              <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">
+                Simulated (demo)
+              </Badge>
+            )}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <AIContentGenerator
+              onContentGenerated={handleAIContentGenerated}
+              selectedPlatforms={Array.from(selectedPlatforms)}
+              initialPrompt=""
+            />
+
+            <HashtagSuggestions
+              content={content.text}
+              selectedPlatforms={Array.from(selectedPlatforms)}
+              currentHashtags={content.hashtags}
+              onHashtagAdd={handleHashtagAdd}
+              onHashtagRemove={handleHashtagRemove}
+            />
+          </div>
         </div>
       )}
 
       {/* AI Analysis Section */}
-      {showAIAnalysis && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ToneAnalyzer
-            content={content.text}
-            postId={postId}
-          />
-          
-          <PerformancePredictor
-            content={content.text}
-            selectedPlatforms={Array.from(selectedPlatforms)}
-            postId={postId}
-          />
+      {showAIAnalysis && !aiUnavailable && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              AI Analysis
+            </h3>
+            {aiSimulated && (
+              <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">
+                Simulated (demo)
+              </Badge>
+            )}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ToneAnalyzer
+              content={content.text}
+              postId={postId}
+            />
+
+            <PerformancePredictor
+              content={content.text}
+              selectedPlatforms={Array.from(selectedPlatforms)}
+              postId={postId}
+            />
+          </div>
         </div>
       )}
 
       {/* Visual Optimization Section */}
-      {showVisualOptimization && content.media.length > 0 && (
+      {showVisualOptimization && !aiUnavailable && content.media.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Image className="h-4 w-4" />
+              Visual AI
+            </h3>
+            {aiSimulated && (
+              <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-100">
+                Simulated (demo)
+              </Badge>
+            )}
+          </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {!workspaceId ? (
             <div className="col-span-2 text-center p-4 text-muted-foreground">
@@ -823,6 +881,7 @@ export default function PostComposer({
           />
             </>
           )}
+        </div>
         </div>
       )}
 
