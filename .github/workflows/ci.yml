@@ -418,10 +418,9 @@ jobs:
   # (postgresql://sociallyhub:password@localhost:5432/sociallyhub_test).
   # --------------------------------------------------------------------------
   e2e:
-    name: E2E smoke (advisory until ADR-0021 — unverified specs; needs Track C compose)
+    name: E2E smoke (gate — chromium auth spec vs the prod image)
     runs-on: ubuntu-latest
     needs: [docker-image]
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
