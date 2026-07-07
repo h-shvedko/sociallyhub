@@ -504,7 +504,20 @@ jobs:
           APP_IMAGE: ghcr.io/h-shvedko/sociallyhub:sha-${{ github.sha }}
 
       - name: Install Playwright (chromium only)
-        run: npx playwright install --with-deps chromium
+        # `--with-deps` runs `apt-get update`, which on the GitHub runner image
+        # hits the (frequently flaky) packages.microsoft.com apt repos — a
+        # `Clearsigned file isn't valid, got 'NOSPLIT'` there fails the whole
+        # step even though those repos have nothing to do with Playwright's
+        # browser deps (broke this gate twice on 2026-07-07 while every code
+        # gate passed). Drop those two Microsoft sources first (best-effort),
+        # and fall back to a deps-less browser install if apt still fails —
+        # the ubuntu-latest image already ships the chromium runtime libs.
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list \
+                     /etc/apt/sources.list.d/azure-cli.list \
+                     /etc/apt/sources.list.d/microsoft.list 2>/dev/null || true
+          npx playwright install --with-deps chromium \
+            || npx playwright install chromium
 
       # Smoke subset only: the auth spec on chromium. The full multi-browser /
       # visual / performance matrix is ADR-0021 scope.
