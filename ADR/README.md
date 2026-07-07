@@ -38,7 +38,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | [0014](ADR-0014-documentation-management-deferral.md) | Documentation Management: Defer | ✅ Deferral implemented (2026-07-06) | `FEATURE_DOCS_MANAGEMENT` flag (default off) 404s `/api/documentation/**` + a `layout.tsx` guard on the docs pages; missing enums already fixed in 0002; default un-defer path is merging docs into the Help Center. |
 | [0015](ADR-0015-discord-integration-deferral.md) | Discord Integration: Defer | ✅ Deferral + mock deletion implemented (2026-07-06) | `FEATURE_DISCORD` flag nested under Community's; the hardcoded fake server + mock leaf routes + mock webhook senders **deleted** (zero fabricated data in src); kept the config CRUD + reusable payload interfaces; real integration deferred. |
 
-### Settings, AI, growth — not yet implemented
+### Settings, AI, growth — ✅ implemented except the client portal
 | ADR | Title | Status | Decision in one line |
 |---|---|---|---|
 | [0016](ADR-0016-admin-settings-configuration.md) | System Settings: Real Operations over Simulations | ✅ Implemented (2026-07-06) | Real `pg_dump` backups on the worker (verified: real file + matching SHA-256 + COMPLETED record); real flag prerequisite check; deleted the fake audit/optimize/test endpoints (410); dropped `BrandingConfiguration`; rebuilt hub + 5 pages. |
@@ -47,7 +47,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | [0019](ADR-0019-billing-and-subscriptions.md) | Billing & Subscriptions with Stripe | ✅ Implemented (2026-07-07) | Checkout/Portal/webhook/subscription routes + entitlements enforcement at accounts/posts/seats/AI; 14-day no-card PRO trial (proven live); `/dashboard/billing` rebuilt on live data (mock plans/invoices/4242 deleted). Live checkout flows await real Stripe keys. |
 | [0020](ADR-0020-client-portal-and-report-sharing.md) | Client Portal & Shareable Reports | Proposed | Phased: tokenized snapshot report share links first (`ReportShareLink`, hashed tokens, optional password); then a real CLIENT_VIEWER portal with an explicit read-only allowlist. |
 
-### Quality, operations, hygiene — not yet implemented
+### Quality, operations, hygiene — ✅ implemented except observability & seeding
 | ADR | Title | Status | Decision in one line |
 |---|---|---|---|
 | [0021](ADR-0021-testing-strategy-and-quality-gates.md) | Testing Strategy & Honest Quality Gates | ✅ Implemented (2026-07-07) | First-ever green suite: 12/12 suites, 158 tests; measured coverage ratchet replaces the 70% fantasy; auth-triple integration net + webhook idempotency tests; golden paths proven in a live browser (17/17 specs incl. axe a11y); CI Jest job flipped to BLOCKING. |
@@ -81,7 +81,7 @@ Steps 1–7 below are **done**. What's left starts at step 8.
 5. ~~**Shrink the surface** — the flag-off mechanics of ADR-0013/0014/0015.~~ ✅ Done.
 6. ~~**Settings** — ADR-0016 (admin settings + real backups), ADR-0017 (user settings/personalization).~~ ✅ Done.
 7. ~~**Hygiene + honest pipeline** — ADR-0024 (dead-code sweep → first-ever green `next build`), then ADR-0022 (CI/CD + buildable prod image built on it).~~ ✅ Done.
-8. ~~**Test ratchets** — ADR-0021.~~ ✅ Done (Jest gate now blocking; e2e flips after proving green in CI; lint/typecheck ratchets remain future raises).
+8. ~~**Test ratchets** — ADR-0021.~~ ✅ Done (Jest AND e2e-smoke gates both blocking and proven green in CI; lint/typecheck ratchets remain future raises).
 9. **Growth** — ~~ADR-0019 (billing/Stripe)~~ ✅ Done; ~~ADR-0018 (AI availability + UI mounting)~~ ✅ Done; next: ADR-0020 (client portal), ADR-0025 (seeding/demo mode).
 10. **Observability (incremental throughout)** — ADR-0023: populate the `monitoring` compose profile ADR-0022 stubbed; owns the health/uptime scope ADR-0016 deferred.
 11. **Follow-ups** — ADR-0026 (2FA), ADR-0027 (workspace switching), each filed from ADR-0017.
