@@ -4,7 +4,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 **Owner decisions binding this set (2026-07-02):** deployment standardizes on self-hosted Docker (Vercel removed) · repair Support + Admin RBAC now, defer Community / Documentation / Discord behind feature flags · Stripe billing is in scope now.
 
-**Progress: 21 of the 24 decision ADRs implemented** (0002–0019, 0021, 0022, 0024 — foundation → security → pipeline → support/admin, the three deferral flag-offs, real admin settings/backups, user settings/personalization, the hygiene sweep that produced the first-ever green `next build`, and the CI/CD pipeline + buildable production image built on it). The remaining 3 (0020, 0023, 0025) are proposed-but-not-built. ADR-0001 is the record-keeping process itself (always in effect); ADR-0026/0027 are follow-up stubs filed from ADR-0017.
+**Progress: 22 of the 24 decision ADRs implemented** (0002–0022, 0024 — foundation → security → pipeline → support/admin, the three deferral flag-offs, real admin settings/backups, user settings/personalization, the hygiene sweep that produced the first-ever green `next build`, the CI/CD pipeline + buildable production image built on it, and the client portal + tokenized report share links). The remaining 2 (0023, 0025) are proposed-but-not-built. ADR-0001 is the record-keeping process itself (always in effect); ADR-0026/0027 are follow-up stubs filed from ADR-0017.
 
 ## Index
 
@@ -38,14 +38,14 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | [0014](ADR-0014-documentation-management-deferral.md) | Documentation Management: Defer | ✅ Deferral implemented (2026-07-06) | `FEATURE_DOCS_MANAGEMENT` flag (default off) 404s `/api/documentation/**` + a `layout.tsx` guard on the docs pages; missing enums already fixed in 0002; default un-defer path is merging docs into the Help Center. |
 | [0015](ADR-0015-discord-integration-deferral.md) | Discord Integration: Defer | ✅ Deferral + mock deletion implemented (2026-07-06) | `FEATURE_DISCORD` flag nested under Community's; the hardcoded fake server + mock leaf routes + mock webhook senders **deleted** (zero fabricated data in src); kept the config CRUD + reusable payload interfaces; real integration deferred. |
 
-### Settings, AI, growth — ✅ implemented except the client portal
+### Settings, AI, growth — ✅ implemented
 | ADR | Title | Status | Decision in one line |
 |---|---|---|---|
 | [0016](ADR-0016-admin-settings-configuration.md) | System Settings: Real Operations over Simulations | ✅ Implemented (2026-07-06) | Real `pg_dump` backups on the worker (verified: real file + matching SHA-256 + COMPLETED record); real flag prerequisite check; deleted the fake audit/optimize/test endpoints (410); dropped `BrandingConfiguration`; rebuilt hub + 5 pages. |
 | [0017](ADR-0017-user-settings-and-personalization.md) | User Settings, Personalization & i18n Scope | ✅ Implemented (2026-07-06) | Mounted `SettingsProvider`+next-themes; rewrote `/dashboard/settings` + `/dashboard/profile` onto the real APIs; added GDPR export + account-deletion (verified: re-auth→sole-owner-guard chain) + settings-PUT validation; cut i18n to `en`; deleted the mock workspace switcher. 2FA→ADR-0026, switching→ADR-0027. |
 | [0018](ADR-0018-ai-features-strategy.md) | AI Features: Honest Availability & Mounting | ✅ Implemented (2026-07-07) | 503 `AI_UNAVAILABLE` contract live on all 13 routes (+`aiProvider`/`simulated` stamps); mock demoted to explicit demo mode; env model policy + one cost table; Redis AI cache; `/dashboard/audience` mounted (fabricated Intelligence dashboard deleted); verified unit+integration+browser. |
 | [0019](ADR-0019-billing-and-subscriptions.md) | Billing & Subscriptions with Stripe | ✅ Implemented (2026-07-07) | Checkout/Portal/webhook/subscription routes + entitlements enforcement at accounts/posts/seats/AI; 14-day no-card PRO trial (proven live); `/dashboard/billing` rebuilt on live data (mock plans/invoices/4242 deleted). Live checkout flows await real Stripe keys. |
-| [0020](ADR-0020-client-portal-and-report-sharing.md) | Client Portal & Shareable Reports | Proposed | Phased: tokenized snapshot report share links first (`ReportShareLink`, hashed tokens, optional password); then a real CLIENT_VIEWER portal with an explicit read-only allowlist. |
+| [0020](ADR-0020-client-portal-and-report-sharing.md) | Client Portal & Shareable Reports | ✅ Phases 0–2 implemented (2026-07-07) | Tokenized snapshot share links (`ReportShareLink`: sha256-at-rest tokens, optional bcrypt password, expiry/revocation, uniform 404, snapshot-only render) + a real CLIENT_VIEWER portal (`/portal`, exhaustive read-only allowlist, JWT `portalOnly` + edge-middleware default-deny, PRO+ invite gating). Phase 3 (post approvals) stays a separate go/no-go. |
 
 ### Quality, operations, hygiene — ✅ implemented except observability & seeding
 | ADR | Title | Status | Decision in one line |
@@ -82,7 +82,7 @@ Steps 1–7 below are **done**. What's left starts at step 8.
 6. ~~**Settings** — ADR-0016 (admin settings + real backups), ADR-0017 (user settings/personalization).~~ ✅ Done.
 7. ~~**Hygiene + honest pipeline** — ADR-0024 (dead-code sweep → first-ever green `next build`), then ADR-0022 (CI/CD + buildable prod image built on it).~~ ✅ Done.
 8. ~~**Test ratchets** — ADR-0021.~~ ✅ Done (Jest AND e2e-smoke gates both blocking and proven green in CI; lint/typecheck ratchets remain future raises).
-9. **Growth** — ~~ADR-0019 (billing/Stripe)~~ ✅ Done; ~~ADR-0018 (AI availability + UI mounting)~~ ✅ Done; next: ADR-0020 (client portal), ADR-0025 (seeding/demo mode).
+9. ~~**Growth** — ADR-0019 (billing/Stripe), ADR-0018 (AI availability + UI mounting), ADR-0020 (client portal + share links).~~ ✅ Done; next: ADR-0025 (seeding/demo mode).
 10. **Observability (incremental throughout)** — ADR-0023: populate the `monitoring` compose profile ADR-0022 stubbed; owns the health/uptime scope ADR-0016 deferred.
 11. **Follow-ups** — ADR-0026 (2FA), ADR-0027 (workspace switching), each filed from ADR-0017.
 

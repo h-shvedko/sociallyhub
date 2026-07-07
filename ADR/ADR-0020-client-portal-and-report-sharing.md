@@ -1,8 +1,67 @@
 # ADR-0020: Client Portal and Shareable Reports
 
 - Date: 2026-07-02
-- Status: Proposed
+- Status: **Implemented (Phases 0–2, 2026-07-07)** — Phase 3 (post approvals) remains a separate go/no-go
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+## Implementation note (2026-07-07)
+
+Phases 0–2 shipped in one pass (5-track workflow + wire-check + test tracks, then
+independent verification). All four prerequisites held at gate check (ADR-0002/3/4
+helpers, ADR-0005 rate limiter, ADR-0011/12/19 shipped, and prerequisite 4 was already
+satisfied: ADR-0008 Phase 4 replaced the mock schedule generator with real
+`AnalyticsMetric` aggregation, so snapshots contain real data — the
+`ReportSnapshotView` additionally renders a "Sample data" banner whenever
+`data.simulated === true`).
+
+**Phase 1 as designed:** `ReportShareLink` migration
+(`20260707155151_0020_report_share_links_and_client_viewer`, purely additive);
+`src/lib/sharing/report-share.ts` (32-byte `randomBytes` base64url tokens, sha256-only
+at rest, bcrypt passwords, HMAC-signed short-lived password-proof cookie, and ONE
+public lookup — `resolveUsableShareLink()` — so unknown/expired/revoked are
+indistinguishable); management routes under
+`/api/client-reports/[id]/share-links` (raw token returned exactly once);
+public surface `/share/reports/[token]` + `/api/share/reports/[token]`
+(snapshot-only render from `ClientReport.data` via the shared
+`src/components/reports/report-snapshot-view.tsx`, rate-limited `withApiAuth
+public`, uniform 404, ESLint zone forbidding auth imports under `share/**`);
+share dialog in the client-reports dashboard; optional share link embedded in
+report emails (`includeShareLink`). Honest labels landed with it: report
+downloads ship `*_Report.html` (no `.pdf.html`), "PDF" affordances renamed
+"Printable report" — except the jsPDF invoice flows, which produce real PDFs
+and honestly keep their names.
+
+**Phase 2 as designed:** `UserWorkspace.clientId` + `TeamInvitation.clientId`;
+`requireClientViewer()` in `@/lib/auth`; the exhaustive allowlist (list forced to
+`clientId` + `COMPLETED|SENT`, report detail/download scoped with 404-no-leak — which
+also fixed the download route's any-workspace/no-role hole for every role);
+`GET /api/portal/summary` on the extracted `src/lib/reports/aggregate-client-metrics.ts`
+(worker processor now imports it); two-page portal (`/portal`, `/portal/reports` +
+detail) reusing the share renderer; "Invite to portal" on the client detail dialog →
+`CLIENT_VIEWER` invitation carrying `clientId`, gated `assertPlanFeature('clientPortal')`
+(FREE → 402; share links deliberately ungated); acceptance writes the scoped membership
+and redirects to `/portal`. The fictional `client-permission-system.tsx` and phantom
+`ClientRole`/`ClientPermissionType` enums are deleted.
+
+**Beyond the plan (found in verification):** the allowlist alone did NOT hold —
+legacy routes that check membership-but-not-role (the incremental ADR-0004 rollout)
+answered 200 to a portal user (e.g. `/api/posts`). Closed with defense-in-depth:
+a `portalOnly` JWT claim (true when every membership is CLIENT_VIEWER, stamped at
+sign-in like `isPlatformAdmin`) enforced by the edge middleware, which 403s
+(`PORTAL_ONLY`) every `/api/*` outside the portal allowlist prefixes; the allowed
+families still re-check roles in the DB, so a stale claim can never widen access.
+
+**Verification:** 66 new Jest tests (token entropy/hashing, cookie tamper cases, the
+no-oracle deep-equal 404 property, CLIENT_VIEWER scoping matrix, invite gating incl.
+FREE→402) — full suite 17 suites / 246 tests green; `next build` green; e2e
+`g7-share-portal.spec.ts` (share-via-UI → anonymous render, revoke → uniform 404,
+portal sign-in → summary/reports/detail, default-deny probes) green in the full
+15/15 chromium run; plus a live browser session (share dialog, anonymous `curl`
+render, portal walk as the seeded `portal@e2e.sociallyhub.test`).
+
+**Deferred:** Phase 3 post approvals (separate go/no-go, needs live publishing);
+real server-generated PDFs (ADR-0008 worker + ADR-0007 storage upgrade path);
+abuse monitoring for the public surface (ADR-0023).
 
 ## Context and Problem Statement
 

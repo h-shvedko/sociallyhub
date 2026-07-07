@@ -51,7 +51,7 @@ Each item is owned by an ADR — read the ADR before starting.
 - Apply `AI_MOCK_DATA.md` Priority-1 fix (`/api/ai/performance/predict`, `/api/ai/tone/analyze` bypass the mock-fallback layer)
 
 ### Client Portal — **ADR-0020**
-- Read-only client role/dashboard; shareable report links (optional password)
+- ✅ ~~Read-only client role/dashboard; shareable report links (optional password)~~ — implemented 2026-07-07 (Phases 0–2): `ReportShareLink` tokenized snapshot links (sha256-at-rest, optional bcrypt password, expiry/revocation, uniform 404) + `/portal` for scoped `CLIENT_VIEWER` members (JWT `portalOnly` edge default-deny; PRO+ invite gating). Phase 3 (post approvals) is a separate go/no-go; real server-generated PDFs remain on the ADR-0008/0007 upgrade path.
 
 ### Testing — **ADR-0021**
 - Fix `jest.config.js` (`moduleNameMapping` → `moduleNameMapper`), attainable coverage gate
