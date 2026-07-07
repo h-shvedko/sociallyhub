@@ -144,6 +144,15 @@ services:
       # Backup artifacts dir (ADR-0016) — shared named volume with the worker
       # so the web tier can serve/download a backup file the worker wrote.
       - BACKUP_DIR=/app/backups
+      # Stripe billing (ADR-0019) — explicit pass-through from .env (env_file
+      # above already loads them; listed here so the billing env contract is
+      # visible in one place). Empty default = billing routes answer
+      # 503 stripe_not_configured honestly; there is NO mock fallback.
+      # App-only: the worker has no billing jobs yet.
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_PRICE_PRO_MONTHLY=${STRIPE_PRICE_PRO_MONTHLY:-}
+      - STRIPE_PRICE_BUSINESS_MONTHLY=${STRIPE_PRICE_BUSINESS_MONTHLY:-}
     depends_on:
       postgres:
         condition: service_healthy

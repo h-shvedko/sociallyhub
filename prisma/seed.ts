@@ -872,6 +872,43 @@ async function main() {
   // not to a placeholder seed row.
   console.log(`✅ Seeded ${settingsSeeded} default settings rows (flags + backup config)`)
 
+  // ============================================================================
+  // BILLING SUBSCRIPTIONS (ADR-0019 Track A) — idempotent
+  // ============================================================================
+  // 'demo-workspace' gets BUSINESS/ACTIVE so demo flows are never limit-blocked;
+  // every other seeded workspace gets a 14-day PRO trial (matching signup).
+  // Stripe is NEVER called from seed (ADR-0025): these are local rows only —
+  // the billing webhook owns Stripe-backed state.
+  console.log('💳 Seeding billing subscriptions (ADR-0019)...')
+  let subscriptionsSeeded = 0
+  const allWorkspacesForBilling = await prisma.workspace.findMany({ select: { id: true } })
+  for (const ws of allWorkspacesForBilling) {
+    const existingSubscription = await prisma.subscription.findFirst({
+      where: { workspaceId: ws.id },
+    })
+    if (existingSubscription) continue
+    if (ws.id === 'demo-workspace') {
+      await prisma.subscription.create({
+        data: {
+          workspaceId: ws.id,
+          planTier: 'BUSINESS',
+          status: 'ACTIVE',
+        },
+      })
+    } else {
+      await prisma.subscription.create({
+        data: {
+          workspaceId: ws.id,
+          planTier: 'PRO',
+          status: 'TRIALING',
+          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        },
+      })
+    }
+    subscriptionsSeeded++
+  }
+  console.log(`✅ Seeded ${subscriptionsSeeded} subscription rows (demo-workspace = BUSINESS/ACTIVE, others = PRO/TRIALING)`)
+
   console.log('🎉 Comprehensive database seeding completed!')
   console.log(`
 📊 Final Statistics:

@@ -15,9 +15,12 @@ name: Continuous Integration
 #   - `npx tsc --noEmit`   1,641 pre-existing errors (deferred
 #     subsystems; ADR-0002 fallout inventory)                       -> typecheck ADVISORY
 #   - `npm run lint`       ~1,368-error pre-existing baseline       -> lint ADVISORY
-#   - Jest: 10/10 suites fail at CONFIG level (jest.config.js uses
-#     the invalid key `moduleNameMapping` -> jest.setup.js ESM
-#     import never transformed; 0 tests execute)                    -> test ADVISORY
+#   - Jest (re-verified 2026-07-07, ADR-0021 Ratchet): config FIXED;
+#     11/14 suites pass, 150/150 tests pass, ratcheted
+#     coverageThreshold green. 3 Components suites still fail to
+#     RUN: @testing-library/dom is absent from package.json AND the
+#     lockfile (RTL v16 peer dep — `npm ci` won't install it), and
+#     2 suites test components deleted from src                     -> test ADVISORY
 #   - `npm audit --audit-level moderate`: 43 vulns (2 critical)
 #     in the current tree                                           -> security ADVISORY
 #   - e2e specs assert unverified selectors/data-testids against
@@ -228,17 +231,26 @@ jobs:
           NODE_ENV: test
 
   # --------------------------------------------------------------------------
-  # ADVISORY: the Jest suite is broken at CONFIG level — jest.config.js uses
-  # the invalid option name `moduleNameMapping` (should be `moduleNameMapper`),
-  # so the `@/` alias never applies and jest.setup.js's ESM import is never
-  # transformed. Verified 2026-07-06: 10/10 suites fail, 0 tests execute.
-  # A blocking test gate would be unattainable. The job still runs Jest so the
-  # breakage is visible on every PR; ADR-0021 owns fixing the config and
-  # flipping this to blocking. The DB/Redis services stay so the job is ready
-  # the moment the config is fixed.
+  # ADVISORY (updated 2026-07-07, ADR-0021 Ratchet stage): the config is FIXED
+  # — the old "broken at config level" reason is no longer true. Verified:
+  # 11/14 suites pass, 150/150 tests pass, and jest.config.js now enforces the
+  # ratcheted coverageThreshold (measured baseline; thresholds only move up).
+  # Still advisory because 3 Components suites fail to RUN:
+  #   1. @testing-library/dom is missing from package.json AND package-lock
+  #      (a peer dep of @testing-library/react v16) — `npm ci` will not
+  #      install it, so button + post-creation-form suites cannot load RTL.
+  #      Fix: add it as a devDependency (a dependency change, not a config
+  #      change — out of Ratchet-stage scope).
+  #   2. overview-cards.test.tsx and post-creation-form.test.tsx test
+  #      components that no longer exist in src (stale tests; delete or
+  #      rewrite against the real analytics-overview-cards component).
+  # FLIPPED TO BLOCKING (2026-07-07, ADR-0021): @testing-library/dom is now a
+  # devDependency, the 2 stale suites were deleted, and button.test.tsx asserts
+  # the component's real Material classes — 12/12 suites / 158 tests green with
+  # the ratcheted coverageThreshold enforced by jest.config.js.
   # --------------------------------------------------------------------------
   test:
-    name: Jest (advisory — suite broken at config level, see ADR-0021)
+    name: Jest (gate — ratcheted coverage)
     runs-on: ubuntu-latest
 
     services:
@@ -284,13 +296,13 @@ jobs:
           npx prisma migrate deploy
           npx prisma generate
 
-      - name: Run Jest (advisory — known-broken config, see ADR-0021)
-        continue-on-error: true
+      - name: Run Jest (blocking — coverage ratchet in jest.config.js)
         run: npm run test:ci
 
-      # Coverage is uploaded for visibility only. No threshold gate here:
-      # ADR-0021 owns coverage ratchets. The old inline 70% gate was
-      # unattainable (~7 test files) and has been removed.
+      # Coverage is uploaded for visibility. The threshold gate lives in
+      # jest.config.js (ADR-0021 ratcheted coverageThreshold at the measured
+      # baseline) and runs as part of the step above; it becomes a hard CI
+      # gate when this job drops continue-on-error.
       - name: Upload coverage report (non-blocking)
         if: always()
         continue-on-error: true

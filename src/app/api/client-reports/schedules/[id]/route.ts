@@ -6,6 +6,7 @@ import {
   upsertClientReportScheduler,
   removeClientReportScheduler,
 } from '@/lib/jobs/client-reports-queue'
+import { calculateNextRunTime } from '@/lib/client-reports/schedule'
 const prisma = new PrismaClient()
 
 // GET /api/client-reports/schedules/[id] - Get specific schedule
@@ -285,64 +286,3 @@ export async function DELETE(
   }
 }
 
-// Helper function to calculate next run time
-function calculateNextRunTime(schedule: any): Date | null {
-  if (!schedule.isActive) {
-    return null
-  }
-
-  const now = new Date()
-  const [hours, minutes] = schedule.time.split(':').map(Number)
-  
-  let nextRun = new Date()
-  nextRun.setHours(hours, minutes, 0, 0)
-
-  switch (schedule.frequency) {
-    case 'DAILY':
-      // If time has passed today, schedule for tomorrow
-      if (nextRun <= now) {
-        nextRun.setDate(nextRun.getDate() + 1)
-      }
-      break
-
-    case 'WEEKLY':
-      // Find next occurrence of the specified day of week
-      const dayOfWeek = schedule.dayOfWeek || 0 // Default to Sunday
-      const currentDayOfWeek = nextRun.getDay()
-      let daysUntilNext = dayOfWeek - currentDayOfWeek
-
-      if (daysUntilNext < 0 || (daysUntilNext === 0 && nextRun <= now)) {
-        daysUntilNext += 7
-      }
-
-      nextRun.setDate(nextRun.getDate() + daysUntilNext)
-      break
-
-    case 'MONTHLY':
-      // Next occurrence on the specified day of month
-      const dayOfMonth = schedule.dayOfMonth || 1
-      nextRun.setDate(dayOfMonth)
-
-      if (nextRun <= now || nextRun.getDate() !== dayOfMonth) {
-        // If current month's day has passed or doesn't exist, go to next month
-        nextRun.setMonth(nextRun.getMonth() + 1, dayOfMonth)
-      }
-      break
-
-    case 'QUARTERLY':
-      // Every 3 months on the specified day
-      const quarterlyDay = schedule.dayOfMonth || 1
-      nextRun.setDate(quarterlyDay)
-
-      while (nextRun <= now || nextRun.getDate() !== quarterlyDay) {
-        nextRun.setMonth(nextRun.getMonth() + 3, quarterlyDay)
-      }
-      break
-
-    default:
-      // Default to tomorrow
-      nextRun.setDate(nextRun.getDate() + 1)
-  }
-
-  return nextRun
-}

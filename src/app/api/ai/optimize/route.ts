@@ -7,6 +7,7 @@ import { aiService } from '@/lib/ai/ai-service'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SocialProvider } from '@prisma/client'
+import { LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 const optimizeContentSchema = z.object({
   content: z.string().min(1).max(5000),
@@ -81,6 +82,12 @@ export async function POST(request: NextRequest) {
       })
 
     } catch (aiError) {
+      // ADR-0019: plan limit reached is not a service failure — map to 402
+      // (limit_exceeded) without recording a failed-usage row.
+      if (aiError instanceof LimitExceededError) {
+        return limitExceededResponse(aiError)
+      }
+
       // Track failed usage
       await prisma.aIUsageTracking.create({
         data: {

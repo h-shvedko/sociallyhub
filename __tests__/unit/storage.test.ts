@@ -134,7 +134,10 @@ describe("LocalStorageDriver round-trips", () => {
     const st = await storage.stat(key)
     expect(st).not.toBeNull()
     expect(st!.size).toBe(payload.length)
-    expect(st!.mtime).toBeInstanceOf(Date)
+    // Cross-realm safe Date check: fs.Stats dates come from the host realm,
+    // whose Date constructor !== the jest vm context's Date.
+    expect(Object.prototype.toString.call(st!.mtime)).toBe("[object Date]")
+    expect(Number.isFinite(st!.mtime.getTime())).toBe(true)
     expect(await storage.stat(buildMediaKey("demo-workspace", "missing"))).toBeNull()
   })
 

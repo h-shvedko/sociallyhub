@@ -4,6 +4,7 @@ import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { emailService } from '@/lib/notifications/email-service'
 import { notifyUser } from '@/lib/notifications/notify'
+import { assertWithinLimit, LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,6 +56,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ 
         error: 'An invitation has already been sent to this email' 
       }, { status: 400 })
+    }
+
+    // ADR-0019: plan entitlement gate — teamSeats counts current members plus
+    // pending invitations, so check right before creating the invitation.
+    try {
+      await assertWithinLimit(workspaceId, 'teamSeats')
+    } catch (e) {
+      if (e instanceof LimitExceededError) return limitExceededResponse(e)
+      throw e
     }
 
     // Create invitation with 7-day expiry

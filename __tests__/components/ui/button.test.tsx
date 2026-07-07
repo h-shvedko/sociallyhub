@@ -1,4 +1,6 @@
-import { render, screen, userEvent } from '@/__tests__/utils/test-helpers'
+// Assertions updated (ADR-0021) to the REAL Material-token classes
+// (bg-md-*) the button renders — the old shadcn class names never matched.
+import { render, screen, userEvent } from '../../utils/test-helpers'
 import { Button } from '@/components/ui/button'
 
 describe('Button Component', () => {
@@ -7,29 +9,29 @@ describe('Button Component', () => {
     
     const button = screen.getByRole('button', { name: /click me/i })
     expect(button).toBeInTheDocument()
-    expect(button).toHaveClass('bg-primary')
+    expect(button).toHaveClass('bg-md-primary')
   })
 
   it('renders with different variants', () => {
     const { rerender } = render(<Button variant="secondary">Secondary</Button>)
-    expect(screen.getByRole('button')).toHaveClass('bg-secondary')
+    expect(screen.getByRole('button')).toHaveClass('bg-md-secondary-container')
 
     rerender(<Button variant="destructive">Destructive</Button>)
-    expect(screen.getByRole('button')).toHaveClass('bg-destructive')
+    expect(screen.getByRole('button')).toHaveClass('bg-md-error')
 
     rerender(<Button variant="outline">Outline</Button>)
-    expect(screen.getByRole('button')).toHaveClass('border-input')
+    expect(screen.getByRole('button')).toHaveClass('border-md-outline')
 
     rerender(<Button variant="ghost">Ghost</Button>)
-    expect(screen.getByRole('button')).toHaveClass('hover:bg-accent')
+    expect(screen.getByRole('button')).toHaveClass('hover:bg-md-primary/10')
   })
 
   it('renders with different sizes', () => {
     const { rerender } = render(<Button size="sm">Small</Button>)
-    expect(screen.getByRole('button')).toHaveClass('h-9')
+    expect(screen.getByRole('button')).toHaveClass('h-8')
 
     rerender(<Button size="lg">Large</Button>)
-    expect(screen.getByRole('button')).toHaveClass('h-11')
+    expect(screen.getByRole('button')).toHaveClass('h-12')
 
     rerender(<Button size="icon">Icon</Button>)
     expect(screen.getByRole('button')).toHaveClass('h-10 w-10')

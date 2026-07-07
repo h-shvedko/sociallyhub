@@ -77,6 +77,7 @@ export function Header({ className }: HeaderProps) {
           size="sm"
           onClick={() => router.push('/dashboard/posts?compose=true')}
           className="sm:hidden p-2 hover:bg-primary/10 hover:border-primary/20 transition-all duration-200 active:scale-95"
+          aria-label="Compose post"
         >
           <Plus className="h-4 w-4" />
           <span className="sr-only">Compose</span>
@@ -103,6 +104,7 @@ export function Header({ className }: HeaderProps) {
             <Button 
               variant="ghost" 
               className="relative h-8 w-8 rounded-full hover:ring-2 hover:ring-primary/20 transition-all duration-200 active:scale-95"
+              aria-label="Account menu"
             >
               <Avatar className="h-8 w-8 ring-2 ring-transparent hover:ring-primary/30 transition-all duration-200">
                 <AvatarImage src={session?.user?.image || ""} />
@@ -154,7 +156,7 @@ export function Header({ className }: HeaderProps) {
               onClick={() => router.push('/dashboard/billing')}
               className="cursor-pointer hover:bg-primary/10 transition-colors duration-200"
             >
-              Billing
+              Plan &amp; Billing
             </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => router.push('/dashboard/settings')}

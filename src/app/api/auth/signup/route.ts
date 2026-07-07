@@ -68,6 +68,20 @@ export async function POST(req: NextRequest) {
           }
         })
 
+        // Billing (ADR-0019): every new signup starts a 14-day PRO trial.
+        // The first workspace is always allowed — the one-free-workspace rule
+        // only constrains ADDITIONAL workspaces (no such creation route exists
+        // yet). Stripe is NOT called here; the row is local state that the
+        // billing webhook takes over once the owner checks out.
+        await tx.subscription.create({
+          data: {
+            workspaceId: workspace.id,
+            planTier: "PRO",
+            status: "TRIALING",
+            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          }
+        })
+
         return { user, workspace }
       })
 

@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { withLogging, BusinessLogger, ErrorLogger, PerformanceLogger } from '@/lib/middleware/logging'
 import { AppLogger } from '@/lib/logger'
 import { enqueuePublishJob } from '@/lib/jobs/publish-queue'
+import { assertWithinLimit, LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 // Schema for post creation/update
 const postSchema = z.object({
   title: z.string().optional(),
@@ -192,6 +193,15 @@ async function postHandler(request: NextRequest) {
         { error: 'No workspace with posting permissions' },
         { status: 403 }
       )
+    }
+
+    // ADR-0019: plan entitlement gate — postsPerMonth counts posts created in
+    // the current calendar month; check before creating the post.
+    try {
+      await assertWithinLimit(userWorkspace.workspaceId, 'postsPerMonth')
+    } catch (e) {
+      if (e instanceof LimitExceededError) return limitExceededResponse(e)
+      throw e
     }
 
     // Get social accounts for selected platforms

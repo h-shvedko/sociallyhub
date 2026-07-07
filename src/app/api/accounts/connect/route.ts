@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers'
 import { signAccountState } from '@/lib/security/oauth-state'
 import { isDemoMode } from '@/lib/config/demo'
+import { assertWithinLimit, LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 // Platforms gated until their own ADR-0009 completion phase (depth-first:
 // Twitter/X + Meta first). Reported `unavailable` by /api/accounts/platforms
@@ -32,6 +33,17 @@ export async function POST(request: NextRequest) {
 
     // Verify user has access to workspace (ADR-0004)
     await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
+
+    // ADR-0019: plan entitlement gate — refuse to start a connection (demo or
+    // real OAuth) once the workspace is at its socialAccounts limit, so we
+    // never create an account row (line ~155) or send the user through OAuth
+    // only to fail afterwards. 402 with an upgrade pointer, never a fake 200.
+    try {
+      await assertWithinLimit(workspaceId, 'socialAccounts')
+    } catch (e) {
+      if (e instanceof LimitExceededError) return limitExceededResponse(e)
+      throw e
+    }
 
     // Check if provider is supported and available
     const allProviders = ['twitter', 'facebook', 'instagram', 'linkedin', 'tiktok', 'youtube']

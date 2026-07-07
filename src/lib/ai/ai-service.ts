@@ -6,6 +6,7 @@ import { MockAIProvider } from './providers/mock-provider'
 import { AICache } from './cache'
 import { ContentSafetyFilter } from './safety-filter'
 import { prisma } from '../prisma'
+import { assertWithinLimit } from '../billing/entitlements'
 import {
   AIProvider,
   AIServiceConfig,
@@ -68,6 +69,11 @@ export class AIService {
     suggestionId: string
     usage: AIUsageMetrics
   }> {
+    // ADR-0019: AI-credit metering choke point — one credit per AI call
+    // (cached responses included: a call is a call). Throws LimitExceededError,
+    // which API routes map to a 402 limit_exceeded response.
+    await assertWithinLimit(workspaceId, 'aiCreditsPerMonth')
+
     // Check cache first if enabled
     const cacheKey = this.cache.generateKey('generateContent', { prompt, options })
     
@@ -159,6 +165,9 @@ export class AIService {
     suggestionId: string
     usage: AIUsageMetrics
   }> {
+    // ADR-0019: AI-credit metering (see generateContent)
+    await assertWithinLimit(workspaceId, 'aiCreditsPerMonth')
+
     const cacheKey = this.cache.generateKey('suggestHashtags', options)
     
     if (this.config.cacheEnabled) {
@@ -225,6 +234,9 @@ export class AIService {
     userId: string,
     postId?: string
   ) {
+    // ADR-0019: AI-credit metering (see generateContent)
+    await assertWithinLimit(workspaceId, 'aiCreditsPerMonth')
+
     const provider = this.getProvider()
     const result = await provider.analyzeTone(content)
 
@@ -271,6 +283,9 @@ export class AIService {
     workspaceId: string,
     userId: string
   ) {
+    // ADR-0019: AI-credit metering (see generateContent)
+    await assertWithinLimit(workspaceId, 'aiCreditsPerMonth')
+
     const provider = this.getProvider()
     const result = await provider.optimizeForPlatform(content, platform, options)
 
@@ -310,6 +325,9 @@ export class AIService {
     userId: string,
     postId?: string
   ) {
+    // ADR-0019: AI-credit metering (see generateContent)
+    await assertWithinLimit(workspaceId, 'aiCreditsPerMonth')
+
     // Get historical data for better predictions
     const historicalData = await this.getHistoricalData(workspaceId, platform)
     

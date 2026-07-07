@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { simpleAIService } from '@/lib/ai/simple-ai-service'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { assertWithinLimit, LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
 const analyzeToneSchema = z.object({
   content: z.string().min(1).max(5000),
@@ -56,6 +57,15 @@ export async function POST(request: NextRequest) {
           error: 'Post not found or access denied'
         }, { status: 404 })
       }
+    }
+
+    // ADR-0019: this route bypasses the metered aiService (it calls
+    // simpleAIService directly), so enforce the AI-credit limit here.
+    try {
+      await assertWithinLimit(userWorkspace.workspaceId, 'aiCreditsPerMonth')
+    } catch (e) {
+      if (e instanceof LimitExceededError) return limitExceededResponse(e)
+      throw e
     }
 
     const startTime = Date.now()

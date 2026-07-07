@@ -1,7 +1,15 @@
-import '@testing-library/jest-dom'
-import { jest } from '@jest/globals'
+/**
+ * Per-test-file setup, shared by ALL projects (Components=jsdom, API=node,
+ * Unit=node). Anything DOM-specific is guarded so the node-env projects can
+ * load this file safely.
+ */
 
-// Mock Next.js router
+// jest-dom matchers are DOM-only; load them only under jsdom.
+if (typeof window !== 'undefined') {
+  require('@testing-library/jest-dom')
+}
+
+// Mock Next.js router (harmless in node env; needed by component tests).
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: jest.fn(),
@@ -15,7 +23,7 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/',
 }))
 
-// Mock NextAuth
+// Mock NextAuth's React client (component tests render session consumers).
 jest.mock('next-auth/react', () => ({
   useSession: () => ({
     data: {
@@ -36,64 +44,52 @@ jest.mock('next-auth/react', () => ({
   getSession: jest.fn(),
 }))
 
-// Mock environment variables
-process.env.NEXTAUTH_URL = 'http://localhost:3099'
-process.env.NEXTAUTH_SECRET = 'test-secret'
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/sociallyhub_test'
-process.env.REDIS_URL = 'redis://localhost:6379'
+// Baseline env for tests (global-setup sets these too; kept here so files run
+// identically under `jest --runTestsByPath` or editors that skip globalSetup).
+process.env.NEXTAUTH_URL ||= 'http://localhost:3099'
+process.env.NEXTAUTH_SECRET ||= 'test-secret'
+process.env.DATABASE_URL ||= 'postgresql://test:test@localhost:5432/sociallyhub_test'
+process.env.REDIS_URL ||= 'redis://localhost:6379/1'
 
-// Mock WebSocket
-global.WebSocket = jest.fn().mockImplementation(() => ({
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
-  send: jest.fn(),
-  close: jest.fn(),
-  readyState: 1, // OPEN
-}))
-
-// Mock IntersectionObserver
-global.IntersectionObserver = jest.fn().mockImplementation(() => ({
-  observe: jest.fn(),
-  disconnect: jest.fn(),
-  unobserve: jest.fn(),
-}))
-
-// Mock ResizeObserver
-global.ResizeObserver = jest.fn().mockImplementation(() => ({
-  observe: jest.fn(),
-  disconnect: jest.fn(),
-  unobserve: jest.fn(),
-}))
-
-// Mock matchMedia
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: jest.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(), // deprecated
-    removeListener: jest.fn(), // deprecated
+// jsdom-only browser API mocks.
+if (typeof window !== 'undefined') {
+  global.WebSocket = jest.fn().mockImplementation(() => ({
     addEventListener: jest.fn(),
     removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  })),
-})
+    send: jest.fn(),
+    close: jest.fn(),
+    readyState: 1, // OPEN
+  }))
 
-// Mock fetch globally
-global.fetch = jest.fn()
+  global.IntersectionObserver = jest.fn().mockImplementation(() => ({
+    observe: jest.fn(),
+    disconnect: jest.fn(),
+    unobserve: jest.fn(),
+  }))
 
-// Mock console methods to reduce noise in tests
-const consoleMethods = ['log', 'warn', 'error', 'info', 'debug']
-consoleMethods.forEach(method => {
-  const originalMethod = console[method]
-  console[method] = (...args) => {
-    // Only show errors and warnings in test output
-    if (method === 'error' || method === 'warn') {
-      originalMethod.apply(console, args)
-    }
-  }
-})
+  global.ResizeObserver = jest.fn().mockImplementation(() => ({
+    observe: jest.fn(),
+    disconnect: jest.fn(),
+    unobserve: jest.fn(),
+  }))
+
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: jest.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(), // deprecated
+      removeListener: jest.fn(), // deprecated
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    })),
+  })
+
+  // Component tests stub network calls; node suites keep real/undefined fetch.
+  global.fetch = jest.fn()
+}
 
 // Custom matchers
 expect.extend({
@@ -139,12 +135,8 @@ global.testUtils = {
   },
 }
 
-// Cleanup after each test
+// Cleanup after each test (clearMocks in jest.config.js also clears between
+// tests; this additionally covers mocks created mid-test).
 afterEach(() => {
   jest.clearAllMocks()
-  
-  // Clear fetch mock
-  if (global.fetch && global.fetch.mockClear) {
-    global.fetch.mockClear()
-  }
 })

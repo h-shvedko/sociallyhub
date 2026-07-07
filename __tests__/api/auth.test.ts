@@ -1,300 +1,136 @@
 /**
  * @jest-environment node
+ *
+ * ADR-0021 Track D legacy repair: the old suite targeted
+ * /api/auth/register and /api/auth/login, which do not exist (auth is
+ * NextAuth + /api/auth/signup). This tests the REAL signup handler's
+ * validation and duplicate-email behavior with prisma/bcrypt/email mocked
+ * (unit-style — no DB, no SMTP).
  */
-import { createRequest, createResponse } from 'node-mocks-http'
-import { POST as registerHandler } from '@/app/api/auth/register/route'
-import { POST as loginHandler } from '@/app/api/auth/login/route'
-import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
+// NOTE: use the GLOBAL jest for jest.mock() — importing jest from '@jest/globals'
+// shadows the global and defeats SWC mock hoisting (see utils/jest-globals.d.ts).
+import { describe, it, expect, beforeEach } from '@jest/globals'
 
-// Mock Prisma
 jest.mock('@/lib/prisma', () => ({
-  user: {
-    findUnique: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
+  prisma: {
+    user: { findUnique: jest.fn() },
+    verificationToken: { create: jest.fn() },
+    $transaction: jest.fn(),
   },
-  workspace: {
-    create: jest.fn(),
-  },
-  userWorkspace: {
-    create: jest.fn(),
-  },
-  $transaction: jest.fn(),
 }))
 
-// Mock bcrypt
 jest.mock('bcryptjs', () => ({
+  __esModule: true,
+  default: { hash: jest.fn(), compare: jest.fn() },
   hash: jest.fn(),
   compare: jest.fn(),
 }))
 
-// Mock NextAuth
-jest.mock('next-auth/jwt', () => ({
-  sign: jest.fn().mockResolvedValue('mock-jwt-token'),
+// The route dynamic-imports the email service; jest's module registry
+// intercepts that too.
+jest.mock('@/lib/notifications/email-service', () => ({
+  emailService: { sendEmailVerification: jest.fn() },
 }))
 
-const mockPrisma = require('@/lib/prisma')
-const mockBcrypt = bcrypt as jest.Mocked<typeof bcrypt>
+import { NextRequest } from 'next/server'
+import { POST as signupHandler } from '@/app/api/auth/signup/route'
+import { prisma } from '@/lib/prisma'
+import { emailService } from '@/lib/notifications/email-service'
 
-describe('/api/auth', () => {
+// Structural mock view — the repo has no @types/jest, so we avoid the
+// jest.Mock namespace type and describe just the surface the tests drive.
+interface MockFn {
+  mockResolvedValue: (value: unknown) => unknown
+  mockRejectedValue: (value: unknown) => unknown
+  mockImplementation: (fn: (...args: never[]) => unknown) => unknown
+}
+const mockPrisma = prisma as unknown as {
+  user: { findUnique: MockFn }
+  verificationToken: { create: MockFn }
+  $transaction: MockFn
+}
+const mockEmail = emailService as unknown as { sendEmailVerification: MockFn }
+
+function signupRequest(body: unknown): NextRequest {
+  return new NextRequest('http://localhost:3099/api/auth/signup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+const validSignup = {
+  name: 'Test User',
+  email: 'signup-test@example.com',
+  password: 'password12345',
+  workspaceName: 'Test Workspace',
+}
+
+describe('POST /api/auth/signup', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
+    // jest.config clears mocks between tests — reinstall implementations.
+    mockPrisma.user.findUnique.mockResolvedValue(null)
+    mockPrisma.verificationToken.create.mockResolvedValue({})
+    const asyncFn = (value: unknown) => jest.fn<() => Promise<unknown>>().mockResolvedValue(value)
+    mockPrisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        user: {
+          create: asyncFn({ id: 'user-1', email: validSignup.email, name: validSignup.name }),
+        },
+        workspace: {
+          create: asyncFn({ id: 'ws-1', name: validSignup.workspaceName }),
+        },
+        userWorkspace: { create: asyncFn({}) },
+        // ADR-0019: signup now seeds a 14-day PRO trial Subscription row.
+        subscription: { create: asyncFn({}) },
+      })
+    )
+    mockEmail.sendEmailVerification.mockResolvedValue(undefined)
   })
 
-  describe('/api/auth/register', () => {
-    it('creates a new user successfully', async () => {
-      const userData = {
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-        acceptTerms: true,
-      }
-
-      const hashedPassword = 'hashed-password'
-      const mockUser = {
-        id: 'user-123',
-        email: userData.email,
-        name: userData.name,
-        emailVerified: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }
-
-      const mockWorkspace = {
-        id: 'workspace-123',
-        name: 'Test Workspace',
-        slug: 'test-workspace',
-      }
-
-      // Mock bcrypt hash
-      mockBcrypt.hash.mockResolvedValue(hashedPassword)
-      
-      // Mock Prisma user not existing
-      mockPrisma.user.findUnique.mockResolvedValue(null)
-      
-      // Mock successful transaction
-      mockPrisma.$transaction.mockResolvedValue([mockUser, mockWorkspace])
-
-      const request = new Request('http://localhost:3099/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData),
-      })
-
-      const response = await registerHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(201)
-      expect(result.success).toBe(true)
-      expect(result.data.user).toMatchObject({
-        id: mockUser.id,
-        email: mockUser.email,
-        name: mockUser.name,
-      })
-      expect(result.data.workspace).toMatchObject({
-        id: mockWorkspace.id,
-        name: mockWorkspace.name,
-      })
-
-      // Verify password was hashed
-      expect(mockBcrypt.hash).toHaveBeenCalledWith(userData.password, 12)
-    })
-
-    it('returns error when email already exists', async () => {
-      const userData = {
-        email: 'existing@example.com',
-        password: 'password123',
-        name: 'Test User',
-        acceptTerms: true,
-      }
-
-      // Mock user already exists
-      mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'existing-user',
-        email: userData.email,
-      })
-
-      const request = new Request('http://localhost:3099/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData),
-      })
-
-      const response = await registerHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(409)
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('email_exists')
-    })
-
-    it('validates required fields', async () => {
-      const invalidData = {
-        email: 'invalid-email',
-        password: '123', // too short
-        // missing name and acceptTerms
-      }
-
-      const request = new Request('http://localhost:3099/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invalidData),
-      })
-
-      const response = await registerHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(400)
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('validation_error')
-      expect(result.details).toBeDefined()
-    })
-
-    it('handles database errors gracefully', async () => {
-      const userData = {
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-        acceptTerms: true,
-      }
-
-      mockBcrypt.hash.mockResolvedValue('hashed-password')
-      mockPrisma.user.findUnique.mockResolvedValue(null)
-      
-      // Mock database error
-      mockPrisma.$transaction.mockRejectedValue(new Error('Database connection failed'))
-
-      const request = new Request('http://localhost:3099/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData),
-      })
-
-      const response = await registerHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(500)
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('registration_failed')
-    })
+  it('400 when required fields are missing', async () => {
+    const res = await signupHandler(signupRequest({ email: 'x@example.com' }))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.message).toBe('Missing required fields')
   })
 
-  describe('/api/auth/login', () => {
-    it('authenticates user successfully', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'password123',
-      }
+  it('400 when the password is shorter than 8 characters', async () => {
+    const res = await signupHandler(signupRequest({ ...validSignup, password: 'short' }))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.message).toMatch(/at least 8 characters/i)
+  })
 
-      const mockUser = {
-        id: 'user-123',
-        email: loginData.email,
-        name: 'Test User',
-        password: 'hashed-password',
-        emailVerified: new Date(),
-        workspaces: [{
-          workspace: {
-            id: 'workspace-123',
-            name: 'Test Workspace',
-            slug: 'test-workspace',
-          }
-        }]
-      }
+  it('400 when the email is already registered', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing', email: validSignup.email })
+    const res = await signupHandler(signupRequest(validSignup))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.message).toMatch(/already exists/i)
+  })
 
-      mockPrisma.user.findUnique.mockResolvedValue(mockUser)
-      mockBcrypt.compare.mockResolvedValue(true)
+  it('201 on success: creates user+workspace, stores a verification token, sends the email', async () => {
+    const res = await signupHandler(signupRequest(validSignup))
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.success).toBe(true)
+    expect(body.emailVerificationRequired).toBe(true)
+    expect(body.userId).toBe('user-1')
+    expect(body.workspaceId).toBe('ws-1')
+    expect(mockPrisma.verificationToken.create).toHaveBeenCalledTimes(1)
+    expect(mockEmail.sendEmailVerification).toHaveBeenCalledWith(
+      validSignup.email,
+      validSignup.name,
+      expect.any(String)
+    )
+  })
 
-      const request = new Request('http://localhost:3099/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginData),
-      })
-
-      const response = await loginHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(200)
-      expect(result.success).toBe(true)
-      expect(result.data.user).toMatchObject({
-        id: mockUser.id,
-        email: mockUser.email,
-        name: mockUser.name,
-      })
-      expect(result.data.accessToken).toBeDefined()
-      expect(result.data.refreshToken).toBeDefined()
-    })
-
-    it('returns error for invalid credentials', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'wrongpassword',
-      }
-
-      mockPrisma.user.findUnique.mockResolvedValue(null)
-
-      const request = new Request('http://localhost:3099/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginData),
-      })
-
-      const response = await loginHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(401)
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('invalid_credentials')
-    })
-
-    it('returns error for unverified email', async () => {
-      const loginData = {
-        email: 'test@example.com',
-        password: 'password123',
-      }
-
-      const mockUser = {
-        id: 'user-123',
-        email: loginData.email,
-        password: 'hashed-password',
-        emailVerified: null, // Not verified
-      }
-
-      mockPrisma.user.findUnique.mockResolvedValue(mockUser)
-      mockBcrypt.compare.mockResolvedValue(true)
-
-      const request = new Request('http://localhost:3099/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginData),
-      })
-
-      const response = await loginHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(401)
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('email_not_verified')
-    })
-
-    it('validates login input', async () => {
-      const invalidData = {
-        email: 'invalid-email',
-        password: '',
-      }
-
-      const request = new Request('http://localhost:3099/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invalidData),
-      })
-
-      const response = await loginHandler(request)
-      const result = await response.json()
-
-      expect(response.status).toBe(400)
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('validation_error')
-    })
+  it('503 (never a fake success) when persistence fails', async () => {
+    mockPrisma.$transaction.mockRejectedValue(new Error('db down'))
+    const res = await signupHandler(signupRequest(validSignup))
+    expect(res.status).toBe(503)
+    const body = await res.json()
+    expect(body.success).toBe(false)
   })
 })

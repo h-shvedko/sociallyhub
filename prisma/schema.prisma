@@ -137,6 +137,7 @@ model Workspace {
   systemHealthMetrics        SystemHealthMetric[]        @relation("WorkspaceSystemHealthMetrics")
   featureFlags               FeatureFlag[]               @relation("WorkspaceFeatureFlags")
   featureFlagEvaluations     FeatureFlagEvaluation[]     @relation("WorkspaceFeatureFlagEvaluations")
+  subscription               Subscription?               // SaaS billing (ADR-0019) — NOT client invoicing
 
   @@map("workspaces")
 }
@@ -5803,4 +5804,55 @@ model EngagementEvent {
   @@unique([eventType, targetId, dedupKey])
   @@index([targetType, targetId])
   @@map("engagement_events")
+}
+
+// ========================================
+// SAAS BILLING (ADR-0019) — SociallyHub billing its OWN customers.
+// Entirely separate from the client-invoicing `Invoice` model (the agency
+// billing THEIR clients); the two must never share models, routes, or UI.
+// ========================================
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  workspaceId          String             @unique
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  planTier             PlanTier           @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  trialEndsAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  BUSINESS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+// Stripe webhook idempotency ledger: the Stripe event id (evt_...) is the
+// natural PK — a duplicate insert short-circuits reprocessing (ADR-0019).
+model StripeEvent {
+  id          String   @id
+  type        String
+  apiVersion  String?
+  processedAt DateTime @default(now())
+
+  @@map("stripe_events")
 }

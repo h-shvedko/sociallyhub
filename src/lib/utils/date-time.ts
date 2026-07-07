@@ -1,15 +1,18 @@
 import { format, formatDistanceToNow } from 'date-fns'
-import { 
-  enUS, 
-  es, 
-  fr, 
-  de, 
-  ja, 
-  pt, 
-  it, 
-  ru, 
-  zh, 
-  ko 
+// NOTE: date-fns exports `zhCN`/`zhTW`, never a bare `zh` — the old `zh` import
+// was an attempted-import error logged on every compile and surfaced as a
+// browser console error (found by the ADR-0021 e2e verify pass).
+import {
+  enUS,
+  es,
+  fr,
+  de,
+  ja,
+  pt,
+  it,
+  ru,
+  zhCN,
+  ko
 } from 'date-fns/locale'
 
 // Supported locales mapping
@@ -22,7 +25,7 @@ const LOCALE_MAP = {
   'pt': pt,
   'it': it,
   'ru': ru,
-  'zh': zh,
+  'zh': zhCN,
   'ko': ko
 }
 
