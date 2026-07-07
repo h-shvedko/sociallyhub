@@ -266,51 +266,10 @@ export interface CommunicationAttachment {
   url: string
 }
 
-// Client Permission Types
-export interface ClientPermission {
-  id: string
-  clientId: string
-  userId: string
-  role: ClientRole
-  permissions: ClientPermissionType[]
-  restrictions?: ClientRestriction[]
-  expiresAt?: Date
-  createdAt: Date
-  updatedAt: Date
-}
-
-export enum ClientRole {
-  CLIENT_ADMIN = 'CLIENT_ADMIN',
-  CLIENT_MANAGER = 'CLIENT_MANAGER',
-  CLIENT_VIEWER = 'CLIENT_VIEWER',
-  CLIENT_CONTRIBUTOR = 'CLIENT_CONTRIBUTOR'
-}
-
-export enum ClientPermissionType {
-  VIEW_CAMPAIGNS = 'VIEW_CAMPAIGNS',
-  EDIT_CAMPAIGNS = 'EDIT_CAMPAIGNS',
-  VIEW_ANALYTICS = 'VIEW_ANALYTICS',
-  EXPORT_DATA = 'EXPORT_DATA',
-  MANAGE_BILLING = 'MANAGE_BILLING',
-  EDIT_BRANDING = 'EDIT_BRANDING',
-  MANAGE_USERS = 'MANAGE_USERS',
-  VIEW_REPORTS = 'VIEW_REPORTS',
-  SCHEDULE_POSTS = 'SCHEDULE_POSTS',
-  APPROVE_CONTENT = 'APPROVE_CONTENT'
-}
-
-export interface ClientRestriction {
-  type: RestrictionType
-  value: string | number
-  description?: string
-}
-
-export enum RestrictionType {
-  TIME_BASED = 'TIME_BASED',
-  IP_BASED = 'IP_BASED',
-  FEATURE_BASED = 'FEATURE_BASED',
-  DATA_LIMIT = 'DATA_LIMIT'
-}
+// NOTE (ADR-0020/ADR-0024): the phantom ClientRole / ClientPermissionType /
+// ClientPermission / ClientRestriction types were deleted here — they never
+// matched the Prisma schema (client portal access is the real WorkspaceRole
+// CLIENT_VIEWER scoped via UserWorkspace.clientId).
 
 // Client Stats and Analytics
 export interface ClientStats {

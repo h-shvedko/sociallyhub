@@ -4,14 +4,21 @@ import { jsonError, handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { emailService } from '@/lib/notifications/email-service'
 import { notifyUser } from '@/lib/notifications/notify'
-import { assertWithinLimit, LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
+import {
+  assertWithinLimit,
+  LimitExceededError,
+  limitExceededResponse,
+  assertPlanFeature,
+  PlanFeatureError,
+  planFeatureResponse,
+} from '@/lib/billing/entitlements'
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireSession()
     const userId = user.id
     const body = await request.json()
-    const { email, role, workspaceId } = body
+    const { email, role, workspaceId, clientId } = body
 
     if (!email || !role || !workspaceId) {
       return jsonError(400, 'Email, role, and workspaceId are required')
@@ -19,6 +26,32 @@ export async function POST(request: NextRequest) {
 
     // Verify user has permission to invite (OWNER or ADMIN)
     await requireWorkspaceRole(workspaceId, ['OWNER', 'ADMIN'])
+
+    // ADR-0020 Phase 2: portal invitations. A CLIENT_VIEWER invite MUST be
+    // scoped to one client of this workspace and is plan-gated (clientPortal,
+    // PRO+). Every other role must NOT carry a clientId.
+    if (role === 'CLIENT_VIEWER') {
+      if (!clientId) {
+        return jsonError(400, 'clientId is required for CLIENT_VIEWER invitations')
+      }
+
+      const client = await prisma.client.findFirst({
+        where: { id: clientId, workspaceId },
+        select: { id: true },
+      })
+      if (!client) {
+        return jsonError(404, 'Client not found')
+      }
+
+      try {
+        await assertPlanFeature(workspaceId, 'clientPortal')
+      } catch (e) {
+        if (e instanceof PlanFeatureError) return planFeatureResponse(e)
+        throw e
+      }
+    } else if (clientId) {
+      return jsonError(400, 'clientId is only valid for CLIENT_VIEWER invitations')
+    }
 
     // Check if user already exists and is already in workspace
     const existingUser = await prisma.user.findUnique({
@@ -76,6 +109,8 @@ export async function POST(request: NextRequest) {
         email,
         role,
         workspaceId,
+        // Only CLIENT_VIEWER invites carry a client scope (validated above).
+        clientId: role === 'CLIENT_VIEWER' ? clientId : null,
         invitedById: userId,
         expiresAt
       }

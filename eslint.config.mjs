@@ -106,6 +106,43 @@ const eslintConfig = [
       "@typescript-eslint/no-restricted-imports": "off",
     },
   },
+  // ADR-0020 — the public share surface is anonymous by design: nothing under
+  // src/app/share/** or src/app/api/share/** may import the auth module.
+  // Access rules there come from withApiAuth({ access: 'public' }) and the
+  // share-token/cookie primitives in '@/lib/sharing/report-share' — never from
+  // a session. NOTE: this object REPLACES the global no-restricted-imports
+  // config for these files (flat-config override semantics), so the ADR-0003
+  // base paths are repeated here.
+  {
+    files: ["src/app/share/**", "src/app/api/share/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            ...restrictedAuthImportPaths,
+            {
+              name: "@/lib/auth",
+              message:
+                "The /share and /api/share surfaces are anonymous by design and must never import the auth module (ADR-0020). Use withApiAuth({ access: 'public' }) and '@/lib/sharing/report-share'.",
+            },
+            {
+              name: "next-auth",
+              message:
+                "The /share and /api/share surfaces are anonymous by design and must never import next-auth (ADR-0020).",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@/lib/auth/*", "next-auth/*"],
+              message:
+                "The /share and /api/share surfaces are anonymous by design and must never import the auth module (ADR-0020).",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // ADR-0003 Phase 3.3 — make the unawaited-Promise defect class a lint error
   // in API routes and dashboard server components (type-aware rules; require
   // the TS project service).

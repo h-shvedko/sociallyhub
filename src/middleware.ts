@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { getToken } from 'next-auth/jwt'
 import { isFeatureEnabled } from '@/lib/config/features'
 
 /**
@@ -82,7 +83,38 @@ function isThrottledPath(pathname: string): boolean {
   return pathname.startsWith('/api/auth/') || pathname.startsWith('/api/support/')
 }
 
-export function middleware(request: NextRequest): NextResponse {
+// --- Portal-only default-deny (ADR-0020) ----------------------------------
+//
+// A user whose every membership is CLIENT_VIEWER carries `portalOnly: true`
+// in their JWT (set at sign-in, src/lib/auth/config.ts). ~175 legacy routes
+// still check "is a member" without checking the role (the ADR-0004
+// requireWorkspaceRole rollout is incremental), so without this gate a
+// portal contact could read e.g. /api/posts for the whole workspace. The
+// ADR-0020 allowlist is enforced here as prefixes; the allowed families
+// re-check the role against the DB internally (requireClientViewer /
+// requireWorkspaceRole), so a stale claim can never WIDEN access.
+// `getToken` verifies the JWT with jose — edge-safe, no Prisma/Redis.
+
+const PORTAL_ALLOWED_PREFIXES = [
+  '/api/auth/', // session/signout/csrf — needed to be signed in at all
+  '/api/portal/', // the portal's own summary endpoint
+  '/api/client-reports', // list/[id]/download are CLIENT_VIEWER-scoped inside
+  '/api/share/', // public share surface (anonymous by design)
+  '/api/health', // liveness, no tenant data
+]
+
+function isPortalAllowedPath(pathname: string): boolean {
+  return PORTAL_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p))
+}
+
+function hasSessionCookie(request: NextRequest): boolean {
+  return (
+    request.cookies.has('next-auth.session-token') ||
+    request.cookies.has('__Secure-next-auth.session-token')
+  )
+}
+
+export async function middleware(request: NextRequest): Promise<NextResponse> {
   const requestId = crypto.randomUUID()
   const { pathname } = request.nextUrl
 
@@ -114,6 +146,27 @@ export function middleware(request: NextRequest): NextResponse {
       res.headers.set('Cache-Control', 'no-store')
       res.headers.set('Retry-After', String(Math.ceil(WINDOW_MS / 1000)))
       return res
+    }
+  }
+
+  // Portal-only default-deny (ADR-0020). Cookie pre-check keeps the JWT
+  // verification off the hot path for anonymous/public traffic.
+  if (!isPortalAllowedPath(pathname) && hasSessionCookie(request)) {
+    try {
+      const token = await getToken({ req: request })
+      if (token?.portalOnly === true) {
+        const res = NextResponse.json(
+          { error: 'Forbidden', code: 'PORTAL_ONLY' },
+          { status: 403 }
+        )
+        res.headers.set('x-request-id', requestId)
+        res.headers.set('X-Robots-Tag', 'noindex')
+        res.headers.set('Cache-Control', 'no-store')
+        return res
+      }
+    } catch {
+      // Token verification failed (malformed cookie, missing secret at the
+      // edge): fall through — every route still authenticates for itself.
     }
   }
 

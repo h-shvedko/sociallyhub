@@ -9,7 +9,13 @@ import { NextResponse } from 'next/server'
 
 import { prisma } from '@/lib/prisma'
 
-import { PLAN_LIMITS, type LimitKey, type PlanTierKey } from './plans'
+import {
+  PLAN_FEATURES,
+  PLAN_LIMITS,
+  type FeatureKey,
+  type LimitKey,
+  type PlanTierKey,
+} from './plans'
 import { isStripeConfigured } from './stripe'
 
 /**
@@ -144,6 +150,44 @@ export async function assertWithinLimit(
   if (current >= max) {
     throw new LimitExceededError(key, current, max)
   }
+}
+
+/** Thrown by assertPlanFeature when the tier lacks a boolean feature (ADR-0020). */
+export class PlanFeatureError extends Error {
+  constructor(
+    public feature: FeatureKey,
+    public tier: PlanTierKey
+  ) {
+    super(`Plan feature not available on ${tier}: ${feature}`)
+    this.name = 'PlanFeatureError'
+  }
+}
+
+/**
+ * Throws PlanFeatureError when the workspace's effective tier does not
+ * include the boolean feature `key` (ADR-0020, e.g. 'clientPortal').
+ */
+export async function assertPlanFeature(
+  workspaceId: string,
+  key: FeatureKey
+): Promise<void> {
+  const entitlements = await getEntitlements(workspaceId)
+  if (!PLAN_FEATURES[entitlements.tier][key]) {
+    throw new PlanFeatureError(key, entitlements.tier)
+  }
+}
+
+/** Standard 402 response for a PlanFeatureError (mirrors limit_exceeded). */
+export function planFeatureResponse(err: PlanFeatureError): NextResponse {
+  return NextResponse.json(
+    {
+      error: 'feature_not_in_plan',
+      feature: err.feature,
+      tier: err.tier,
+      upgradeUrl: '/dashboard/billing',
+    },
+    { status: 402 }
+  )
 }
 
 /** Standard 402 response for a LimitExceededError. */

@@ -417,7 +417,10 @@ export function CreateReportDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="PDF">PDF Document</SelectItem>
+                      {/* ADR-0020 design decision 6: the "PDF" format is a
+                          print-optimized HTML document — labeled honestly.
+                          The value sent to the API stays 'PDF'. */}
+                      <SelectItem value="PDF">Printable report (HTML)</SelectItem>
                       <SelectItem value="EXCEL">Excel Spreadsheet</SelectItem>
                       <SelectItem value="CSV">CSV File</SelectItem>
                       <SelectItem value="DASHBOARD_LINK">Dashboard Link</SelectItem>

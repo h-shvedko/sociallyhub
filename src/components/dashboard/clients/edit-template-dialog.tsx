@@ -57,7 +57,16 @@ const availableMetrics = [
 
 const availableFormats = ['PDF', 'HTML', 'CSV', 'EXCEL']
 
-export function EditTemplateDialog({ 
+// ADR-0020 design decision 6: the "PDF" export is a print-optimized HTML
+// document — label it honestly. Values sent to the API stay unchanged.
+const formatLabels: Record<string, string> = {
+  PDF: 'Printable (HTML)',
+  HTML: 'HTML',
+  CSV: 'CSV',
+  EXCEL: 'Excel',
+}
+
+export function EditTemplateDialog({
   open, 
   onOpenChange, 
   template,
@@ -222,7 +231,7 @@ export function EditTemplateDialog({
                     onCheckedChange={() => handleFormatToggle(format)}
                   />
                   <Label htmlFor={`format-${format}`} className="text-sm">
-                    {format}
+                    {formatLabels[format] || format}
                   </Label>
                 </div>
               ))}

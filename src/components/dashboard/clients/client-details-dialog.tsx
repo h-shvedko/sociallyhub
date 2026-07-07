@@ -30,9 +30,13 @@ import {
   Tag,
   FileText,
   Activity,
-  Settings
+  Settings,
+  UserPlus,
+  Loader2
 } from 'lucide-react'
 import { Client, ClientStatus, OnboardingStatus } from '@/types/client'
+import { useToast } from '@/hooks/use-toast'
+import { ToastContainer } from '@/components/ui/toast'
 import { BillingSetupDialog } from './billing-setup-dialog'
 import { SendMessageDialog } from './send-message-dialog'
 import { ClientSettingsDialog } from './client-settings-dialog'
@@ -48,8 +52,11 @@ interface ClientDetailsDialogProps {
 }
 
 export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger }: ClientDetailsDialogProps) {
+  const { toasts, addToast, removeToast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [clientData, setClientData] = useState<any>(null)
+  const [isInviting, setIsInviting] = useState(false)
+  const [inviteError, setInviteError] = useState<React.ReactNode | null>(null)
   const [billingData, setBillingData] = useState<any>(null)
   const [activityData, setActivityData] = useState<any[]>([])
   const [messagesData, setMessagesData] = useState<any[]>([])
@@ -63,6 +70,7 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
 
   useEffect(() => {
     if (open && client) {
+      setInviteError(null)
       fetchClientDetails()
     }
   }, [open, client, refreshTrigger])
@@ -219,6 +227,54 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
     console.log('📄 Viewing message details:', message)
     setSelectedMessage(message)
     setShowMessageDetails(true)
+  }
+
+  // ADR-0020 Phase 2: invite the client contact to the read-only portal as a
+  // CLIENT_VIEWER scoped to this client record.
+  const handleInviteToPortal = async () => {
+    const email = displayClient.email
+    const workspaceId = displayClient.workspaceId
+    if (!email || !workspaceId) return
+
+    setIsInviting(true)
+    setInviteError(null)
+    try {
+      const response = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          role: 'CLIENT_VIEWER',
+          workspaceId,
+          clientId: displayClient.id,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+
+      if (response.ok) {
+        addToast({ message: `Portal invitation sent to ${email}`, type: 'success' })
+      } else if (response.status === 402) {
+        setInviteError(
+          <>
+            Client portal requires the Pro plan.{' '}
+            <a href="/dashboard/billing" className="font-medium underline">
+              Upgrade on the billing page
+            </a>
+            .
+          </>
+        )
+      } else {
+        addToast({
+          message: data?.error || 'Failed to send portal invitation',
+          type: 'error',
+        })
+      }
+    } catch (error) {
+      console.error('Error sending portal invitation:', error)
+      addToast({ message: 'Failed to send portal invitation', type: 'error' })
+    } finally {
+      setIsInviting(false)
+    }
   }
 
   // Modal event handlers
@@ -407,9 +463,9 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
                       <Globe className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Website</p>
-                        <a 
-                          href={displayClient.website} 
-                          target="_blank" 
+                        <a
+                          href={displayClient.website}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="font-medium text-blue-600 hover:underline"
                         >
@@ -417,6 +473,41 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
                         </a>
                       </div>
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Client Portal invite (ADR-0020 Phase 2) */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserPlus className="h-5 w-5" />
+                    Client Portal
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Invite this client to a read-only portal where they can view
+                    their delivered reports and a summary of their results.
+                  </p>
+                  <Button
+                    onClick={handleInviteToPortal}
+                    disabled={!displayClient.email || isInviting}
+                  >
+                    {isInviting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-4 w-4 mr-2" />
+                    )}
+                    Invite to portal
+                  </Button>
+                  {!displayClient.email && (
+                    <p className="text-xs text-muted-foreground">
+                      Add an email address for this client to send a portal invitation.
+                    </p>
+                  )}
+                  {inviteError && (
+                    <p className="text-sm text-red-600">{inviteError}</p>
                   )}
                 </CardContent>
               </Card>
@@ -681,6 +772,9 @@ export function ClientDetailsDialog({ client, open, onOpenChange, refreshTrigger
           open={showMessageDetails}
           onOpenChange={setShowMessageDetails}
         />
+
+        {/* Toast Container */}
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
       </DialogContent>
     </Dialog>
   )

@@ -340,7 +340,7 @@ export function ClientDashboard({ workspaceId }: ClientDashboardProps) {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleExportClients('pdf')}>
                 <FileText className="h-4 w-4 mr-2" />
-                Export as PDF
+                Export as printable report (HTML)
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

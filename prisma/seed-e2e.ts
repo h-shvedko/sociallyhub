@@ -21,6 +21,9 @@ import {
   E2E_POST_SCHEDULED,
   E2E_CLIENT,
   E2E_REPORT_TEMPLATE,
+  E2E_REPORT_COMPLETED,
+  E2E_REPORT_COMPLETED_DATA,
+  E2E_PORTAL_USER,
   E2E_INBOX_ITEM_1,
   E2E_INBOX_ITEM_2,
 } from '../e2e/fixtures'
@@ -197,6 +200,66 @@ export async function seedE2E(prisma: PrismaClient) {
     },
   })
 
+  // --- COMPLETED report with a frozen snapshot (ADR-0020 share links + portal) ---
+  // The Json payload is deep-cloned so Prisma receives a plain mutable object
+  // (the fixture constant is deeply readonly via `as const`).
+  const reportData = JSON.parse(JSON.stringify(E2E_REPORT_COMPLETED_DATA))
+  await prisma.clientReport.upsert({
+    where: { id: E2E_REPORT_COMPLETED.id },
+    update: {
+      name: E2E_REPORT_COMPLETED.name,
+      status: E2E_REPORT_COMPLETED.status,
+      data: reportData,
+      lastGenerated: new Date(),
+    },
+    create: {
+      id: E2E_REPORT_COMPLETED.id,
+      workspaceId: workspace.id,
+      clientId: E2E_CLIENT.id,
+      templateId: E2E_REPORT_TEMPLATE.id,
+      name: E2E_REPORT_COMPLETED.name,
+      description: 'Deterministic e2e fixture report with a frozen data snapshot',
+      type: E2E_REPORT_COMPLETED.type,
+      format: 'PDF',
+      frequency: 'ON_DEMAND',
+      status: E2E_REPORT_COMPLETED.status,
+      data: reportData,
+      lastGenerated: new Date(),
+      fileSize: '2KB',
+    },
+  })
+
+  // --- Portal user: CLIENT_VIEWER bound to the fixture client (ADR-0020) ---
+  const portalPasswordHash = await bcrypt.hash(E2E_PORTAL_USER.password, 12)
+  const portalUser = await prisma.user.upsert({
+    where: { email: E2E_PORTAL_USER.email },
+    update: {
+      name: E2E_PORTAL_USER.name,
+      password: portalPasswordHash,
+      emailVerified: new Date(),
+    },
+    create: {
+      id: E2E_PORTAL_USER.id,
+      email: E2E_PORTAL_USER.email,
+      name: E2E_PORTAL_USER.name,
+      password: portalPasswordHash,
+      emailVerified: new Date(),
+    },
+  })
+
+  await prisma.userWorkspace.upsert({
+    where: {
+      userId_workspaceId: { userId: portalUser.id, workspaceId: workspace.id },
+    },
+    update: { role: 'CLIENT_VIEWER', clientId: E2E_CLIENT.id },
+    create: {
+      userId: portalUser.id,
+      workspaceId: workspace.id,
+      role: 'CLIENT_VIEWER',
+      clientId: E2E_CLIENT.id,
+    },
+  })
+
   // --- Inbox items (attached to the demo-flagged social account) ---
   await prisma.inboxItem.upsert({
     where: { id: E2E_INBOX_ITEM_1.id },
@@ -239,6 +302,8 @@ export async function seedE2E(prisma: PrismaClient) {
   console.log(`   workspace  ${workspace.id} (BUSINESS/ACTIVE subscription)`)
   console.log(`   posts      ${E2E_POST_DRAFT.id} (DRAFT), ${E2E_POST_SCHEDULED.id} (SCHEDULED)`)
   console.log(`   client     ${E2E_CLIENT.id} + template ${E2E_REPORT_TEMPLATE.id}`)
+  console.log(`   report     ${E2E_REPORT_COMPLETED.id} (COMPLETED, frozen snapshot)`)
+  console.log(`   portal     ${portalUser.id} (${E2E_PORTAL_USER.email}, CLIENT_VIEWER → ${E2E_CLIENT.id})`)
   console.log(`   inbox      ${E2E_INBOX_ITEM_1.id}, ${E2E_INBOX_ITEM_2.id} (account ${E2E_SOCIAL_ACCOUNT.id})`)
 }
 

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Get user's workspace
+    // Get user's workspace (agency path — unchanged)
     const userWorkspace = await prisma.userWorkspace.findFirst({
       where: {
         userId: userId,
@@ -29,21 +29,50 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // ADR-0020 Phase 2: CLIENT_VIEWER allowlist. When the caller holds no
+    // agency membership, a client-scoped portal membership may still list
+    // reports — FORCED to their own client and to delivered statuses only.
+    let viewerMembership: { workspaceId: string; clientId: string | null } | null = null
     if (!userWorkspace) {
+      viewerMembership = await prisma.userWorkspace.findFirst({
+        where: {
+          userId: userId,
+          role: 'CLIENT_VIEWER',
+          clientId: { not: null }
+        },
+        select: {
+          workspaceId: true,
+          clientId: true
+        }
+      })
+    }
+
+    if (!userWorkspace && !viewerMembership) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 403 })
     }
 
     // Build where clause
     const where: any = {
-      workspaceId: userWorkspace.workspaceId
+      workspaceId: userWorkspace?.workspaceId ?? viewerMembership!.workspaceId
     }
 
-    if (clientId) {
-      where.clientId = clientId
-    }
+    if (viewerMembership) {
+      // Forced scope: the membership's client, delivered reports only. Query
+      // params may narrow within that (status is honored only when it stays
+      // inside the allowlist) but can never widen it.
+      where.clientId = viewerMembership.clientId
+      where.status =
+        status && ['COMPLETED', 'SENT'].includes(status)
+          ? status
+          : { in: ['COMPLETED', 'SENT'] }
+    } else {
+      if (clientId) {
+        where.clientId = clientId
+      }
 
-    if (status) {
-      where.status = status
+      if (status) {
+        where.status = status
+      }
     }
 
     if (type) {
@@ -80,7 +109,7 @@ export async function GET(request: NextRequest) {
     // Get total count
     const totalCount = await prisma.clientReport.count({ where })
 
-    console.log(`📊 Retrieved ${reports.length} client reports for workspace ${userWorkspace.workspaceId}`)
+    console.log(`📊 Retrieved ${reports.length} client reports for workspace ${where.workspaceId}`)
 
     return NextResponse.json({
       reports,

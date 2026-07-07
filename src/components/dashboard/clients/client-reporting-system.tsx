@@ -433,7 +433,7 @@ export function ClientReportingSystem({
                           <SelectValue placeholder="Select format" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="pdf">PDF</SelectItem>
+                          <SelectItem value="pdf">Printable (HTML)</SelectItem>
                           <SelectItem value="excel">Excel</SelectItem>
                           <SelectItem value="csv">CSV</SelectItem>
                           <SelectItem value="dashboard">Dashboard Link</SelectItem>

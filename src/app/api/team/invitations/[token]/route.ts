@@ -121,12 +121,15 @@ export async function POST(
 
         if (!existingMembership) {
           // Create workspace membership (role is the sole authz field;
-          // per-member permissions column was removed)
+          // per-member permissions column was removed). ADR-0020 Phase 2:
+          // portal invitations carry the client scope onto the membership —
+          // requireClientViewer() rejects CLIENT_VIEWER rows without it.
           await tx.userWorkspace.create({
             data: {
               userId: user.id,
               workspaceId: invitation.workspaceId,
-              role: invitation.role
+              role: invitation.role,
+              clientId: invitation.clientId
             }
           })
         }
@@ -144,7 +147,8 @@ export async function POST(
       return NextResponse.json({
         success: true,
         message: 'Invitation accepted! Welcome to the team.',
-        redirectUrl: '/dashboard'
+        // Portal viewers land on the client portal, not the agency dashboard.
+        redirectUrl: invitation.role === 'CLIENT_VIEWER' ? '/portal' : '/dashboard'
       })
     } else {
       // Decline invitation

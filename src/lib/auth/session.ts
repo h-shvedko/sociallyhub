@@ -156,6 +156,64 @@ export async function requireWorkspaceRole(
   return membership
 }
 
+/** Result of requireClientViewer: a client-scoped portal membership. */
+export interface ClientViewerContext {
+  user: AuthUser
+  membership: WorkspaceMembership
+  /** The one client this CLIENT_VIEWER is scoped to (never null). */
+  clientId: string
+}
+
+/**
+ * Portal gate (ADR-0020 Phase 2): the caller must hold a CLIENT_VIEWER
+ * membership scoped to a client.
+ *
+ * @param workspaceId Optional. When given, the check runs against that
+ *                    workspace (layered on requireWorkspaceRole, so
+ *                    non-members get its 404 no-existence-leak semantics).
+ *                    When omitted, the user's first CLIENT_VIEWER membership
+ *                    is resolved — the portal entry point, where the client
+ *                    does not know a workspace id.
+ *
+ * Throws:
+ * - ApiError(401, UNAUTHENTICATED) when there is no session.
+ * - ApiError(404, NOT_FOUND) when `workspaceId` is given and the user is not
+ *   a member of it (via requireWorkspaceRole).
+ * - ApiError(403, FORBIDDEN) when the membership role is not CLIENT_VIEWER,
+ *   or when `membership.clientId` is null (a CLIENT_VIEWER row without a
+ *   client scope is invalid by ADR-0020 validation and grants nothing).
+ */
+export async function requireClientViewer(
+  workspaceId?: string
+): Promise<ClientViewerContext> {
+  const user = await getAuthenticatedUser()
+  if (!user) {
+    throw new ApiError(401, "Unauthorized", "UNAUTHENTICATED")
+  }
+
+  let membership: WorkspaceMembership | null
+  if (workspaceId) {
+    membership = await requireWorkspaceRole(workspaceId)
+    if (membership.role !== "CLIENT_VIEWER") {
+      throw new ApiError(403, "Forbidden", "FORBIDDEN")
+    }
+  } else {
+    membership = await prisma.userWorkspace.findFirst({
+      where: { userId: user.id, role: "CLIENT_VIEWER" },
+      orderBy: { createdAt: "asc" },
+    })
+    if (!membership) {
+      throw new ApiError(403, "Forbidden", "FORBIDDEN")
+    }
+  }
+
+  if (!membership.clientId) {
+    throw new ApiError(403, "Forbidden", "FORBIDDEN")
+  }
+
+  return { user, membership, clientId: membership.clientId }
+}
+
 /**
  * @deprecated ADR-0004: `requireAdmin()` is now an alias of
  * `requirePlatformAdmin()` — the interim "OWNER/ADMIN of ANY workspace"

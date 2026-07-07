@@ -60,6 +60,53 @@ export const E2E_REPORT_TEMPLATE = {
   type: 'EXECUTIVE',
 } as const
 
+/**
+ * COMPLETED report with a frozen data snapshot (ADR-0020): shareable via
+ * tokenized links and visible in the client portal. The g7 spec asserts the
+ * exact numbers below (e.g. impressions renders as "12,345").
+ */
+export const E2E_REPORT_COMPLETED = {
+  id: 'e2e-report-completed',
+  name: 'E2E Completed Report',
+  type: 'EXECUTIVE',
+  status: 'COMPLETED',
+} as const
+
+/** The frozen ClientReport.data snapshot for E2E_REPORT_COMPLETED. */
+export const E2E_REPORT_COMPLETED_DATA = {
+  generated: true,
+  dateRange: { start: '2026-06-01T00:00:00.000Z', end: '2026-06-30T23:59:59.000Z' },
+  dataPoints: 42,
+  sparse: false,
+  growthRate: 12.5,
+  metrics: {
+    impressions: 12345,
+    reach: 8900,
+    likes: 456,
+    comments: 78,
+    shares: 34,
+    engagement: 568,
+    clicks: 210,
+    conversions: 12,
+    followers: 1500,
+    pageViews: 3400,
+  },
+  byMetricType: { ENGAGEMENT: { total: 568, count: 20 } },
+  byPlatform: { TWITTER: 9000 },
+} as const
+
+/**
+ * CLIENT_VIEWER portal user (ADR-0020 Phase 2): a member of E2E_WORKSPACE
+ * bound to E2E_CLIENT via UserWorkspace.clientId — sees the portal, not the
+ * agency dashboard.
+ */
+export const E2E_PORTAL_USER = {
+  id: 'e2e-portal-user',
+  email: 'portal@e2e.sociallyhub.test',
+  password: 'e2e-portal-pass-123',
+  name: 'E2E Portal User',
+} as const
+
 export const E2E_INBOX_ITEM_1 = {
   id: 'e2e-inbox-item-1',
   providerItemId: 'e2e-provider-item-1',

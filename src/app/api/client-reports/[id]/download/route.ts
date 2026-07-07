@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
-import { PrismaClient } from '@prisma/client'
-const prisma = new PrismaClient()
+import { requireSession, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
+import { prisma } from '@/lib/prisma'
+
+// Access is REPORT-DERIVED (ADR-0020 Phase 2): load the report first, then
+// gate on membership in ITS workspace. This closes the audit's
+// "first-workspace, no role check" hole — the exact ADR-0004 bug pattern.
+
+const CLIENT_VISIBLE_STATUSES = ['COMPLETED', 'SENT']
 
 // GET /api/client-reports/[id]/download - Download client report
 export async function GET(
@@ -10,34 +15,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
+    const userId = user.id
     const { id: reportId } = await params
 
-    // Get user's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-      },
-      select: {
-        workspaceId: true
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 403 })
-    }
-
     // Get the report with full details
-    const report = await prisma.clientReport.findFirst({
-      where: {
-        id: reportId,
-        workspaceId: userWorkspace.workspaceId,
-      },
+    const report = await prisma.clientReport.findUnique({
+      where: { id: reportId },
       include: {
         client: {
           select: {
@@ -59,14 +43,33 @@ export async function GET(
     })
 
     if (!report) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+      return jsonError(404, 'Report not found')
     }
 
-    // For demo purposes, allow download for most statuses except GENERATING
+    // Membership in the report's workspace; CLIENT_VIEWER allowed but scoped.
+    const membership = await requireWorkspaceRole(report.workspaceId, [
+      'OWNER',
+      'ADMIN',
+      'PUBLISHER',
+      'CLIENT_VIEWER',
+    ])
+
+    if (membership.role === 'CLIENT_VIEWER') {
+      // A portal viewer only downloads their own client's DELIVERED reports.
+      // 404 (not 403) so out-of-scope report ids are indistinguishable from
+      // nonexistent ones — no existence leak (ADR-0005 semantics).
+      if (
+        !membership.clientId ||
+        membership.clientId !== report.clientId ||
+        !CLIENT_VISIBLE_STATUSES.includes(report.status)
+      ) {
+        throw new ApiError(404, 'Not found', 'NOT_FOUND')
+      }
+    }
+
+    // Allow download for most statuses except GENERATING
     if (report.status === 'GENERATING') {
-      return NextResponse.json({ 
-        error: 'Report is currently being generated. Please try again in a moment.' 
-      }, { status: 400 })
+      return jsonError(400, 'Report is currently being generated. Please try again in a moment.')
     }
 
     // Generate report content based on format
@@ -75,10 +78,12 @@ export async function GET(
     let fileName = ''
 
     if (report.format === 'PDF') {
-      // For PDF format, return HTML with PDF-friendly styling that can be printed as PDF
+      // Honest labels (ADR-0020 design decision 6): the artifact IS print-
+      // optimized HTML, so it ships as plain `.html` — never `.pdf.html`.
+      // (The stored format VALUE stays 'PDF'; only the label is honest.)
       contentType = 'text/html; charset=utf-8'
-      fileName = `${report.name.replace(/[^a-zA-Z0-9\s]/g, '_').replace(/\s+/g, '_')}_Report.pdf.html`
-      
+      fileName = `${report.name.replace(/[^a-zA-Z0-9\s]/g, '_').replace(/\s+/g, '_')}_Report.html`
+
       // Generate print-friendly HTML report
       content = generatePrintableHTMLReport(report)
     } else if (report.format === 'HTML') {
@@ -125,11 +130,7 @@ export async function GET(
     })
 
   } catch (error) {
-    console.error('Error downloading client report:', error)
-    return NextResponse.json(
-      { error: 'Failed to download report' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -742,7 +743,7 @@ function generatePrintableHTMLReport(report: any): string {
     <div class="watermark">SOCIALLYHUB</div>
     
     <div class="print-instruction no-print">
-        <strong>📝 PDF Export Instructions:</strong> Press Ctrl/Cmd + P, select "Save as PDF", and ensure "Background graphics" is enabled for best results.
+        <strong>📝 Printable report:</strong> Press Ctrl/Cmd + P to print or save this report, and ensure "Background graphics" is enabled for best results.
     </div>
     
     <div class="container">

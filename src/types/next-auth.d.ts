@@ -18,6 +18,12 @@ declare module "next-auth" {
        * revocation-safe).
        */
       isPlatformAdmin: boolean
+      /**
+       * ADR-0020 portal-only claim: true when every membership the user has
+       * is CLIENT_VIEWER. The edge middleware uses it to default-deny
+       * /api/* outside the portal allowlist; recomputed at sign-in.
+       */
+      portalOnly: boolean
     }
   }
 
@@ -36,5 +42,7 @@ declare module "next-auth/jwt" {
     role?: WorkspaceRole
     /** ADR-0004 platform-tier claim (UI gating only — see Session.user). */
     isPlatformAdmin?: boolean
+    /** ADR-0020 portal-only claim (edge default-deny — see Session.user). */
+    portalOnly?: boolean
   }
 }

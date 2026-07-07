@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
-import { PrismaClient } from '@prisma/client'
-const prisma = new PrismaClient()
+import { requireSession, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
+import { prisma } from '@/lib/prisma'
+
+// Access is REPORT-DERIVED (ADR-0020 Phase 2): load the report first, then
+// gate on membership in ITS workspace — never on the caller's "first
+// workspace" (the ADR-0004 multi-workspace bug this file used to have).
+
+const CLIENT_VISIBLE_STATUSES = ['COMPLETED', 'SENT']
 
 // DELETE /api/client-reports/[id] - Delete client report
 export async function DELETE(
@@ -10,43 +15,23 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    await requireSession()
     const { id: reportId } = await params
 
-    // Get user's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-      },
-      select: {
-        workspaceId: true,
-        role: true
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 403 })
-    }
-
-    // Check if report exists and belongs to the workspace
-    const report = await prisma.clientReport.findFirst({
-      where: {
-        id: reportId,
-        workspaceId: userWorkspace.workspaceId,
-      },
+    // Check if report exists
+    const report = await prisma.clientReport.findUnique({
+      where: { id: reportId },
       include: {
         client: true
       }
     })
 
     if (!report) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+      return jsonError(404, 'Report not found')
     }
+
+    // Membership in the report's workspace, agency roles only
+    await requireWorkspaceRole(report.workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
 
     // Delete the report
     await prisma.clientReport.delete({
@@ -57,16 +42,12 @@ export async function DELETE(
 
     console.log(`📊 Deleted client report ${reportId} for client ${report.client.name}`)
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Report deleted successfully' 
+    return NextResponse.json({
+      success: true,
+      message: 'Report deleted successfully'
     })
   } catch (error) {
-    console.error('Error deleting client report:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete report' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -76,34 +57,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    await requireSession()
     const { id: reportId } = await params
 
-    // Get user's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-      },
-      select: {
-        workspaceId: true
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 403 })
-    }
-
     // Get the report with full details
-    const report = await prisma.clientReport.findFirst({
-      where: {
-        id: reportId,
-        workspaceId: userWorkspace.workspaceId,
-      },
+    const report = await prisma.clientReport.findUnique({
+      where: { id: reportId },
       include: {
         client: {
           select: {
@@ -124,16 +83,33 @@ export async function GET(
     })
 
     if (!report) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+      return jsonError(404, 'Report not found')
+    }
+
+    // Membership in the report's workspace; CLIENT_VIEWER allowed but scoped.
+    const membership = await requireWorkspaceRole(report.workspaceId, [
+      'OWNER',
+      'ADMIN',
+      'PUBLISHER',
+      'CLIENT_VIEWER',
+    ])
+
+    if (membership.role === 'CLIENT_VIEWER') {
+      // A portal viewer only sees their own client's DELIVERED reports.
+      // 404 (not 403) so out-of-scope report ids are indistinguishable from
+      // nonexistent ones — no existence leak (ADR-0005 semantics).
+      if (
+        !membership.clientId ||
+        membership.clientId !== report.clientId ||
+        !CLIENT_VISIBLE_STATUSES.includes(report.status)
+      ) {
+        throw new ApiError(404, 'Not found', 'NOT_FOUND')
+      }
     }
 
     return NextResponse.json({ report })
   } catch (error) {
-    console.error('Error fetching client report:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch report' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -143,52 +119,32 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    await requireSession()
     const { id: reportId } = await params
     const body = await request.json()
 
-    // Get user's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-      },
-      select: {
-        workspaceId: true,
-        role: true
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 403 })
-    }
-
-    // Check if report exists and belongs to the workspace
-    const existingReport = await prisma.clientReport.findFirst({
-      where: {
-        id: reportId,
-        workspaceId: userWorkspace.workspaceId,
-      }
+    // Check if report exists
+    const existingReport = await prisma.clientReport.findUnique({
+      where: { id: reportId }
     })
 
     if (!existingReport) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+      return jsonError(404, 'Report not found')
     }
 
-    // Verify client belongs to the workspace
+    // Membership in the report's workspace, agency roles only
+    await requireWorkspaceRole(existingReport.workspaceId, ['OWNER', 'ADMIN', 'PUBLISHER'])
+
+    // Verify client belongs to the report's workspace
     const client = await prisma.client.findFirst({
       where: {
         id: body.clientId,
-        workspaceId: userWorkspace.workspaceId,
+        workspaceId: existingReport.workspaceId,
       }
     })
 
     if (!client) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+      return jsonError(404, 'Client not found')
     }
 
     // Update report
@@ -230,10 +186,6 @@ export async function PUT(
 
     return NextResponse.json({ success: true, report })
   } catch (error) {
-    console.error('Error updating client report:', error)
-    return NextResponse.json(
-      { error: 'Failed to update report' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

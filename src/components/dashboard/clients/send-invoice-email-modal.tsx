@@ -117,9 +117,9 @@ Phone: (555) 123-4567`
           <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
             <Paperclip className="h-4 w-4 text-gray-600" />
             <span className="text-sm text-gray-700">
-              Invoice PDF will be automatically attached
+              Invoice details will be included in the email
             </span>
-            <Badge variant="secondary" className="ml-auto">PDF</Badge>
+            <Badge variant="secondary" className="ml-auto">Email</Badge>
           </div>
 
           {/* Email Form */}

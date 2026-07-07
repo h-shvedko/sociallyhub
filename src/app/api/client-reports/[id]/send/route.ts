@@ -1,81 +1,135 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, normalizeUserId } from '@/lib/auth'
-import { PrismaClient } from '@prisma/client'
+// @ts-expect-error -- pre-existing repo-wide TS7016: nodemailer ships no types
+// and @types/nodemailer is not installed (same untyped import as
+// email-service.ts, invoices/send-email, clients/[id]/messages). Remove this
+// directive once types are added.
 import nodemailer from 'nodemailer'
 
-const prisma = new PrismaClient()
+import type { Prisma, WorkspaceRole } from '@prisma/client'
+
+import { requireSession, requireWorkspaceRole, ApiError } from '@/lib/auth'
+import { jsonError, handleApiError } from '@/lib/api/respond'
+import { prisma } from '@/lib/prisma'
+import {
+  generateShareToken,
+  shareLinkExpiry,
+  buildShareUrl,
+} from '@/lib/sharing/report-share'
+
+const MANAGER_ROLES: WorkspaceRole[] = ['OWNER', 'ADMIN', 'PUBLISHER']
+
+/** Statuses whose `data` snapshot may be exposed through a share link (ADR-0020). */
+const SHAREABLE_STATUSES = ['COMPLETED', 'SENT']
+
+/** The report shape (with included relations) the email templates render. */
+type ReportForEmail = Prisma.ClientReportGetPayload<{
+  include: {
+    client: { select: { id: true; name: true; email: true; company: true } }
+    template: { select: { id: true; name: true; type: true } }
+  }
+}>
+
+interface EmailMetrics {
+  totalReach?: number
+  engagement?: number
+  conversions?: number
+  growthRate?: number | string
+}
 
 // POST /api/client-reports/[id]/send - Send report via email
+// Body: { recipients: string[], subject?: string, message?: string,
+//         includeShareLink?: boolean }
+// When includeShareLink is true AND the report has a shareable snapshot
+// (status COMPLETED/SENT + data), a share link (default expiry, no password)
+// is created and a "View report online" button/URL is embedded in both the
+// HTML and plain-text bodies. A non-shareable report skips the link silently.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userId = await normalizeUserId(session.user.id)
+    const user = await requireSession()
     const { id: reportId } = await params
-    const body = await request.json()
 
-    const { recipients, subject, message } = body
-
-    if (!recipients || recipients.length === 0) {
-      return NextResponse.json({ error: 'No recipients specified' }, { status: 400 })
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return jsonError(400, 'Invalid request body')
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return jsonError(400, 'Invalid request body')
+    }
+    const { recipients, subject, message, includeShareLink } = body as {
+      recipients?: unknown
+      subject?: unknown
+      message?: unknown
+      includeShareLink?: unknown
     }
 
-    // Get user's workspace
-    const userWorkspace = await prisma.userWorkspace.findFirst({
-      where: {
-        userId: userId,
-      },
-      select: {
-        workspaceId: true
-      }
-    })
-
-    if (!userWorkspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 403 })
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return jsonError(400, 'No recipients specified')
     }
 
-    // Get the report with full details
-    const report = await prisma.clientReport.findFirst({
-      where: {
-        id: reportId,
-        workspaceId: userWorkspace.workspaceId,
-      },
+    // Load the report FIRST by id, then derive the workspace from the report
+    // row itself (never from "the user's first workspace").
+    const report = await prisma.clientReport.findUnique({
+      where: { id: reportId },
       include: {
         client: {
           select: {
             id: true,
             name: true,
             email: true,
-            company: true
-          }
+            company: true,
+          },
         },
         template: {
           select: {
             id: true,
             name: true,
-            type: true
-          }
-        }
-      }
+            type: true,
+          },
+        },
+      },
     })
 
     if (!report) {
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+      throw new ApiError(404, 'Report not found', 'NOT_FOUND')
     }
 
-    // For demo purposes, allow sending reports in any status
-    // In production, you might want to restrict to 'COMPLETED' status only
+    await requireWorkspaceRole(report.workspaceId, MANAGER_ROLES)
+
     if (report.status === 'GENERATING') {
-      return NextResponse.json({ 
-        error: 'Report is currently being generated. Please try again in a moment.' 
-      }, { status: 400 })
+      return jsonError(
+        400,
+        'Report is currently being generated. Please try again in a moment.'
+      )
+    }
+
+    // Optionally mint a share link (ADR-0020). Only reports with a shareable
+    // snapshot get one; otherwise the link is skipped silently — the send
+    // itself must not fail because of it.
+    let shareUrl: string | null = null
+    if (
+      includeShareLink === true &&
+      SHAREABLE_STATUSES.includes(report.status) &&
+      report.data !== null
+    ) {
+      const { token, tokenHash } = generateShareToken()
+      await prisma.reportShareLink.create({
+        data: {
+          workspaceId: report.workspaceId,
+          reportId: report.id,
+          tokenHash,
+          passwordHash: null,
+          expiresAt: shareLinkExpiry(), // default 30 days
+          createdById: user.id,
+        },
+      })
+      // Raw token lives only in this URL — embedded in the email, never
+      // stored or logged.
+      shareUrl = buildShareUrl(token)
     }
 
     // Configure email transporter
@@ -83,65 +137,77 @@ export async function POST(
       host: process.env.SMTP_HOST || 'localhost',
       port: parseInt(process.env.SMTP_PORT || '1025'),
       secure: false,
-      auth: process.env.SMTP_USER ? {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD
-      } : undefined
+      auth: process.env.SMTP_USER
+        ? {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASSWORD,
+          }
+        : undefined,
     })
 
     // Prepare email content
-    const emailSubject = subject || `${report.name} - ${report.client.name}`
-    const emailContent = generateEmailTemplate(report, message)
-    const emailText = generatePlainTextEmail(report, message)
+    const emailSubject =
+      typeof subject === 'string' && subject.length > 0
+        ? subject
+        : `${report.name} - ${report.client.name}`
+    const customMessage = typeof message === 'string' ? message : undefined
+    const emailContent = generateEmailTemplate(report, customMessage, shareUrl)
+    const emailText = generatePlainTextEmail(report, customMessage, shareUrl)
 
     // Send email to each recipient
-    const emailPromises = recipients.map(async (email: string) => {
+    const emailPromises = recipients.map(async (email: unknown) => {
+      const address = String(email).trim()
       try {
         await transporter.sendMail({
           from: process.env.SMTP_FROM || 'SociallyHub <noreply@sociallyhub.com>',
-          to: email.trim(),
+          to: address,
           subject: emailSubject,
           text: emailText,
-          html: emailContent
+          html: emailContent,
         })
-        return { email, status: 'sent' }
+        return { email: address, status: 'sent' }
       } catch (error) {
-        console.error(`Failed to send email to ${email}:`, error)
-        return { email, status: 'failed', error: error.message }
+        console.error(`Failed to send email to ${address}:`, error)
+        return {
+          email: address,
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        }
       }
     })
 
     const emailResults = await Promise.all(emailPromises)
-    
-    // Log the email sending activity
-    console.log(`📧 Report ${reportId} sent to ${recipients.length} recipients by user ${userId}`)
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Report sent successfully',
-      results: emailResults
-    })
-
-  } catch (error) {
-    console.error('Error sending client report:', error)
-    return NextResponse.json(
-      { error: 'Failed to send report' },
-      { status: 500 }
+    // Log the email sending activity (never the share URL/token)
+    console.log(
+      `📧 Report ${reportId} sent to ${recipients.length} recipients by user ${user.id}`
     )
+
+    return NextResponse.json({
+      success: true,
+      message: 'Report sent successfully',
+      results: emailResults,
+    })
+  } catch (error) {
+    return handleApiError(error)
   }
 }
 
-function generateEmailTemplate(report: any, customMessage?: string): string {
+function generateEmailTemplate(
+  report: ReportForEmail,
+  customMessage?: string,
+  shareUrl?: string | null
+): string {
   const reportUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3099'}/dashboard/clients?tab=reports&report=${report.id}`
-  const reportData = report.data || {}
-  const metrics = reportData.metrics || {}
-  
+  const reportData = (report.data ?? {}) as { metrics?: EmailMetrics }
+  const metrics: EmailMetrics = reportData.metrics ?? {}
+
   // Generate dynamic metrics with more realistic values
   const totalReach = metrics.totalReach || Math.floor(Math.random() * 50000) + 10000
   const engagement = metrics.engagement || Math.floor(Math.random() * 5000) + 1000
   const conversions = metrics.conversions || Math.floor(Math.random() * 500) + 50
   const growthRate = metrics.growthRate || (Math.random() * 15 + 2).toFixed(1)
-  
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -150,31 +216,31 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${report.name}</title>
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
-            line-height: 1.6; 
-            color: #1a202c; 
-            margin: 0; 
-            padding: 0; 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1a202c;
+            margin: 0;
+            padding: 0;
             background: linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%);
             min-height: 100vh;
         }
         .wrapper {
             padding: 40px 20px;
         }
-        .container { 
-            max-width: 680px; 
-            margin: 0 auto; 
-            background: #ffffff; 
-            border-radius: 16px; 
-            overflow: hidden; 
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
-        .header { 
+        .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; 
-            padding: 48px 32px; 
-            text-align: center; 
+            color: white;
+            padding: 48px 32px;
+            text-align: center;
             position: relative;
             overflow: hidden;
         }
@@ -196,37 +262,37 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
             position: relative;
             z-index: 1;
         }
-        .logo { 
-            font-size: 36px; 
-            font-weight: 800; 
+        .logo {
+            font-size: 36px;
+            font-weight: 800;
             margin: 0;
             letter-spacing: -0.5px;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        .tagline { 
-            margin: 12px 0 0 0; 
-            opacity: 0.95; 
-            font-size: 16px; 
+        .tagline {
+            margin: 12px 0 0 0;
+            opacity: 0.95;
+            font-size: 16px;
             font-weight: 500;
             letter-spacing: 0.5px;
         }
-        .content { 
-            padding: 40px 32px; 
+        .content {
+            padding: 40px 32px;
         }
-        .greeting { 
-            font-size: 18px; 
-            margin-bottom: 28px; 
-            color: #2d3748; 
+        .greeting {
+            font-size: 18px;
+            margin-bottom: 28px;
+            color: #2d3748;
             font-weight: 500;
         }
-        .message-box { 
+        .message-box {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             background-size: 4px 100%;
             background-repeat: no-repeat;
             background-position: left;
             border-left: 4px solid transparent;
-            padding: 24px; 
-            margin: 28px 0; 
+            padding: 24px;
+            margin: 28px 0;
             background-color: #f7fafc;
             border-radius: 8px;
             font-size: 15px;
@@ -252,24 +318,24 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
             display: grid;
             gap: 16px;
         }
-        .detail-row { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 12px 0; 
-            border-bottom: 1px solid #edf2f7; 
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #edf2f7;
         }
-        .detail-row:last-child { 
-            border-bottom: none; 
+        .detail-row:last-child {
+            border-bottom: none;
         }
-        .detail-label { 
-            font-weight: 600; 
-            color: #718096; 
+        .detail-label {
+            font-weight: 600;
+            color: #718096;
             font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .detail-value { 
-            color: #2d3748; 
+        .detail-value {
+            color: #2d3748;
             font-weight: 500;
             font-size: 15px;
         }
@@ -294,17 +360,17 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
             margin: 0 0 24px 0;
             text-align: center;
         }
-        .metrics { 
-            display: grid; 
-            grid-template-columns: repeat(2, 1fr); 
-            gap: 20px; 
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
         }
-        .metric-card { 
+        .metric-card {
             background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
             border: 2px solid #e2e8f0;
-            border-radius: 12px; 
-            padding: 24px; 
-            text-align: center; 
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
@@ -329,25 +395,66 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
             justify-content: center;
             font-size: 20px;
         }
-        .metric-value { 
-            font-size: 32px; 
-            font-weight: 800; 
+        .metric-value {
+            font-size: 32px;
+            font-weight: 800;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 8px; 
+            margin-bottom: 8px;
         }
-        .metric-label { 
-            font-size: 13px; 
-            color: #718096; 
-            text-transform: uppercase; 
-            letter-spacing: 0.5px; 
+        .metric-label {
+            font-size: 13px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             font-weight: 600;
         }
-        .cta-section { 
-            text-align: center; 
-            margin: 40px 0; 
+        .share-section {
+            text-align: center;
+            margin: 40px 0;
+            padding: 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
+        }
+        .share-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #ffffff;
+            margin: 0 0 12px 0;
+        }
+        .share-description {
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 24px;
+            font-size: 15px;
+        }
+        .share-btn {
+            display: inline-block;
+            background: #ffffff;
+            color: #667eea;
+            padding: 16px 40px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.15);
+        }
+        .share-url {
+            margin-top: 20px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.85);
+            word-break: break-all;
+        }
+        .share-url a {
+            color: #ffffff;
+            text-decoration: underline;
+        }
+        .cta-section {
+            text-align: center;
+            margin: 40px 0;
             padding: 32px;
             background: linear-gradient(135deg, #f6f9fc 0%, #f0f4f8 100%);
             border-radius: 12px;
@@ -363,21 +470,21 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
             margin-bottom: 24px;
             font-size: 15px;
         }
-        .btn { 
-            display: inline-block; 
+        .btn {
+            display: inline-block;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; 
-            padding: 16px 40px; 
-            text-decoration: none; 
-            border-radius: 8px; 
-            font-weight: 600; 
+            color: white;
+            padding: 16px 40px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
             font-size: 16px;
             letter-spacing: 0.5px;
             box-shadow: 0 4px 14px 0 rgba(102, 126, 234, 0.4);
             transition: all 0.3s ease;
         }
-        .btn:hover { 
-            transform: translateY(-2px); 
+        .btn:hover {
+            transform: translateY(-2px);
             box-shadow: 0 6px 20px 0 rgba(102, 126, 234, 0.5);
         }
         .help-section {
@@ -392,19 +499,19 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
             font-size: 14px;
             line-height: 1.6;
         }
-        .footer { 
+        .footer {
             background: linear-gradient(180deg, #2d3748 0%, #1a202c 100%);
             color: #cbd5e0;
-            padding: 32px; 
-            text-align: center; 
-            font-size: 14px; 
+            padding: 32px;
+            text-align: center;
+            font-size: 14px;
         }
         .footer-links {
             margin-top: 16px;
         }
-        .footer a { 
-            color: #9f7aea; 
-            text-decoration: none; 
+        .footer a {
+            color: #9f7aea;
+            text-decoration: none;
             margin: 0 12px;
             font-weight: 500;
             transition: color 0.2s ease;
@@ -435,16 +542,16 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
             .wrapper {
                 padding: 20px 16px;
             }
-            .header, .content { 
-                padding: 32px 24px; 
+            .header, .content {
+                padding: 32px 24px;
             }
-            .metrics { 
-                grid-template-columns: 1fr; 
+            .metrics {
+                grid-template-columns: 1fr;
             }
             .metric-card {
                 padding: 20px;
             }
-            .btn {
+            .btn, .share-btn {
                 padding: 14px 32px;
                 font-size: 15px;
             }
@@ -460,12 +567,12 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
                     <p class="tagline">Professional Social Media Intelligence</p>
                 </div>
             </div>
-            
+
             <div class="content">
                 <div class="greeting">
                     Hello ${report.client.name} Team,
                 </div>
-                
+
                 ${customMessage ? `
                 <div class="message-box">
                     ${customMessage.replace(/\n/g, '<br>')}
@@ -476,7 +583,16 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
                     We're excited to share your latest social media performance insights. This comprehensive report provides a detailed analysis of your campaigns, engagement metrics, and growth trends for the specified period.
                 </div>
                 `}
-                
+
+                ${shareUrl ? `
+                <div class="share-section">
+                    <h3 class="share-title">View Report Online</h3>
+                    <p class="share-description">Open your report in the browser — no account or login required.</p>
+                    <a href="${shareUrl}" class="share-btn">View Report Online →</a>
+                    <p class="share-url">Or copy this link: <a href="${shareUrl}">${shareUrl}</a></p>
+                </div>
+                ` : ''}
+
                 <div class="report-card">
                     <h3 class="report-title">📊 Report Information</h3>
                     <div class="detail-grid">
@@ -494,9 +610,9 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Generated</span>
-                            <span class="detail-value">${new Date().toLocaleDateString('en-US', { 
-                              year: 'numeric', 
-                              month: 'long', 
+                            <span class="detail-value">${new Date().toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'long',
                               day: 'numeric',
                               hour: '2-digit',
                               minute: '2-digit'
@@ -510,7 +626,7 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="metrics-section">
                     <h3 class="metrics-title">🚀 Key Performance Highlights</h3>
                     <div class="metrics">
@@ -536,13 +652,13 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="cta-section">
                     <h3 class="cta-title">Ready to Dive Deeper?</h3>
                     <p class="cta-description">Access your full report with detailed analytics, charts, and recommendations.</p>
                     <a href="${reportUrl}" class="btn">View Complete Report →</a>
                 </div>
-                
+
                 <div class="help-section">
                     <p class="help-text">
                         <strong>Need assistance?</strong><br>
@@ -551,7 +667,7 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
                     </p>
                 </div>
             </div>
-            
+
             <div class="footer">
                 <div>
                     <strong style="color: #e2e8f0; font-size: 16px;">SociallyHub</strong><br>
@@ -580,14 +696,21 @@ function generateEmailTemplate(report: any, customMessage?: string): string {
   `.trim()
 }
 
-function generatePlainTextEmail(report: any, customMessage?: string): string {
+function generatePlainTextEmail(
+  report: ReportForEmail,
+  customMessage?: string,
+  shareUrl?: string | null
+): string {
   return `
 SociallyHub - Professional Social Media Reporting
 
 Dear ${report.client.name} Team,
 
 ${customMessage || 'Your latest performance report is ready for review. This comprehensive report provides insights into your social media performance and key metrics for the specified period.'}
-
+${shareUrl ? `
+VIEW YOUR REPORT ONLINE (no login required):
+${shareUrl}
+` : ''}
 REPORT DETAILS:
 - Report Name: ${report.name}
 - Client: ${report.client.name}

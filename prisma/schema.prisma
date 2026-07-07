@@ -138,6 +138,7 @@ model Workspace {
   featureFlags               FeatureFlag[]               @relation("WorkspaceFeatureFlags")
   featureFlagEvaluations     FeatureFlagEvaluation[]     @relation("WorkspaceFeatureFlagEvaluations")
   subscription               Subscription?               // SaaS billing (ADR-0019) — NOT client invoicing
+  reportShareLinks           ReportShareLink[]           // Client portal & report sharing (ADR-0020)
 
   @@map("workspaces")
 }
@@ -274,13 +275,19 @@ model UserWorkspace {
   userId      String
   workspaceId String
   role        WorkspaceRole
+  // ADR-0020 Phase 2: a CLIENT_VIEWER membership is scoped to exactly one
+  // client. Nullable for every other role; required-by-validation (not by the
+  // DB) when role = CLIENT_VIEWER — enforced in requireClientViewer().
+  clientId    String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client?   @relation("ClientPortalMembers", fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([userId, workspaceId])
+  @@index([clientId])
   @@map("user_workspaces")
 }
 
@@ -291,6 +298,8 @@ model TeamInvitation {
   token       String           @unique @default(cuid())
   status      InvitationStatus @default(PENDING)
   workspaceId String
+  // ADR-0020 Phase 2: portal invitations (role = CLIENT_VIEWER) target one client.
+  clientId    String?
   invitedById String
   createdAt   DateTime         @default(now())
   expiresAt   DateTime
@@ -328,6 +337,7 @@ model Client {
   reports         ClientReport[]
   reportSchedules ClientReportSchedule[]
   branding        ClientBranding[]       @relation("ClientBrandingRelation")
+  portalMembers   UserWorkspace[]        @relation("ClientPortalMembers")
 
   @@map("clients")
 }
@@ -721,13 +731,40 @@ model ClientReport {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  workspace Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client    Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  template  ClientReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  workspace  Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client     Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  template   ClientReportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  shareLinks ReportShareLink[]
 
   @@index([clientId, status])
   @@index([frequency, status])
   @@map("client_reports")
+}
+
+// ADR-0020 Phase 1: tokenized share links for client reports. A report can
+// have many links (per recipient, per revocation cycle). The raw token is
+// 32 bytes of crypto.randomBytes (base64url), shown ONCE at creation; only
+// its SHA-256 hash is persisted, so a DB dump yields zero working links
+// (ADR-0006). Expired, revoked, and unknown tokens are indistinguishable on
+// the public surface (uniform 404 — no oracle).
+model ReportShareLink {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  reportId       String
+  tokenHash      String    @unique // sha256(token); raw token never stored
+  passwordHash   String? // bcrypt, optional
+  expiresAt      DateTime? // default now()+30d at creation
+  revokedAt      DateTime?
+  viewCount      Int       @default(0)
+  lastAccessedAt DateTime?
+  createdById    String
+  createdAt      DateTime  @default(now())
+
+  report    ClientReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@map("report_share_links")
 }
 
 model ClientReportTemplate {

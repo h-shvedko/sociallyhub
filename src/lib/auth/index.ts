@@ -13,9 +13,10 @@ export {
   requireAdmin,
   requirePlatformAdmin,
   requireWorkspaceRole,
+  requireClientViewer,
   ApiError,
 } from "./session"
-export type { AuthUser, WorkspaceMembership } from "./session"
+export type { AuthUser, WorkspaceMembership, ClientViewerContext } from "./session"
 // TEMPORARY (until ADR-0025 removes demo-id mapping): keep old names
 // compiling during the Phase 2/3 codemods. Do NOT add new usages — routes
 // must use getAuthenticatedUser()/requireSession() instead. These

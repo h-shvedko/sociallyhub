@@ -333,7 +333,7 @@ export function ClientSettingsDialog({ client, open, onOpenChange, onSettingsSav
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="pdf">PDF</SelectItem>
+                        <SelectItem value="pdf">Printable (HTML)</SelectItem>
                         <SelectItem value="excel">Excel</SelectItem>
                         <SelectItem value="csv">CSV</SelectItem>
                       </SelectContent>

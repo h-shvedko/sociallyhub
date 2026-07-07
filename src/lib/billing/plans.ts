@@ -38,6 +38,22 @@ export const PLAN_LIMITS: Record<PlanTierKey, Record<LimitKey, number | null>> =
   },
 }
 
+/**
+ * Boolean plan features (ADR-0020). Unlike LimitKey counters these are
+ * on/off per tier. `clientPortal` gates GRANTING portal access (creating
+ * CLIENT_VIEWER invitations) — existing portal members keep read access on
+ * downgrade, because the external client cannot fix the agency's billing.
+ * Report share links are deliberately NOT gated: they are the delivery
+ * mechanism for reports every tier can already generate and email.
+ */
+export type FeatureKey = 'clientPortal'
+
+export const PLAN_FEATURES: Record<PlanTierKey, Record<FeatureKey, boolean>> = {
+  FREE: { clientPortal: false },
+  PRO: { clientPortal: true },
+  BUSINESS: { clientPortal: true },
+}
+
 /** Display-only monthly prices in USD; real prices live in Stripe. */
 export const PLAN_PRICES_USD = { FREE: 0, PRO: 29, BUSINESS: 79 }
 

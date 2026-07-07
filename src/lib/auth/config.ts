@@ -111,6 +111,27 @@ export const authOptions: NextAuthOptions = {
           console.error("Failed to load isPlatformAdmin claim:", error)
           token.isPlatformAdmin = false
         }
+        // ADR-0020 default-deny: a user whose EVERY membership is
+        // CLIENT_VIEWER is a portal-only client contact. The edge middleware
+        // uses this claim to 403 all /api/* outside the portal allowlist,
+        // because ~175 legacy routes check membership but not role (the
+        // ADR-0004 rollout is incremental). Staleness matches
+        // isPlatformAdmin: recomputed at sign-in; a role change takes effect
+        // on the next login. Fail direction is OPEN here (claim false on
+        // error) because the routes the portal allowlist serves re-check the
+        // role in the DB via requireClientViewer()/requireWorkspaceRole().
+        try {
+          const memberships = await prisma.userWorkspace.findMany({
+            where: { userId: user.id },
+            select: { role: true },
+          })
+          token.portalOnly =
+            memberships.length > 0 &&
+            memberships.every((m) => m.role === "CLIENT_VIEWER")
+        } catch (error) {
+          console.error("Failed to load portalOnly claim:", error)
+          token.portalOnly = false
+        }
       }
       return token
     },
@@ -118,6 +139,7 @@ export const authOptions: NextAuthOptions = {
       if (token) {
         session.user.id = token.id as string
         session.user.isPlatformAdmin = token.isPlatformAdmin === true
+        session.user.portalOnly = token.portalOnly === true
       }
       return session
     },

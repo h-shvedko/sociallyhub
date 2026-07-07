@@ -63,6 +63,7 @@ import { CreateReportDialog } from './create-report-dialog'
 import { EditTemplateDialog } from './edit-template-dialog'
 import { CreateScheduleDialog } from './create-schedule-dialog'
 import { CreateTemplateDialog } from './create-template-dialog'
+import { ShareReportDialog } from './share-report-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { ToastContainer } from '@/components/ui/toast'
 
@@ -132,7 +133,7 @@ interface ReportSchedule {
 }
 
 export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
-  const { toasts, toast, removeToast } = useToast()
+  const { toasts, toast, addToast, removeToast } = useToast()
   const [activeTab, setActiveTab] = useState('overview')
   const [reports, setReports] = useState<ClientReport[]>([])
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
@@ -149,6 +150,7 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showSendEmailDialog, setShowSendEmailDialog] = useState(false)
+  const [showShareDialog, setShowShareDialog] = useState(false)
   const [showEditTemplateDialog, setShowEditTemplateDialog] = useState(false)
   const [showCreateTemplateDialog, setShowCreateTemplateDialog] = useState(false)
   const [showCreateScheduleDialog, setShowCreateScheduleDialog] = useState(false)
@@ -280,7 +282,9 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `report-${reportId}.pdf`
+        // ADR-0020 design decision 6: report downloads are print-optimized
+        // HTML, labeled honestly — never a fake ".pdf" extension.
+        a.download = `report-${reportId}.html`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
@@ -323,6 +327,11 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
   const handleSendEmail = (report: ClientReport) => {
     setSelectedReport(report)
     setShowSendEmailDialog(true)
+  }
+
+  const handleShareReport = (report: ClientReport) => {
+    setSelectedReport(report)
+    setShowShareDialog(true)
   }
 
   const handleEditTemplate = (template: ReportTemplate) => {
@@ -755,6 +764,12 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                               <Send className="h-4 w-4 mr-2" />
                               Send Email
                             </DropdownMenuItem>
+                            {(report.status === 'COMPLETED' || report.status === 'SENT') && (
+                              <DropdownMenuItem onClick={() => handleShareReport(report)}>
+                                <Share2 className="h-4 w-4 mr-2" />
+                                Share link
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteReport(report)}>
                               <Trash2 className="h-4 w-4 mr-2" />
@@ -1360,6 +1375,12 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
                               <DropdownMenuSeparator />
                             </>
                           )}
+                          {(report.status === 'COMPLETED' || report.status === 'SENT') && (
+                            <DropdownMenuItem onClick={() => handleShareReport(report)}>
+                              <Share2 className="h-4 w-4 mr-2" />
+                              Share link
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => {
                             setSelectedReport(report)
                             setShowViewDialog(true)
@@ -1580,6 +1601,14 @@ export function ClientReportsDashboard({ clients = [] }: ClientReportsProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Share Link Dialog (ADR-0020) */}
+      <ShareReportDialog
+        open={showShareDialog}
+        onOpenChange={setShowShareDialog}
+        report={selectedReport}
+        addToast={addToast}
+      />
 
       {/* Edit Template Dialog */}
       {selectedTemplate && (
