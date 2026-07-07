@@ -145,9 +145,14 @@ function randomBoolean(probability = 0.5): boolean {
   return Math.random() < probability
 }
 
-function generateEmail(firstName: string, lastName: string): string {
+// `tag` (e.g. the loop index) is REQUIRED for models with a unique email
+// (User): 50 draws from a 50x50 name pool collide ~1-in-3 seed runs (the
+// same birthday-problem class as the providerItemId flake fixed earlier) —
+// CI run 28878757066 failed on exactly this (duplicate madison.thomas@).
+function generateEmail(firstName: string, lastName: string, tag?: number): string {
   const domains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'company.com']
-  return `${firstName.toLowerCase()}.${lastName.toLowerCase()}@${randomChoice(domains)}`
+  const plus = tag === undefined ? '' : `+${tag}`
+  return `${firstName.toLowerCase()}.${lastName.toLowerCase()}${plus}@${randomChoice(domains)}`
 }
 
 function generateHandle(name: string): string {
@@ -206,7 +211,7 @@ async function main() {
     
     const user = await prisma.user.create({
       data: {
-        email: generateEmail(firstName, lastName),
+        email: generateEmail(firstName, lastName, i),
         name: `${firstName} ${lastName}`,
         password: hashedPassword,
         emailVerified: randomBoolean(0.8) ? new Date() : null,
