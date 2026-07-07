@@ -72,15 +72,19 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 ## Recommended implementation sequence
 
-Steps 1–6 below are **done**. What's left starts at step 7.
+Steps 1–7 below are **done**. What's left starts at step 8.
 
 1. ~~**Foundation** — ADR-0002, then ADR-0003.~~ ✅ Done.
 2. ~~**Security core** — ADR-0006, ADR-0004, ADR-0005.~~ ✅ Done.
 3. ~~**Make the product real** — ADR-0008 (worker/publishing), ADR-0007 (storage), ADR-0009 (Twitter/X + Meta foundations), ADR-0010 (notifications).~~ ✅ Done (ADR-0009's live-platform verification remains external-blocked).
 4. ~~**Repairs** — ADR-0011 (support), ADR-0012 (admin).~~ ✅ Done.
-5. ~~**Shrink the surface** — the flag-off mechanics of ADR-0013/0014/0015.~~ ✅ Done (the deletion phases of ADR-0024 remain).
-6. **Honest pipeline & gates (not yet started)** — ADR-0022 and ADR-0021, so CI protects all subsequent work.
-7. **Settings & growth (not yet started)** — ADR-0016, ADR-0017, ADR-0025 (seeding/demo mode), then ADR-0019 (billing — can run in parallel with anything after step 1), ADR-0018 (AI), ADR-0020 (client portal), ADR-0023 (observability, incremental throughout).
+5. ~~**Shrink the surface** — the flag-off mechanics of ADR-0013/0014/0015.~~ ✅ Done.
+6. ~~**Settings** — ADR-0016 (admin settings + real backups), ADR-0017 (user settings/personalization).~~ ✅ Done.
+7. ~~**Hygiene + honest pipeline** — ADR-0024 (dead-code sweep → first-ever green `next build`), then ADR-0022 (CI/CD + buildable prod image built on it).~~ ✅ Done.
+8. **Test ratchets (next)** — ADR-0021: with a green build + running pipeline, replace the advisory lint/typecheck/test/e2e gates with real coverage ratchets (unblocks flipping those CI jobs to blocking).
+9. **Growth** — ADR-0019 (billing/Stripe — also closes the ADR-0017 account-deletion Stripe hook), ADR-0018 (AI availability + UI mounting), ADR-0020 (client portal), ADR-0025 (seeding/demo mode).
+10. **Observability (incremental throughout)** — ADR-0023: populate the `monitoring` compose profile ADR-0022 stubbed; owns the health/uptime scope ADR-0016 deferred.
+11. **Follow-ups** — ADR-0026 (2FA), ADR-0027 (workspace switching), each filed from ADR-0017.
 
 ## Provenance
 
