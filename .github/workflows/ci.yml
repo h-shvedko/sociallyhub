@@ -475,6 +475,9 @@ jobs:
           npx prisma migrate deploy
           npx prisma generate
           npm run db:seed
+          # Deterministic e2e fixtures (ADR-0021): the rewritten specs +
+          # global-setup sign in as the e2e fixture user, not demo data.
+          npx tsx prisma/seed-e2e.ts
         env:
           NODE_ENV: test
 
