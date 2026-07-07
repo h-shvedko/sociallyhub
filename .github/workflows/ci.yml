@@ -469,13 +469,15 @@ jobs:
           echo "Postgres never became ready"
           exit 1
 
-      - name: Apply migrations and seed (against the compose postgres)
+      - name: Apply migrations and seed e2e fixtures (against the compose postgres)
         run: |
           npx prisma migrate deploy
           npx prisma generate
-          npm run db:seed
-          # Deterministic e2e fixtures (ADR-0021): the rewritten specs +
-          # global-setup sign in as the e2e fixture user, not demo data.
+          # Deterministic e2e fixtures ONLY (ADR-0021 §4): the specs +
+          # global-setup use the e2e fixture user exclusively — the random 30k-row
+          # demo seed added nothing here and its birthday-problem collisions
+          # (now also fixed in seed.ts) randomly killed this gate. The full demo
+          # seed keeps its own genuine smoke assertion in the schema job.
           npx tsx prisma/seed-e2e.ts
         env:
           NODE_ENV: test

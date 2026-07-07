@@ -483,7 +483,11 @@ async function main() {
           socialAccountId: account.id,
           type: randomChoice(INBOX_TYPES),
           providerThreadId: randomBoolean(0.7) ? `thread-${randomInt(100000, 999999)}` : null,
-          providerItemId: `${account.provider.toLowerCase()}-item-${randomInt(100000, 999999)}`,
+          // Loop index embedded → guaranteed unique per (account, i). The old pure
+          // randomInt(100000,999999) draw collided ~1-in-25 full seed runs on the
+          // @@unique([providerItemId, socialAccountId]) constraint (birthday problem
+          // across 25 items/account) and randomly killed CI's seed-smoke (ADR-0021).
+          providerItemId: `${account.provider.toLowerCase()}-item-${i}-${randomInt(100000, 999999)}`,
           content: randomChoice(SAMPLE_COMMENTS),
           authorName: `${randomChoice(FIRST_NAMES)} ${randomChoice(LAST_NAMES)}`,
           authorHandle: generateHandle('user'),
