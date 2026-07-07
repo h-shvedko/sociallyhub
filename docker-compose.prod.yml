@@ -118,6 +118,11 @@ services:
     image: ghcr.io/h-shvedko/sociallyhub:${APP_IMAGE_TAG:?set APP_IMAGE_TAG (e.g. the git SHA CI pushed) in .env}
     container_name: sociallyhub-app
     restart: unless-stopped
+    # ADR-0023: Promtail's docker_sd job (docker/monitoring/promtail.yml) only
+    # discovers containers carrying this label, and maps its value to the Loki
+    # `service` label. Required for the stdout JSON logs to reach Loki.
+    labels:
+      com.sociallyhub.service: "app"
     # Secrets and app config come from the VM-side .env file
     # (see .env.production.example for the documented contract).
     env_file:
@@ -153,6 +158,18 @@ services:
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - STRIPE_PRICE_PRO_MONTHLY=${STRIPE_PRICE_PRO_MONTHLY:-}
       - STRIPE_PRICE_BUSINESS_MONTHLY=${STRIPE_PRICE_BUSINESS_MONTHLY:-}
+      # Observability (ADR-0023). METRICS_TOKEN empty = /api/metrics open on the
+      # compose-internal network (never proxied by nginx). LOG_TO_STDOUT=true
+      # makes winston log JSON to stdout only (no in-container log files) so
+      # promtail/Loki can scrape the Docker json logs. SENTRY_DSN empty =
+      # Sentry/GlitchTip fully DORMANT (guarded dynamic import, zero cost).
+      # WORKER_EXPECTED=true tells /api/health to assert the worker heartbeat
+      # (the worker service below is always present in this topology).
+      - METRICS_TOKEN=${METRICS_TOKEN:-}
+      - LOG_TO_STDOUT=${LOG_TO_STDOUT:-true}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
+      - WORKER_EXPECTED=${WORKER_EXPECTED:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,6 +198,10 @@ services:
     image: ghcr.io/h-shvedko/sociallyhub:${APP_IMAGE_TAG:?set APP_IMAGE_TAG (e.g. the git SHA CI pushed) in .env}
     container_name: sociallyhub-worker
     restart: unless-stopped
+    # ADR-0023: labeled so Promtail's docker_sd job ships the worker's stdout
+    # JSON logs to Loki under service="worker" (see the app service above).
+    labels:
+      com.sociallyhub.service: "worker"
     # Bypass the web entrypoint (its dep-waits are redundant here — compose
     # gates on healthchecks) and run the bundled worker directly.
     command: ["node", "dist/worker.js"]
@@ -204,6 +225,20 @@ services:
       # Backup artifacts dir (ADR-0016) — the worker writes pg_dump/tar files
       # here; Dockerfile.prod installs postgresql-client so pg_dump is real.
       - BACKUP_DIR=/app/backups
+      # Observability (ADR-0023). The worker runs its own prom-client registry
+      # on :9464 (scraped by Prometheus as job "sociallyhub-worker"). Same
+      # honesty knobs as the app: METRICS_TOKEN guards the worker's /metrics,
+      # LOG_TO_STDOUT streams JSON logs to Docker for Loki, SENTRY_DSN empty
+      # keeps error tracking dormant. WORKER_EXPECTED is app-only (not needed
+      # here — the worker does not read its own heartbeat).
+      - METRICS_TOKEN=${METRICS_TOKEN:-}
+      - LOG_TO_STDOUT=${LOG_TO_STDOUT:-true}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
+    # Metrics port is compose-internal ONLY (Prometheus scrapes it over the
+    # network); it is deliberately NOT published to the host.
+    expose:
+      - "9464"
     depends_on:
       postgres:
         condition: service_healthy
@@ -278,12 +313,15 @@ services:
       retries: 5
 
   # ==========================================================================
-  # OPTIONAL monitoring stack — enable with `--profile monitoring`.
-  # Mounts reference ONLY files that actually exist in the repo
-  # (docker/monitoring/{prometheus,loki,promtail}.yml). The former grafana
-  # provisioning mounts (./docker/monitoring/grafana/**) pointed at
-  # directories that do NOT exist and were removed — grafana starts with its
-  # own persisted storage; datasources/dashboards are configured in its UI.
+  # OPTIONAL monitoring stack (ADR-0023) — enable with `--profile monitoring`.
+  # All mounts reference files/dirs that ACTUALLY exist in the repo:
+  #   docker/monitoring/{prometheus,loki,promtail}.yml
+  #   docker/monitoring/rules/{recording,alerts}.yml         (prometheus rules)
+  #   docker/monitoring/grafana/provisioning/{datasources,dashboards}/*.yml
+  #   docker/monitoring/grafana/dashboards/*.json            (starter dashboard)
+  # Grafana is now provisioned from disk (datasources + dashboards) on startup
+  # instead of click-ops. Alerting is Grafana unified alerting on the
+  # Prometheus datasource — there is NO Alertmanager container.
   # ==========================================================================
   prometheus:
     image: prom/prometheus:latest
@@ -298,6 +336,8 @@ services:
       - '--web.enable-lifecycle'
     volumes:
       - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Recording + alert rules referenced by prometheus.yml's rule_files.
+      - ./docker/monitoring/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     networks:
       - sociallyhub-network
@@ -313,6 +353,11 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
     volumes:
       - grafana_data:/var/lib/grafana
+      # Provisioning: Prometheus + Loki datasources and the dashboard provider
+      # (these dirs now exist in the repo, ADR-0023 Track D).
+      - ./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Dashboard JSON loaded by the file provider above.
+      - ./docker/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - sociallyhub-network
     depends_on:
@@ -348,6 +393,84 @@ services:
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+    networks:
+      - sociallyhub-network
+
+  # ==========================================================================
+  # OPTIONAL error tracking — GlitchTip (Sentry-protocol, self-hosted).
+  # ADR-0023 Phase 4, item 10. DORMANT and DELIBERATELY behind its OWN
+  # `glitchtip` profile (NOT `monitoring`) so that `--profile monitoring up`
+  # stays 100% clean: GlitchTip needs manual first-time setup and would
+  # otherwise sit as a crash-looping/exited container. It reuses the existing
+  # Postgres (a DEDICATED `glitchtip` database) and Redis (DB index 1, separate
+  # from BullMQ's DB 0). It does NOTHING for the app until SENTRY_DSN (a project
+  # DSN created inside GlitchTip) is set on the app/worker services.
+  #
+  # FIRST-TIME SETUP (once, on the VM), then `--profile glitchtip up -d`:
+  #   1. Set GLITCHTIP_SECRET_KEY in .env  (openssl rand -hex 32).
+  #   2. Create the database:
+  #        docker compose -f docker-compose.prod.yml exec postgres \
+  #          psql -U sociallyhub -c "CREATE DATABASE glitchtip;"
+  #   3. Run migrations + create the first superuser:
+  #        docker compose -f docker-compose.prod.yml --profile glitchtip \
+  #          run --rm glitchtip ./bin/run-migrate.sh
+  #        docker compose -f docker-compose.prod.yml --profile glitchtip \
+  #          run --rm glitchtip ./manage.py createsuperuser
+  #   4. `--profile glitchtip up -d`, log into the UI (:8080), create an
+  #      organization + project, copy its DSN into SENTRY_DSN in .env, then
+  #      recreate the app/worker so @sentry/nextjs starts reporting.
+  # Until all of the above is done this stack is a no-op.
+  # ==========================================================================
+  glitchtip:
+    image: glitchtip/glitchtip:latest
+    container_name: sociallyhub-glitchtip
+    restart: unless-stopped
+    profiles: ["glitchtip"]
+    ports:
+      - "8080:8000"
+    environment:
+      # Dedicated DB on the SHARED postgres (must be created first — see above).
+      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/glitchtip
+      # Redis DB 1 — kept OFF BullMQ's DB 0 (noeviction job store).
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/1
+      # REQUIRED before GlitchTip will boot: openssl rand -hex 32.
+      - SECRET_KEY=${GLITCHTIP_SECRET_KEY:-}
+      - PORT=8000
+      - GLITCHTIP_DOMAIN=${GLITCHTIP_DOMAIN:-http://localhost:8080}
+      - DEFAULT_FROM_EMAIL=${GLITCHTIP_FROM_EMAIL:-glitchtip@localhost}
+      # Console email backend by default (no outbound SMTP wired for GlitchTip).
+      - EMAIL_URL=${GLITCHTIP_EMAIL_URL:-consolemail://}
+      - CELERY_WORKER_AUTOSCALE=${GLITCHTIP_CELERY_AUTOSCALE:-1,3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sociallyhub-network
+
+  # GlitchTip background worker (celery + beat) — same image, trivial to add.
+  glitchtip-worker:
+    image: glitchtip/glitchtip:latest
+    container_name: sociallyhub-glitchtip-worker
+    restart: unless-stopped
+    profiles: ["glitchtip"]
+    command: ["./bin/run-celery-with-beat.sh"]
+    environment:
+      - DATABASE_URL=postgresql://sociallyhub:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/glitchtip
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/1
+      - SECRET_KEY=${GLITCHTIP_SECRET_KEY:-}
+      - GLITCHTIP_DOMAIN=${GLITCHTIP_DOMAIN:-http://localhost:8080}
+      - DEFAULT_FROM_EMAIL=${GLITCHTIP_FROM_EMAIL:-glitchtip@localhost}
+      - EMAIL_URL=${GLITCHTIP_EMAIL_URL:-consolemail://}
+      - CELERY_WORKER_AUTOSCALE=${GLITCHTIP_CELERY_AUTOSCALE:-1,3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      glitchtip:
+        condition: service_started
     networks:
       - sociallyhub-network
 

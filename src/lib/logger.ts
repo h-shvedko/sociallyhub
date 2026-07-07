@@ -21,60 +21,91 @@ const colors = {
 
 winston.addColors(colors)
 
-// Custom format for logs
-const format = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
-  winston.format.colorize({ all: true }),
-  winston.format.printf(
-    (info) => `${info.timestamp} ${info.level}: ${info.message}`
-  ),
+// Base logger-level format: a timestamp only. Colorization lives in the dev
+// Console transport (below), NOT here — keeping colorize out of the base format
+// means the JSON transports (stdout for Loki in container mode, or the dev log
+// files) emit clean, ANSI-free `level`/`message` fields that Loki label
+// extraction can parse. (This base format is composed under each transport's
+// own format, which rebuilds the final line, so console appearance is
+// unaffected.)
+const format = winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' })
+
+// ADR-0023: in containers (LOG_TO_STDOUT=true, the default in prod compose) log
+// JSON to stdout ONLY, so Promtail/Loki can scrape the Docker json logs. Writing
+// files into the container's writable layer is invisible to Loki and pollutes a
+// mostly-read-only standalone image, so file transports and file-based
+// exception/rejection handlers are DROPPED in that mode. Local dev
+// (LOG_TO_STDOUT unset/false) keeps the original file-transport behavior.
+const logToStdout = process.env.LOG_TO_STDOUT === 'true'
+
+// Structured JSON with a timestamp — the wire format for stdout and files.
+const jsonFormat = winston.format.combine(
+  winston.format.timestamp(),
+  winston.format.json()
 )
 
-// Define transports
-const transports = [
-  // Console transport for development
-  new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    )
-  }),
-  
-  // File transport for errors
-  new winston.transports.File({
-    filename: path.join(process.cwd(), 'logs', 'error.log'),
-    level: 'error',
-    format: winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.json()
-    ),
-    maxsize: 5242880, // 5MB
-    maxFiles: 5,
-  }),
-  
-  // File transport for all logs
-  new winston.transports.File({
-    filename: path.join(process.cwd(), 'logs', 'combined.log'),
-    format: winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.json()
-    ),
-    maxsize: 5242880, // 5MB
-    maxFiles: 5,
-  }),
-  
-  // HTTP requests log
-  new winston.transports.File({
-    filename: path.join(process.cwd(), 'logs', 'http.log'),
-    level: 'http',
-    format: winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.json()
-    ),
-    maxsize: 5242880, // 5MB
-    maxFiles: 5,
-  }),
-]
+// Human-friendly colorized line for a developer's terminal.
+const consoleDevFormat = winston.format.combine(
+  winston.format.colorize(),
+  winston.format.simple()
+)
+
+// Define transports (conditional on the logging mode).
+const transports: winston.transport[] = logToStdout
+  ? [
+      // Single JSON-to-stdout transport; Docker captures it, Promtail ships it.
+      new winston.transports.Console({ format: jsonFormat }),
+    ]
+  : [
+      // Console transport for development
+      new winston.transports.Console({ format: consoleDevFormat }),
+
+      // File transport for errors
+      new winston.transports.File({
+        filename: path.join(process.cwd(), 'logs', 'error.log'),
+        level: 'error',
+        format: jsonFormat,
+        maxsize: 5242880, // 5MB
+        maxFiles: 5,
+      }),
+
+      // File transport for all logs
+      new winston.transports.File({
+        filename: path.join(process.cwd(), 'logs', 'combined.log'),
+        format: jsonFormat,
+        maxsize: 5242880, // 5MB
+        maxFiles: 5,
+      }),
+
+      // HTTP requests log
+      new winston.transports.File({
+        filename: path.join(process.cwd(), 'logs', 'http.log'),
+        level: 'http',
+        format: jsonFormat,
+        maxsize: 5242880, // 5MB
+        maxFiles: 5,
+      }),
+    ]
+
+// Uncaught exceptions / unhandled rejections: to stdout (JSON) in container
+// mode; to files in local-dev mode.
+const exceptionHandlers: winston.transport[] = logToStdout
+  ? [new winston.transports.Console({ format: jsonFormat })]
+  : [
+      new winston.transports.File({
+        filename: path.join(process.cwd(), 'logs', 'exceptions.log'),
+        format: jsonFormat,
+      }),
+    ]
+
+const rejectionHandlers: winston.transport[] = logToStdout
+  ? [new winston.transports.Console({ format: jsonFormat })]
+  : [
+      new winston.transports.File({
+        filename: path.join(process.cwd(), 'logs', 'rejections.log'),
+        format: jsonFormat,
+      }),
+    ]
 
 // Create the logger
 const Logger = winston.createLogger({
@@ -83,24 +114,8 @@ const Logger = winston.createLogger({
   format,
   transports,
   // Handle uncaught exceptions and rejections
-  exceptionHandlers: [
-    new winston.transports.File({ 
-      filename: path.join(process.cwd(), 'logs', 'exceptions.log'),
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      )
-    })
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({ 
-      filename: path.join(process.cwd(), 'logs', 'rejections.log'),
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      )
-    })
-  ]
+  exceptionHandlers,
+  rejectionHandlers,
 })
 
 // Custom logging methods with context

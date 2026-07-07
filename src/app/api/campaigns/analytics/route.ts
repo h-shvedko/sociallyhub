@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, requireWorkspaceRole } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
-import { PrismaClient } from '@prisma/client'
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
@@ -157,33 +156,15 @@ export async function GET(request: NextRequest) {
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
 
-    // Create demographics from platform data (simplified)
+    // Platform split derived from real engagement metrics. Age/gender/location
+    // demographics are intentionally omitted (ADR-0023): they require real audience
+    // data we don't store — ADR-0009 territory. We never fabricate distributions.
     const totalPlatformEngagement = Object.values(platformData).reduce((sum: number, val: number) => sum + val, 0)
     const demographics = {
       platforms: Object.entries(platformData).map(([platform, engagement]) => ({
         platform,
         percentage: totalPlatformEngagement > 0 ? ((engagement / totalPlatformEngagement) * 100).toFixed(1) : 0
-      })),
-      // Mock some demographic data since we don't store this currently
-      ageGroups: totalEngagement > 0 ? {
-        '18-24': 25,
-        '25-34': 35,
-        '35-44': 20,
-        '45-54': 15,
-        '55+': 5
-      } : {},
-      genders: totalEngagement > 0 ? {
-        'Female': 52,
-        'Male': 46,
-        'Other': 2
-      } : {},
-      locations: totalEngagement > 0 ? {
-        'United States': 45,
-        'United Kingdom': 20,
-        'Canada': 15,
-        'Australia': 10,
-        'Other': 10
-      } : {}
+      }))
     }
 
     const analyticsData = {

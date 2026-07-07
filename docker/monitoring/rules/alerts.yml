@@ -1,0 +1,76 @@
+# ============================================================================
+# Prometheus ALERT rules (ADR-0023).
+#
+# Evaluated by Prometheus; surfaced and routed by GRAFANA UNIFIED ALERTING on
+# the Prometheus datasource (there is NO Alertmanager container — see
+# prometheus.yml). Every expr uses only instruments that actually exist:
+#   - http_requests_total{method,route,status}          (app, prom-client)
+#   - http_request_duration_seconds_bucket{method,route}(app, prom-client)
+#   - up{job=...}                                        (Prometheus scrape health)
+#
+# Thresholds are conservative STARTERS — tune against real traffic before
+# treating pages as authoritative.
+# ============================================================================
+
+groups:
+  - name: sociallyhub_availability
+    rules:
+      # A scrape target has been unreachable for 2m (app or worker down).
+      - alert: TargetDown
+        expr: up{job=~"sociallyhub-app|sociallyhub-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Target {{ $labels.job }} is down"
+          description: >-
+            Prometheus has failed to scrape {{ $labels.job }}
+            ({{ $labels.instance }}) for more than 2 minutes.
+
+      # The background worker (ADR-0008) is not being scraped — no metrics on
+      # :9464. This is the worker-heartbeat-missing signal.
+      - alert: WorkerHeartbeatMissing
+        expr: up{job="sociallyhub-worker"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker heartbeat missing"
+          description: >-
+            The SociallyHub worker has not been scrapeable on :9464 for 3
+            minutes. Background publishing/backup jobs are likely not running.
+
+  - name: sociallyhub_http
+    rules:
+      # More than 5% of requests are 5xx over the last 5m (needs some traffic).
+      - alert: HighHttpErrorRate
+        expr: >-
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total[5m])), 1)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate (> 5%)"
+          description: >-
+            {{ $value | humanizePercentage }} of HTTP requests returned 5xx
+            over the last 5 minutes.
+
+      # p95 latency above 1s for 10m.
+      - alert: HighRequestLatencyP95
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 request latency (> 1s)"
+          description: >-
+            p95 HTTP request latency has been above 1 second for 10 minutes
+            (current: {{ $value | humanizeDuration }}).

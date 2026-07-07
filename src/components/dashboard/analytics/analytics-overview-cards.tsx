@@ -370,13 +370,11 @@ export function PerformanceAnalyticsCards({ data, loading }: { data: any, loadin
       color: "text-red-600"
     },
     {
+      // ADR-0023: this card's data source does not provide a real uptime
+      // percentage, so there is no fabricated fallback and no fake goal target.
+      // Render the real value only when present, otherwise '—'.
       title: "Uptime",
-      value: `${data?.uptime || 99.9}%`,
-      target: {
-        current: data?.uptime || 99.9,
-        goal: 99.9,
-        unit: '%'
-      },
+      value: data?.uptime != null ? `${data.uptime}%` : '—',
       icon: <Activity className="h-4 w-4" />,
       color: "text-green-600"
     },

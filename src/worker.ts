@@ -26,11 +26,13 @@
  *   dev:  npm run worker       (tsx src/worker.ts)
  *   prod: node dist/worker.js  (bundled via npm run build:worker)
  */
+import http from 'http'
 import Redis from 'ioredis'
 import { queueManager, buildRedisConnectionOptions } from '@/lib/jobs/queue-manager'
 import { jobScheduler } from '@/lib/jobs/job-scheduler'
 import { prisma } from '@/lib/prisma'
 import { BusinessLogger, ErrorLogger } from '@/lib/middleware/logging'
+import { initObservability, getRegistry } from '@/lib/observability/metrics'
 
 /** Redis key polled by the docker healthcheck to confirm the worker is alive. */
 const HEARTBEAT_KEY = 'worker:heartbeat'
@@ -41,11 +43,19 @@ const HEARTBEAT_REFRESH_MS = 20_000
 /** Hard cap on graceful shutdown before we force-exit so orchestrators aren't blocked. */
 const SHUTDOWN_TIMEOUT_MS = 30_000
 
+/**
+ * Internal TCP port on which the worker exposes its own prom-client registry
+ * (ADR-0023 Decision item 4 + Phase 3 item 15). Prometheus scrapes `worker:9464`
+ * — this port is NEVER proxied to the public internet (see docker/monitoring).
+ */
+const METRICS_PORT = Number(process.env.WORKER_METRICS_PORT ?? '9464')
+
 /** Queues this worker hosts today (for the startup banner / logs). */
 const HOSTED_QUEUES = ['post-scheduling', 'analytics-collection', 'notification-dispatch', 'inbox-sync', 'backup-execution']
 
 let heartbeatTimer: NodeJS.Timeout | null = null
 let heartbeatRedis: Redis | null = null
+let metricsServer: http.Server | null = null
 let shuttingDown = false
 
 /** Fail fast if the database is unreachable — the publish pipeline is DB-backed. */
@@ -82,6 +92,96 @@ async function startHeartbeat(): Promise<void> {
   // Not unref'd: keeps the process alive as an explicit liveness signal even if
   // (defensively) no workers were created. cleared during shutdown.
   heartbeatTimer = setInterval(write, HEARTBEAT_REFRESH_MS)
+}
+
+/**
+ * Expose the worker's prom-client registry over a minimal HTTP server on an
+ * internal port (ADR-0023 Decision item 4 + Phase 3 item 15). The web app and
+ * the worker are separate processes with separate per-instance registries, so
+ * Prometheus scrapes each independently — the app on `/api/metrics`, this worker
+ * on `worker:9464/metrics`. `initObservability()` here gives the worker the same
+ * process/runtime default metrics (event loop, memory, GC) plus the DB-backed
+ * business gauges as the app — meaningful because the worker already holds a DB
+ * connection.
+ *
+ * Best-effort: a bind failure is logged but MUST NOT crash the worker — job
+ * processing is the primary duty and metrics are ancillary. Optional
+ * METRICS_TOKEN bearer guard mirrors the app-side `/api/metrics` protection
+ * (ADR-0023 Decision item 2): when the env var is set, scrapers must send
+ * `Authorization: Bearer <METRICS_TOKEN>`; when unset, the endpoint is open
+ * (fine — it is only reachable on the internal compose network).
+ */
+async function startMetricsServer(): Promise<void> {
+  // Register collectDefaultMetrics() + business gauges on the singleton registry
+  // (idempotent). Must run in THIS process so the exposition below has data.
+  initObservability()
+
+  const token = process.env.METRICS_TOKEN
+
+  try {
+    const server = http.createServer((req, res) => {
+      // Only GET /metrics is served; everything else is a 404.
+      const url = (req.url ?? '').split('?')[0]
+      if (req.method !== 'GET' || url !== '/metrics') {
+        res.statusCode = 404
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+        res.end('Not Found')
+        return
+      }
+
+      // Bearer check (only enforced when METRICS_TOKEN is configured).
+      if (token) {
+        const auth = req.headers['authorization']
+        if (auth !== `Bearer ${token}`) {
+          res.statusCode = 401
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+          res.setHeader('WWW-Authenticate', 'Bearer')
+          res.end('Unauthorized')
+          return
+        }
+      }
+
+      const registry = getRegistry()
+      registry
+        .metrics()
+        .then((body) => {
+          res.statusCode = 200
+          res.setHeader('Content-Type', registry.contentType)
+          res.end(body)
+        })
+        .catch((err) => {
+          ErrorLogger.logUnexpectedError(err as Error, { context: 'worker_metrics_exposition' })
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+          res.end('Internal Server Error')
+        })
+    })
+
+    // A metrics-server error after listen (e.g. a client socket reset) must not
+    // take the worker down either.
+    server.on('error', (err) => {
+      ErrorLogger.logExternalServiceError('worker_metrics', err, { operation: 'metrics_server' })
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(METRICS_PORT, '0.0.0.0', () => {
+        server.off('error', reject)
+        resolve()
+      })
+    })
+
+    metricsServer = server
+    console.log(`[worker] metrics exposed on :${METRICS_PORT}/metrics`)
+    BusinessLogger.logSystemEvent('worker_metrics_started', { port: METRICS_PORT })
+  } catch (err) {
+    // Best-effort: never crash the worker just because metrics couldn't bind.
+    ErrorLogger.logExternalServiceError('worker_metrics', err as Error, {
+      operation: 'metrics_server_listen',
+      port: METRICS_PORT,
+    })
+    console.error(`[worker] metrics server failed to start on :${METRICS_PORT} (continuing without metrics):`, err)
+  }
 }
 
 /**
@@ -134,6 +234,7 @@ function logBanner(): void {
     `  redis:       ${redisTarget}`,
     `  queues:      ${HOSTED_QUEUES.join(', ')}`,
     `  heartbeat:   ${HEARTBEAT_KEY} (EX ${HEARTBEAT_TTL_SECONDS}s)`,
+    `  metrics:     :${METRICS_PORT}/metrics (ADR-0023)`,
     '──────────────────────────────────────────────',
   ]
   // Plain console for human-readable docker logs; structured event for log pipelines.
@@ -159,6 +260,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
   force.unref()
 
   try {
+    // Stop accepting metrics scrapes first (best-effort, null-safe) — ADR-0023 item 15.
+    if (metricsServer) {
+      await new Promise<void>((resolve) => metricsServer!.close(() => resolve()))
+      metricsServer = null
+    }
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer)
       heartbeatTimer = null
@@ -215,6 +321,10 @@ async function main(): Promise<void> {
   await syncRepeatableJobs()
 
   await startHeartbeat()
+  // Best-effort metrics exposition (ADR-0023 item 15) — awaited so a successful
+  // bind is logged before "ready", but its own try/catch guarantees it never
+  // rejects and never blocks job processing.
+  await startMetricsServer()
   installSignalHandlers()
 
   console.log('[worker] ready — processing jobs')

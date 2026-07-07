@@ -69,7 +69,7 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
           averageEngagementRate: 0
         },
         performance: [],
-        demographics: { ageGroups: {}, genders: {}, locations: {}, platforms: [] },
+        demographics: { platforms: [] },
         topPosts: [],
         campaignBreakdown: []
       })
@@ -318,13 +318,13 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
                 <CardHeader>
                   <CardTitle>Platform Performance</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {data.demographics.platforms && data.demographics.platforms.length > 0 ? (
+                  {data.demographics?.platforms && data.demographics.platforms.length > 0 ? (
                     data.demographics.platforms.map((platform: any) => (
                       <div key={platform.platform} className="flex items-center justify-between">
                         <span className="text-sm">{platform.platform}</span>
@@ -337,57 +337,21 @@ export function CampaignAnalytics({ workspaceId, campaigns }: CampaignAnalyticsP
                 </CardContent>
               </Card>
 
+              {/* Age/gender/location demographics require real audience data we don't
+                  collect yet (ADR-0023/0009). Show an honest empty state, never fabricated splits. */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Age Groups</CardTitle>
+                  <CardTitle>Audience Demographics</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {Object.keys(data.demographics.ageGroups).length > 0 ? (
-                    Object.entries(data.demographics.ageGroups).map(([age, percentage]) => (
-                      <div key={age} className="flex items-center justify-between">
-                        <span className="text-sm">{age}</span>
-                        <Badge variant="outline">{percentage}%</Badge>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No demographic data available</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gender</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {Object.keys(data.demographics.genders).length > 0 ? (
-                    Object.entries(data.demographics.genders).map(([gender, percentage]) => (
-                      <div key={gender} className="flex items-center justify-between">
-                        <span className="text-sm">{gender}</span>
-                        <Badge variant="outline">{percentage}%</Badge>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No gender data available</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top Locations</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {Object.keys(data.demographics.locations).length > 0 ? (
-                    Object.entries(data.demographics.locations).map(([location, percentage]) => (
-                      <div key={location} className="flex items-center justify-between">
-                        <span className="text-sm">{location}</span>
-                        <Badge variant="outline">{percentage}%</Badge>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No location data available</p>
-                  )}
+                <CardContent>
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <Users className="h-10 w-10 mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Demographic data not available</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Age, gender, and location breakdowns require audience data from
+                      connected platforms, which SociallyHub does not collect yet.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </div>

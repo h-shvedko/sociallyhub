@@ -1,0 +1,21 @@
+# ============================================================================
+# Grafana dashboard provider (ADR-0023).
+#
+# Tells Grafana to load dashboard JSON files from disk on startup. Compose
+# mounts ./docker/monitoring/grafana/dashboards -> /var/lib/grafana/dashboards,
+# and this provider watches that path.
+# ============================================================================
+apiVersion: 1
+
+providers:
+  - name: 'sociallyhub'
+    orgId: 1
+    folder: 'SociallyHub'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

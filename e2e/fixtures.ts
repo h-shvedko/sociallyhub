@@ -16,6 +16,21 @@ export const E2E_USER = {
   firstName: 'E2E', // dashboard greets "Welcome back, {firstName}!"
 } as const
 
+/**
+ * Platform-admin fixture user (ADR-0023): needed for observability specs that
+ * hit platform-admin-only surfaces (/dashboard/monitoring →
+ * /api/monitoring/metrics requires requirePlatformAdmin). Seeded with
+ * isPlatformAdmin=true AND an OWNER membership in E2E_WORKSPACE so it can also
+ * load ordinary workspace pages. The regular E2E_USER is intentionally NOT a
+ * platform admin.
+ */
+export const E2E_ADMIN_USER = {
+  id: 'e2e-admin-user',
+  email: 'admin@e2e.sociallyhub.test',
+  password: 'e2e-admin-pass-123',
+  name: 'E2E Admin',
+} as const
+
 export const E2E_WORKSPACE = {
   id: 'e2e-workspace',
   name: 'E2E Workspace',

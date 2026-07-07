@@ -272,32 +272,16 @@ export interface CommunicationAttachment {
 // CLIENT_VIEWER scoped via UserWorkspace.clientId).
 
 // Client Stats and Analytics
+// Only real, DB-derived fields (ADR-0023). Fabricated revenue, industry/service-level,
+// satisfaction, retention/churn, onboarding, response-time and growth/LTV figures were
+// removed from /api/clients/stats rather than re-invented — SociallyHub does not store
+// that data yet.
 export interface ClientStats {
   totalClients: number
   activeClients: number
   prospectClients: number
-  churnedClients: number
-  totalRevenue: number
-  monthlyRevenue: number
-  averageContractValue: number
-  clientSatisfactionScore: number
-  retentionRate: number
-  churnRate: number
-  onboardingCompletionRate: number
-  responseTime: number // average in hours
-  clientsByIndustry: { [key: string]: number }
-  clientsByServiceLevel: { [key: string]: number }
-  revenueByMonth: { month: string; revenue: number }[]
-  growthMetrics: GrowthMetrics
-}
-
-export interface GrowthMetrics {
-  newClientsThisMonth: number
-  newClientsLastMonth: number
-  growthRate: number
-  projectedRevenue: number
-  clientLifetimeValue: number
-  acquisitionCost: number
+  recentClients: number // new clients in the last 30 days
+  engagementRate: number // % of clients with any active social/campaign/post
 }
 
 // API Request/Response Types

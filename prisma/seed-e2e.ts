@@ -15,6 +15,7 @@ import type { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import {
   E2E_USER,
+  E2E_ADMIN_USER,
   E2E_WORKSPACE,
   E2E_SOCIAL_ACCOUNT,
   E2E_POST_DRAFT,
@@ -82,6 +83,37 @@ export async function seedE2E(prisma: PrismaClient) {
     },
     update: { role: 'OWNER' },
     create: { userId: user.id, workspaceId: workspace.id, role: 'OWNER' },
+  })
+
+  // --- Platform-admin user (ADR-0023): isPlatformAdmin=true + OWNER membership ---
+  // Powers the observability specs that hit platform-admin-only surfaces
+  // (/dashboard/monitoring → /api/monitoring/metrics). Also an OWNER of
+  // E2E_WORKSPACE so it can load ordinary workspace pages.
+  const adminPasswordHash = await bcrypt.hash(E2E_ADMIN_USER.password, 12)
+  const adminUser = await prisma.user.upsert({
+    where: { email: E2E_ADMIN_USER.email },
+    update: {
+      name: E2E_ADMIN_USER.name,
+      password: adminPasswordHash,
+      emailVerified: new Date(),
+      isPlatformAdmin: true,
+    },
+    create: {
+      id: E2E_ADMIN_USER.id,
+      email: E2E_ADMIN_USER.email,
+      name: E2E_ADMIN_USER.name,
+      password: adminPasswordHash,
+      emailVerified: new Date(),
+      isPlatformAdmin: true,
+    },
+  })
+
+  await prisma.userWorkspace.upsert({
+    where: {
+      userId_workspaceId: { userId: adminUser.id, workspaceId: workspace.id },
+    },
+    update: { role: 'OWNER' },
+    create: { userId: adminUser.id, workspaceId: workspace.id, role: 'OWNER' },
   })
 
   // --- Subscription: BUSINESS / ACTIVE (unique per workspace) ---
@@ -299,6 +331,7 @@ export async function seedE2E(prisma: PrismaClient) {
 
   console.log('✅ e2e fixtures seeded:')
   console.log(`   user       ${user.id} (${E2E_USER.email})`)
+  console.log(`   admin      ${adminUser.id} (${E2E_ADMIN_USER.email}, isPlatformAdmin, OWNER)`)
   console.log(`   workspace  ${workspace.id} (BUSINESS/ACTIVE subscription)`)
   console.log(`   posts      ${E2E_POST_DRAFT.id} (DRAFT), ${E2E_POST_SCHEDULED.id} (SCHEDULED)`)
   console.log(`   client     ${E2E_CLIENT.id} + template ${E2E_REPORT_TEMPLATE.id}`)

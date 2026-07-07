@@ -100,8 +100,9 @@ async function getHandler(request: NextRequest) {
       pageViews,
       apiRequests,
       postsCreated: totalPosts,
-      errorRate: Math.round((Math.random() * 2) * 100) / 100, // Mock error rate
-      responseTime: Math.round(200 + Math.random() * 200), // Mock response time
+      // Per-platform errorRate/responseTime intentionally omitted (ADR-0023): real
+      // per-platform error/latency will derive from PostVariant publish statuses once
+      // ADR-0008/0009 live posting exists — never fabricated from random numbers.
       dateRange: {
         start: startDate.toISOString(),
         end: new Date().toISOString(),

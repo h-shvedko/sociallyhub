@@ -1,66 +1,69 @@
+# ============================================================================
+# Prometheus config (ADR-0023). Self-hosted stack, `monitoring` compose profile.
+#
+# INVARIANTS (do not regress):
+#   - No top-level `recording_rules:` / `alerting:` keys. Prometheus's strict
+#     parser REJECTS unknown top-level keys and crash-loops. Recording and
+#     alert rules live in mounted files under /etc/prometheus/rules/, referenced
+#     by `rule_files` below (docker-compose.prod.yml mounts
+#     ./docker/monitoring/rules -> /etc/prometheus/rules:ro).
+#   - Scrape ONLY services that actually exist in docker-compose.prod.yml:
+#     prometheus itself, the app (:3099 /api/metrics), and the worker (:9464).
+#     Exporters (postgres/redis/node/cadvisor/nginx) are NOT scraped here — they
+#     are not defined as compose services. Re-add a scrape job ONLY in the same
+#     change that adds the real exporter service (ADR-0023 Phase later).
+#   - Alerting is Grafana unified alerting on the Prometheus datasource. There is
+#     NO Alertmanager container, so there is NO `alerting:` block.
+# ============================================================================
+
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
     monitor: 'sociallyhub-monitor'
 
+# Recording + alert rule files (mounted read-only by compose). Alert rules are
+# evaluated by Prometheus and surfaced/routed through Grafana unified alerting.
 rule_files:
   - "/etc/prometheus/rules/*.yml"
 
 scrape_configs:
-  # Prometheus self-monitoring
+  # Prometheus self-monitoring.
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
-  # SociallyHub application
+  # SociallyHub Next.js app — prom-client exposition at /api/metrics.
+  #
+  # The endpoint is protected by a Bearer token ONLY when METRICS_TOKEN is set
+  # in the app's env (Track A). When it is unset the endpoint is open on the
+  # compose-internal network (never proxied to the public internet via nginx),
+  # so this scrape works out of the box in a default deploy.
+  #
+  # To turn the token ON: set METRICS_TOKEN in the app service env AND write the
+  # SAME value to a file mounted at the path below, then uncomment the
+  # `authorization` block. Prometheus does NOT expand ${ENV} in its config, so a
+  # credentials_file (templated at deploy time) is the honest wiring — do not
+  # try to inline `${METRICS_TOKEN}` here, it is taken literally.
   - job_name: 'sociallyhub-app'
-    static_configs:
-      - targets: ['app:3099']
     metrics_path: '/api/metrics'
     scrape_interval: 30s
     scrape_timeout: 10s
-
-  # PostgreSQL monitoring
-  - job_name: 'postgres'
     static_configs:
-      - targets: ['postgres-exporter:9187']
+      - targets: ['app:3099']
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/secrets/metrics_token
 
-  # Redis monitoring  
-  - job_name: 'redis'
+  # SociallyHub background worker (ADR-0008) — its own prom-client registry on
+  # an internal port. `up{job="sociallyhub-worker"}` doubles as the worker
+  # heartbeat signal for alerting (see rules/alerts.yml).
+  - job_name: 'sociallyhub-worker'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
     static_configs:
-      - targets: ['redis-exporter:9121']
-
-  # Node exporter for system metrics
-  - job_name: 'node'
-    static_configs:
-      - targets: ['node-exporter:9100']
-
-  # Container monitoring
-  - job_name: 'cadvisor'
-    static_configs:
-      - targets: ['cadvisor:8080']
-
-  # Nginx monitoring
-  - job_name: 'nginx'
-    static_configs:
-      - targets: ['nginx-exporter:9113']
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-          - alertmanager:9093
-
-# Recording rules for better performance
-recording_rules:
-  - name: sociallyhub_rules
-    rules:
-    - record: job:up:rate5m
-      expr: rate(up[5m])
-    
-    - record: job:http_requests:rate5m
-      expr: rate(http_requests_total[5m])
-    
-    - record: job:http_request_duration:p95
-      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+      - targets: ['worker:9464']
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/secrets/metrics_token

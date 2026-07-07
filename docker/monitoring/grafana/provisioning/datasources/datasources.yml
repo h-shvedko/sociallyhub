@@ -1,0 +1,40 @@
+# ============================================================================
+# Grafana datasource provisioning (ADR-0023).
+#
+# Mounted at /etc/grafana/provisioning/datasources (compose mounts
+# ./docker/monitoring/grafana/provisioning -> /etc/grafana/provisioning:ro).
+# Grafana reads this on startup — no click-ops required.
+#
+# Hostnames are compose-internal service names on the sociallyhub-network.
+# ============================================================================
+apiVersion: 1
+
+# Idempotent re-provisioning: drop stale copies of these datasources by name so
+# edits here always win on restart.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    uid: prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+
+  - name: Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    uid: loki
+    url: http://loki:3100
+    isDefault: false
+    editable: true

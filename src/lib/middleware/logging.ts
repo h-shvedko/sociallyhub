@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { AppLogger } from '@/lib/logger'
+import { recordHttpMetric } from '@/lib/observability/metrics'
 
 export interface LoggingContext {
   method: string
@@ -54,6 +55,18 @@ export function withLogging<T extends any[]>(
       const duration = Date.now() - startTime
       const statusCode = response.status
 
+      // ADR-0023: the ONE metrics choke point. `url` is already the pathname;
+      // pass routeName as routePattern only when it is an actual `/`-prefixed
+      // pattern (most routeName values are slugs like 'monitoring-metrics', so
+      // let normalizeRoutePattern derive from the pathname in that case).
+      recordHttpMetric({
+        method,
+        pathname: url,
+        routePattern: routeName && routeName.startsWith('/') ? routeName : undefined,
+        status: statusCode,
+        durationMs: duration,
+      })
+
       // Log the response
       AppLogger.apiResponse(method, url, statusCode, duration, userId, {
         userAgent,
@@ -78,7 +91,18 @@ export function withLogging<T extends any[]>(
 
     } catch (error) {
       const duration = Date.now() - startTime
-      
+      const statusCode = 500
+
+      // ADR-0023: record the error path too (thrown handler -> 500) so error
+      // rate is honest. Same single choke point as the success path.
+      recordHttpMetric({
+        method,
+        pathname: url,
+        routePattern: routeName && routeName.startsWith('/') ? routeName : undefined,
+        status: statusCode,
+        durationMs: duration,
+      })
+
       // Log the error
       AppLogger.apiError(method, url, error as Error, userId, {
         userAgent,

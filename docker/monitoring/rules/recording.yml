@@ -1,0 +1,31 @@
+# ============================================================================
+# Prometheus RECORDING rules (ADR-0023).
+#
+# Precompute the hot expressions the Grafana dashboard queries so panels stay
+# cheap. Mounted at /etc/prometheus/rules/ and picked up by prometheus.yml's
+# `rule_files: [ "/etc/prometheus/rules/*.yml" ]`.
+#
+# These replace the three rules that lived in prometheus.yml's INVALID top-level
+# `recording_rules:` block (which crash-looped Prometheus) — now in the correct
+# `groups: [{ name, rules: [...] }]` form.
+# ============================================================================
+
+groups:
+  - name: sociallyhub_recording
+    interval: 30s
+    rules:
+      # Per-target up/down rate over 5m (1 = up the whole window).
+      - record: job:up:rate5m
+        expr: avg_over_time(up[5m])
+
+      # Total HTTP request rate (req/s) across all app instances, over 5m.
+      - record: job:http_requests:rate5m
+        expr: sum(rate(http_requests_total[5m]))
+
+      # p95 HTTP request latency (seconds), over 5m, across all instances.
+      - record: job:http_request_duration:p95
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          )

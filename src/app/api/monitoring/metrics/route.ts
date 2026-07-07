@@ -3,6 +3,7 @@ import { requirePlatformAdmin } from '@/lib/auth'
 import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { withLogging } from '@/lib/middleware/logging'
+import { getHttpSummary } from '@/lib/observability/metrics'
 
 // GET /api/monitoring/metrics - Get system metrics
 async function getHandler(request: NextRequest) {
@@ -33,10 +34,13 @@ async function getHandler(request: NextRequest) {
     // Get total users
     const totalUsers = await prisma.user.count()
 
-    // Get error metrics from recent time period
-    // This would typically come from your logging system
-    const errorRate = Math.random() * 2 // Mock error rate between 0-2%
-    const avgResponseTime = 200 + Math.random() * 300 // Mock response time 200-500ms
+    // Honest HTTP stats (ADR-0023): errorRate (5xx share) and avgResponseTime
+    // are derived from THIS instance's prom-client http_* series — the real
+    // replacement for the deleted random-number fabrications. Per-instance by
+    // design; fleet-wide numbers come from querying Prometheus. Returns null
+    // until at least one request has been recorded, so callers render "—"
+    // rather than a fabricated 0.
+    const httpSummary = await getHttpSummary()
 
     // Database health check
     let dbStatus = 'Connected'
@@ -47,10 +51,15 @@ async function getHandler(request: NextRequest) {
     }
 
     const metrics = {
-      systemStatus: 'Healthy',
-      uptime: '99.9%',
-      avgResponseTime: Math.round(avgResponseTime),
-      errorRate: Math.round(errorRate * 100) / 100,
+      // Derived from the real DB probe rather than hardcoded.
+      systemStatus: dbStatus === 'Connected' ? 'Healthy' : 'Degraded',
+      // uptime is now NUMERIC SECONDS this instance has been running
+      // (process.uptime()) — the fabricated hardcoded-percentage string is gone.
+      uptime: Math.round(process.uptime()),
+      // null when no requests recorded yet (honest "no data"), never a fake 0.
+      avgResponseTime: httpSummary ? httpSummary.avgResponseTimeMs : null,
+      errorRate: httpSummary ? httpSummary.errorRate : null,
+      totalRequests: httpSummary ? httpSummary.totalRequests : null,
       dbStatus,
       activeUsers,
       totalUsers,

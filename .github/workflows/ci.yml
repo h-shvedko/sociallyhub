@@ -335,6 +335,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: No fabricated metrics (gate)
+        # ADR-0023: fail the build if a Math.random() metric returns to src/app/api
+        # outside the documented allowlist. Fast, deterministic, no deps.
+        run: bash scripts/check-no-fabricated-metrics.sh
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

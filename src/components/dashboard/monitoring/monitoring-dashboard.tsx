@@ -97,7 +97,31 @@ export function MonitoringDashboard() {
     }
   }
 
+  // Format process uptime (seconds, from /api/monitoring/metrics) as a human
+  // duration. Returns '—' when the API did not provide a real value (ADR-0023:
+  // no fabricated hardcoded-percentage fallback).
+  const formatUptime = (seconds: unknown): string => {
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return '—'
+    const s = Math.max(0, Math.floor(seconds))
+    const d = Math.floor(s / 86400)
+    const h = Math.floor((s % 86400) / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    if (d > 0) return `${d}d ${h}h`
+    if (h > 0) return `${h}h ${m}m`
+    if (m > 0) return `${m}m ${s % 60}s`
+    return `${s}s`
+  }
+
   const generateSystemMetrics = (data: any): SystemMetric[] => {
+    // ADR-0023: avgResponseTime/errorRate are null when the instance has served
+    // no requests yet — render '—', never a fabricated fallback. Note the
+    // explicit null check (not `|| fallback`), so a real 0 renders as 0.
+    const hasResponseTime =
+      typeof data.avgResponseTime === 'number' &&
+      Number.isFinite(data.avgResponseTime)
+    const hasErrorRate =
+      typeof data.errorRate === 'number' && Number.isFinite(data.errorRate)
+
     return [
       {
         name: 'System Status',
@@ -107,37 +131,36 @@ export function MonitoringDashboard() {
       },
       {
         name: 'Uptime',
-        value: data.uptime || '99.9%',
+        value: formatUptime(data.uptime),
         status: 'healthy',
         icon: <Activity className="h-4 w-4" />
       },
       {
         name: 'Response Time',
-        value: data.avgResponseTime || 245,
-        unit: 'ms',
-        status: (data.avgResponseTime || 245) > 1000 ? 'warning' : 'healthy',
-        trend: 'stable',
+        value: hasResponseTime ? data.avgResponseTime : '—',
+        unit: hasResponseTime ? 'ms' : undefined,
+        status: hasResponseTime && data.avgResponseTime > 1000 ? 'warning' : 'healthy',
         icon: <Zap className="h-4 w-4" />
       },
       {
         name: 'Error Rate',
-        value: data.errorRate || 0.12,
-        unit: '%',
-        status: (data.errorRate || 0.12) > 5 ? 'critical' : 'healthy',
-        trend: 'down',
+        value: hasErrorRate ? data.errorRate : '—',
+        unit: hasErrorRate ? '%' : undefined,
+        status: hasErrorRate && data.errorRate > 5 ? 'critical' : 'healthy',
         icon: <AlertTriangle className="h-4 w-4" />
       },
       {
         name: 'Database',
-        value: data.dbStatus || 'Connected',
+        value: data.dbStatus || 'Unknown',
         status: data.dbStatus === 'Connected' ? 'healthy' : 'critical',
         icon: <Database className="h-4 w-4" />
       },
       {
+        // ADR-0023: real session count from the DB (no fabricated fallback —
+        // 0 is honest when nobody is active).
         name: 'Active Users',
-        value: data.activeUsers || 127,
+        value: typeof data.activeUsers === 'number' ? data.activeUsers : 0,
         status: 'healthy',
-        trend: 'up',
         icon: <Users className="h-4 w-4" />
       }
     ]
@@ -298,35 +321,46 @@ export function MonitoringDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* ADR-0023: only indicators with a REAL source are shown. The
+                  former hardcoded API/DB/Memory/CPU bars (98/100/67/34%) were
+                  fabricated and are removed. API Success Rate derives from the
+                  real 5xx error rate; Database Health from the real probe.
+                  Memory/CPU have no source in this endpoint and are dropped
+                  rather than faked. */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">API Health</span>
-                  <div className="flex items-center gap-2">
-                    <Progress value={98} className="w-32" />
-                    <span className="text-sm font-medium">98%</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Database Health</span>
-                  <div className="flex items-center gap-2">
-                    <Progress value={100} className="w-32" />
-                    <span className="text-sm font-medium">100%</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Memory Usage</span>
-                  <div className="flex items-center gap-2">
-                    <Progress value={67} className="w-32" />
-                    <span className="text-sm font-medium">67%</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">CPU Usage</span>
-                  <div className="flex items-center gap-2">
-                    <Progress value={34} className="w-32" />
-                    <span className="text-sm font-medium">34%</span>
-                  </div>
-                </div>
+                {(() => {
+                  const errorRateMetric = metrics.find((m) => m.name === 'Error Rate')
+                  const dbMetric = metrics.find((m) => m.name === 'Database')
+                  const hasErrorRate = typeof errorRateMetric?.value === 'number'
+                  const apiSuccess = hasErrorRate
+                    ? Math.max(0, 100 - (errorRateMetric!.value as number))
+                    : null
+                  const dbHealthy = dbMetric?.value === 'Connected'
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">API Success Rate</span>
+                        <div className="flex items-center gap-2">
+                          {apiSuccess !== null ? (
+                            <>
+                              <Progress value={apiSuccess} className="w-32" />
+                              <span className="text-sm font-medium">{apiSuccess.toFixed(1)}%</span>
+                            </>
+                          ) : (
+                            <span className="text-sm font-medium text-muted-foreground">— no requests yet</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Database Health</span>
+                        <div className="flex items-center gap-2">
+                          <Progress value={dbHealthy ? 100 : 0} className="w-32" />
+                          <span className="text-sm font-medium">{dbHealthy ? 'Connected' : 'Down'}</span>
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </CardContent>
           </Card>
