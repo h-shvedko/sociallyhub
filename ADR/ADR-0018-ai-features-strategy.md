@@ -1,7 +1,27 @@
 # ADR-0018: AI Features: Explicit Availability, Model Policy, and UI Mounting
 
 - Date: 2026-07-02
-- Status: Proposed
+- Status: Accepted — **Implemented 2026-07-07** (Option 2). *Promoted from Proposed on implementation + verification.*
+
+> **Implementation note (2026-07-07, commit `6fc28e7`).** The three contradictory no-key
+> failure modes are gone: `getAIAvailability()` (openai / mock-only-in-explicit-demo / none),
+> `guardAIAvailability()` → **503 AI_UNAVAILABLE**, and `aiProvider`/`simulated` stamped on
+> every success across all 13 routes. The Priority-1 fix finally landed (`simpleAIService` →
+> `aiService`; both bypass files **deleted**, as were the `sk-fake-key-for-demo` fallback and
+> the demo-user remap). Model policy is env-driven (`OPENAI_MODEL`, default `gpt-4o-mini`) with
+> one cost table (`estimateCostCents`, conservative unknown-model default) and usage-tracking
+> coverage extended to ab-testing + image-analyzer; `AICache` is Redis-backed (fail-soft).
+> Spend backstop `AI_MONTHLY_COST_LIMIT_CENTS` → 429 (plan credits from ADR-0019 stay primary).
+> **UI:** `/dashboard/audience` mounted with three honest tabs + nav; the
+> `AudienceIntelligenceDashboard` was **deleted rather than mounted** — 336 lines of hardcoded
+> fabricated data (per this ADR's deletion-over-stubs pre-authorization); Visual Insights tab
+> added to analytics; composer AI toggles show a disabled+actionable state when unavailable and
+> a "Simulated (demo)" badge in mock mode. Along the way more fabrications were removed
+> (Math.random hashtag scores → null, a fake fallback image analysis, a debug credential leak).
+> **Verified:** 18-case unit availability matrix (keyless-503 proof), integration auth-triple +
+> simulated-flag suites, 14/14 suites / 180 tests, `next build` green, and a live chromium
+> session (real key, no paid generations fired): status endpoint, audience tabs, composer
+> toggle, analytics tab — all green.
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
 
 ## Context and Problem Statement
