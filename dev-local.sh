@@ -186,7 +186,9 @@ REDIS_URL="redis://localhost:6379"
 
 # Development Mode
 NODE_ENV="development"
-ENABLE_DEMO="true"
+# ADR-0025: DEMO_MODE is the ONE demo switch (ENABLE_DEMO/NODE_ENV heuristics removed).
+DEMO_MODE="true"
+SEED_TIER="demo"
 EOF
         echo "✅ Created .env.local with default settings"
     fi
@@ -257,9 +259,12 @@ if [ "$FIRST_TIME_SETUP" = true ]; then
     if docker-compose exec -T app npm run prisma:migrate; then
         echo "✅ Migrations completed successfully"
         
-        # Run seeding
-        echo "🌱 Seeding database with demo data..."
-        if docker-compose exec -T app npm run db:seed; then
+        # Run seeding (ADR-0025: DEMO tier for the populated local showcase).
+        # The dev app/worker containers already carry DEMO_MODE=true and
+        # SEED_TIER=demo via docker-compose.yml; the explicit -e flags below make
+        # the tier selection unambiguous regardless of container env drift.
+        echo "🌱 Seeding database with demo data (demo tier)..."
+        if docker-compose exec -T -e SEED_TIER=demo -e DEMO_MODE=true app npm run db:seed; then
             echo "✅ Database seeded successfully"
             echo ""
             echo "📧 Demo credentials created:"
@@ -364,7 +369,7 @@ echo ""
 echo "💡 Useful Commands:"
 echo "   📊 Open Prisma Studio: docker-compose exec app npm run prisma:studio"
 echo "   📧 View caught emails: http://localhost:8025"
-echo "   🌱 Re-run seeding: docker-compose exec app npm run db:seed"
+echo "   🌱 Re-run seeding: docker-compose exec -e SEED_TIER=demo -e DEMO_MODE=true app npm run db:seed"
 echo "   🔄 Run migrations: docker-compose exec app npm run prisma:migrate"
 echo "   📝 View app logs: docker-compose logs -f app"
 echo "   📝 View database logs: docker-compose logs -f postgres"

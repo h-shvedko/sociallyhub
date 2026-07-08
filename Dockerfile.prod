@@ -47,6 +47,17 @@ RUN npm run build
 # native deps are kept external and resolved from node_modules at runtime.
 RUN npm run build:worker
 
+# Bundle the seed dispatcher (ADR-0025 D5) → dist/seed.js so the runtime image
+# can seed WITHOUT tsx (a devDependency absent from the prod image). Mirrors the
+# worker bundle: one esbuild pass, ALL node_modules kept external
+# (--packages=external) and resolved at runtime from the standalone-traced
+# node_modules — @prisma/client (+ generated .prisma) and bcryptjs are already
+# present (prisma is used by nearly every route; bcryptjs by credentials auth).
+# The tier dispatcher's per-domain seeders (src/lib/seeders/*) and
+# prisma/seed-e2e.ts are RELATIVE imports, so they are bundled in; only npm
+# packages stay external.
+RUN npx esbuild prisma/seed.ts --bundle --platform=node --target=node20 --packages=external --outfile=dist/seed.js
+
 # Self-contained Prisma CLI for the offline `migrate deploy` one-shot
 # (ADR-0022): copying node_modules/prisma alone is NOT enough — the v6 CLI
 # has its own runtime dependency closure (~33 packages, e.g. `effect` via
@@ -106,6 +117,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # client is NOT reliably traced (it is created by `prisma generate`, not
 # declared in package.json), so it is copied explicitly below.
 COPY --from=builder --chown=nextjs:nodejs /app/dist/worker.js ./dist/worker.js
+
+# Copy the bundled seed (ADR-0025 D5). Same runtime-resolution story as the
+# worker above: @prisma/client, .prisma/client and bcryptjs stay external and
+# are resolved from the traced standalone node_modules. The app entrypoint runs
+#   node dist/seed.js --tier="${SEED_TIER:-minimal}"
+# after the one-shot `migrate` service completes (docker/entrypoint.sh).
+COPY --from=builder --chown=nextjs:nodejs /app/dist/seed.js ./dist/seed.js
 
 # Copy Prisma files: schema + committed migrations (used by the one-shot
 # `migrate` service in docker-compose.prod.yml) and the generated client.

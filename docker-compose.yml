@@ -45,6 +45,12 @@ services:
       - "3099:3000"
     environment:
       - NODE_ENV=development
+      # ADR-0025 D1: demo mode is a SINGLE explicit flag (no NODE_ENV heuristic).
+      # Dev opts IN so the showcase (mock AI, demo account connect, signin hint,
+      # demo seed) stays on; prod compose deliberately does NOT set these.
+      - DEMO_MODE=true
+      - SEED_TIER=demo
+      - DEMO_USER_PASSWORD=demo123456
       - DATABASE_URL=postgresql://sociallyhub:sociallyhub_dev_password@postgres:5432/sociallyhub
       - REDIS_URL=redis://redis:6379
       - NEXTAUTH_SECRET=dev-secret-key-change-in-production
@@ -120,6 +126,9 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=development
+      # ADR-0025 D1: demo mode on for dev (mock AI in worker jobs, etc.).
+      - DEMO_MODE=true
+      - DEMO_USER_PASSWORD=demo123456
       - DATABASE_URL=postgresql://sociallyhub:sociallyhub_dev_password@postgres:5432/sociallyhub
       - REDIS_URL=redis://redis:6379
       # ENCRYPTION_KEY (ADR-0006): the worker decrypts SocialAccount tokens at

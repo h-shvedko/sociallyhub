@@ -1,11 +1,19 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 import { seedClientReports } from '../src/lib/seeders/client-reports-seeder'
 import { seedHelpContent } from '../src/lib/seeders/help-content-seeder'
 import { seedVideoTutorials } from '../src/lib/seeders/video-tutorial-seeder'
 import { seedSupport } from '../src/lib/seeders/support-seeder'
-
-const prisma = new PrismaClient()
+// ADR-0025 D3 minimal-tier seeders (Track B). Relative import (matches this
+// file's other seeder imports) so tsx and the esbuild prod bundle both resolve
+// them statically — no `@/` alias, no dynamic import (ADR-0025 D5).
+import { seedSettingsDefaults } from '../src/lib/seeders/settings-defaults-seeder'
+import { seedAdminUser } from '../src/lib/seeders/admin-user-seeder'
+// The ONE demo gate (ADR-0025 D1). Relative import for the same tsx/esbuild reason.
+import { isDemoMode } from '../src/lib/config/demo'
+// Deterministic CI fixtures (ADR-0021). Already exports seedE2E(prisma).
+import { seedE2E } from './seed-e2e'
 
 // Configuration for data generation
 const CONFIG = {
@@ -68,7 +76,7 @@ const INBOX_TYPES = ['COMMENT', 'MENTION', 'DIRECT_MESSAGE', 'REVIEW', 'REPLY'] 
 const INBOX_STATUSES = ['OPEN', 'ASSIGNED', 'SNOOZED', 'CLOSED'] as const
 
 const METRIC_TYPES = [
-  'impressions', 'reach', 'engagement', 'likes', 'comments', 'shares', 'clicks', 
+  'impressions', 'reach', 'engagement', 'likes', 'comments', 'shares', 'clicks',
   'saves', 'profile_visits', 'website_clicks', 'video_views', 'story_views'
 ]
 
@@ -159,26 +167,76 @@ function generateHandle(name: string): string {
   return `@${name.toLowerCase().replace(/\s+/g, '')}${randomInt(100, 9999)}`
 }
 
-async function main() {
-  console.log('🌱 Starting comprehensive database seeding...')
+function extractHashtags(text: string): string[] {
+  const hashtags = text.match(/#[\w]+/g) || []
+  return hashtags.map(tag => tag.slice(1))
+}
 
-  // Clear existing data
-  console.log('🧹 Clearing existing mock data...')
-  await prisma.userAction.deleteMany({})
-  await prisma.userSession.deleteMany({})
-  await prisma.videoUserProgress.deleteMany({})
-  await prisma.videoTutorial.deleteMany({})
-  await prisma.analyticsMetric.deleteMany({})
-  await prisma.conversation.deleteMany({})
-  await prisma.inboxItem.deleteMany({})
-  await prisma.postVariant.deleteMany({})
-  await prisma.post.deleteMany({})
-  await prisma.socialAccount.deleteMany({})
-  await prisma.userWorkspace.deleteMany({})
-  await prisma.client.deleteMany({})
-  await prisma.campaign.deleteMany({})
-  await prisma.workspace.deleteMany({ where: { id: { not: 'demo-workspace' } } })
-  await prisma.user.deleteMany({ where: { email: { not: 'demo@sociallyhub.com' } } })
+// ============================================================================
+// TIER: minimal (ADR-0025 D3) — prod-safe, idempotent, NO wipe.
+// ============================================================================
+// Settings defaults + platform-admin bootstrap only. Runs on every boot
+// (including production) and as the first step of the demo and test tiers.
+// Delegates to the idempotent Track-B seeders; constructs no data of its own.
+export async function seedMinimal(prisma: PrismaClient): Promise<void> {
+  console.log('⚙️  [minimal] Seeding settings defaults + platform-admin bootstrap (idempotent)...')
+  const settings = await seedSettingsDefaults(prisma)
+  const admin = await seedAdminUser(prisma)
+  console.log(
+    `✅ [minimal] settings → ${settings.configs} config(s), ${settings.flags} flag(s), ` +
+    `${settings.templates} template(s); admins → ${admin.admins.length} allowlisted, ${admin.created.length} created`
+  )
+}
+
+// ============================================================================
+// TIER: demo (ADR-0025 D3) — the showcase generator. REQUIRES DEMO_MODE=true.
+// ============================================================================
+// Runs seedMinimal() first, then generates the ~30k-row demo dataset. The
+// destructive deleteMany phase runs ONLY when `opts.wipe` is true; without it
+// the generator simply appends (a showcase top-up). demo@sociallyhub.com and
+// workspace `demo-workspace` are always preserved.
+export async function seedDemo(prisma: PrismaClient, opts?: { wipe?: boolean }): Promise<void> {
+  // Hard abort unless the ONE demo gate is on (ADR-0025 D3). A demo dataset must
+  // never be generated against a non-demo (e.g. production) environment.
+  if (!isDemoMode()) {
+    throw new Error('seedDemo requires DEMO_MODE=true (ADR-0025 D3)')
+  }
+
+  console.log('🌱 Starting comprehensive demo database seeding...')
+
+  // Clear existing data — ONLY with an explicit --wipe (ADR-0025 D3, the
+  // destructive-reset guard). demo@sociallyhub.com and demo-workspace are always
+  // preserved so the showcase login and workspace survive a wipe.
+  if (opts?.wipe) {
+    console.log('🧹 --wipe: clearing existing mock data...')
+    await prisma.userAction.deleteMany({})
+    await prisma.userSession.deleteMany({})
+    await prisma.videoUserProgress.deleteMany({})
+    await prisma.videoTutorial.deleteMany({})
+    await prisma.analyticsMetric.deleteMany({})
+    await prisma.conversation.deleteMany({})
+    await prisma.inboxItem.deleteMany({})
+    await prisma.postVariant.deleteMany({})
+    await prisma.post.deleteMany({})
+    await prisma.socialAccount.deleteMany({})
+    await prisma.userWorkspace.deleteMany({})
+    await prisma.client.deleteMany({})
+    await prisma.campaign.deleteMany({})
+    await prisma.workspace.deleteMany({ where: { id: { not: 'demo-workspace' } } })
+    // Preserve demo@sociallyhub.com (showcase login) AND the 'system' attribution
+    // user (id 'system') created by seedMinimal/seedSettingsDefaults — the latter is
+    // referenced by settings rows via *_by FKs (ON DELETE RESTRICT), so deleting it
+    // throws a foreign-key violation on repeat wipes (ADR-0025 cross-track wiring).
+    await prisma.user.deleteMany({
+      where: { AND: [{ email: { not: 'demo@sociallyhub.com' } }, { id: { not: 'system' } }] },
+    })
+  } else {
+    console.log('ℹ️  No --wipe: appending demo data (showcase top-up); existing rows preserved.')
+  }
+
+  // Minimal tier first (idempotent): settings defaults + platform-admin bootstrap.
+  // Runs AFTER the wipe so the admin/settings rows it creates are not deleted.
+  await seedMinimal(prisma)
 
   // Generate Users
   console.log(`👥 Generating ${CONFIG.USERS_COUNT} users...`)
@@ -188,7 +246,17 @@ async function main() {
   let demoUser = await prisma.user.findUnique({ where: { email: 'demo@sociallyhub.com' } })
   if (!demoUser) {
     console.log('📧 Creating demo user...')
-    const hashedPassword = await bcrypt.hash('demo123456', 12)
+    // ADR-0025 D4: demo password from DEMO_USER_PASSWORD, else generated and
+    // printed ONCE. No committed constant password.
+    let demoPasswordPlain = process.env.DEMO_USER_PASSWORD?.trim() || ''
+    if (!demoPasswordPlain) {
+      demoPasswordPlain = crypto.randomBytes(18).toString('base64url')
+      console.log('\n' + '='.repeat(64))
+      console.log('⚠️  GENERATED DEMO USER PASSWORD — shown once (set DEMO_USER_PASSWORD to control):')
+      console.log(`    demo@sociallyhub.com / ${demoPasswordPlain}`)
+      console.log('='.repeat(64) + '\n')
+    }
+    const hashedPassword = await bcrypt.hash(demoPasswordPlain, 12)
     demoUser = await prisma.user.create({
       data: {
         email: 'demo@sociallyhub.com',
@@ -207,8 +275,10 @@ async function main() {
   for (let i = 0; i < CONFIG.USERS_COUNT; i++) {
     const firstName = randomChoice(FIRST_NAMES)
     const lastName = randomChoice(LAST_NAMES)
-    const hashedPassword = await bcrypt.hash('password123', 12)
-    
+    // ADR-0025 D4: per-user random password, NEVER printed — the demo user is
+    // the only intended login. No committed constant password.
+    const hashedPassword = await bcrypt.hash(crypto.randomBytes(18).toString('base64url'), 12)
+
     const user = await prisma.user.create({
       data: {
         email: generateEmail(firstName, lastName, i),
@@ -226,29 +296,9 @@ async function main() {
   }
   console.log(`✅ Created ${users.length} users`)
 
-  // ADR-0004: grant the platform-admin flag (two-tier authorization model).
-  // The demo user is always a platform admin in seeded environments; extra
-  // operators come from the PLATFORM_ADMIN_EMAILS comma-separated env
-  // allowlist. Idempotent by construction: pure updateMany, safe on every
-  // re-seed (the demo user survives re-seeds, so this UPDATES its existing
-  // row). All generated mock users above are created with
-  // isPlatformAdmin: false and stay false.
-  console.log('🛡️ Granting platform admin flags (ADR-0004)...')
-  const platformAdminEmails = Array.from(new Set([
-    'demo@sociallyhub.com',
-    ...(process.env.PLATFORM_ADMIN_EMAILS ?? '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  ]))
-  const platformAdminGrant = await prisma.user.updateMany({
-    where: { email: { in: platformAdminEmails } },
-    data: { isPlatformAdmin: true }
-  })
-  console.log(`✅ Platform admin granted to ${platformAdminGrant.count} of ${platformAdminEmails.length} allowlisted email(s): ${platformAdminEmails.join(', ')}`)
-  if (platformAdminGrant.count < platformAdminEmails.length) {
-    console.warn('⚠️ Some PLATFORM_ADMIN_EMAILS entries matched no user; use scripts/grant-platform-admin.ts after creating those accounts.')
-  }
+  // NOTE (ADR-0025): platform-admin grants moved to seedMinimal() via
+  // admin-user-seeder (PLATFORM_ADMIN_EMAILS allowlist). The former inline
+  // grant block here is removed.
 
   // Generate Workspaces
   console.log(`🏢 Generating ${CONFIG.WORKSPACES_COUNT} workspaces...`)
@@ -277,7 +327,7 @@ async function main() {
 
   for (let i = 0; i < CONFIG.WORKSPACES_COUNT; i++) {
     const companyName = randomChoice(COMPANY_NAMES)
-    
+
     const workspace = await prisma.workspace.create({
       data: {
         name: companyName,
@@ -323,11 +373,11 @@ async function main() {
   for (const workspace of workspaces) {
     const teamSize = randomInt(3, 8) // 3-8 members per workspace
     const workspaceUsers = randomChoices(users, teamSize)
-    
+
     for (let i = 0; i < workspaceUsers.length; i++) {
       const user = workspaceUsers[i]
       const role = i === 0 ? 'OWNER' : randomChoice(ROLES)
-      
+
       // Skip if relationship already exists
       const existing = await prisma.userWorkspace.findUnique({
         where: {
@@ -337,7 +387,7 @@ async function main() {
           }
         }
       })
-      
+
       if (!existing) {
         await prisma.userWorkspace.create({
           data: {
@@ -355,12 +405,12 @@ async function main() {
   // Generate Social Accounts
   console.log('📱 Generating social accounts...')
   const socialAccounts = []
-  
+
   for (const workspace of workspaces) {
     for (let i = 0; i < CONFIG.SOCIAL_ACCOUNTS_PER_WORKSPACE; i++) {
       const provider = randomChoice(SOCIAL_PROVIDERS)
       const companyHandle = workspace.name.toLowerCase().replace(/\s+/g, '')
-      
+
       const socialAccount = await prisma.socialAccount.create({
         data: {
           workspaceId: workspace.id,
@@ -373,7 +423,7 @@ async function main() {
           refreshToken: randomBoolean(0.7) ? `refresh-token-${randomInt(1000000, 9999999)}` : null,
           tokenExpiry: randomBoolean(0.8) ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
           scopes: randomChoices([
-            'read', 'write', 'manage_posts', 'read_insights', 'manage_pages', 
+            'read', 'write', 'manage_posts', 'read_insights', 'manage_pages',
             'publish_video', 'manage_comments', 'read_audience'
           ], randomInt(3, 6)),
           status: randomBoolean(0.9) ? 'ACTIVE' : randomChoice(['TOKEN_EXPIRED', 'REVOKED', 'ERROR']),
@@ -406,21 +456,21 @@ async function main() {
       where: { workspaceId: workspace.id },
       include: { user: true }
     })
-    
+
     for (let i = 0; i < CONFIG.POSTS_PER_WORKSPACE; i++) {
       const owner = randomChoice(workspaceUsers)
       const postContent = randomChoice(SAMPLE_POSTS)
       const status = randomChoice(POST_STATUSES)
-      
+
       let scheduledAt = null
       let publishedAt = null
-      
+
       if (status === 'SCHEDULED') {
         scheduledAt = randomDate(new Date(), new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
       } else if (status === 'PUBLISHED') {
         publishedAt = randomDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), new Date())
       }
-      
+
       const post = await prisma.post.create({
         data: {
           workspaceId: workspace.id,
@@ -443,7 +493,7 @@ async function main() {
       // Create variants for this post
       const selectedAccounts = randomChoices(workspaceAccounts, randomInt(1, 4))
       for (const account of selectedAccounts) {
-        const variantStatus = status === 'PUBLISHED' ? 
+        const variantStatus = status === 'PUBLISHED' ?
           (randomBoolean(0.95) ? 'PUBLISHED' : 'FAILED') : 'PENDING'
 
         await prisma.postVariant.create({
@@ -457,10 +507,10 @@ async function main() {
               mediaIds: randomBoolean(0.3) ? [`media-${randomInt(1, 100)}`] : []
             },
             status: variantStatus,
-            providerPostId: variantStatus === 'PUBLISHED' ? 
+            providerPostId: variantStatus === 'PUBLISHED' ?
               `${account.provider.toLowerCase()}-post-${randomInt(100000, 999999)}` : null,
             publishedAt: variantStatus === 'PUBLISHED' ? publishedAt : null,
-            failureReason: variantStatus === 'FAILED' ? 
+            failureReason: variantStatus === 'FAILED' ?
               randomChoice(['API rate limit', 'Invalid token', 'Content policy violation']) : null
           }
         })
@@ -650,7 +700,7 @@ async function main() {
           ]),
           ip: `${randomInt(1, 255)}.${randomInt(1, 255)}.${randomInt(1, 255)}.${randomInt(1, 255)}`,
           pages: randomChoices([
-            '/dashboard', '/posts', '/analytics', '/inbox', '/campaigns', 
+            '/dashboard', '/posts', '/analytics', '/inbox', '/campaigns',
             '/settings', '/team', '/accounts', '/templates', '/assets'
           ], randomInt(3, 8)),
           metadata: {
@@ -795,91 +845,9 @@ async function main() {
   const supportCounts = await seedSupport()
   console.log('✅ Support data seeded')
 
-  // Seed default settings rows (ADR-0016 Phase 3 item 12 / ADR-0025).
-  // Idempotent by hand (findFirst → create): the FeatureFlag @@unique([workspaceId, key])
-  // and BackupConfiguration @@unique([workspaceId, name]) are NULLable on workspaceId,
-  // and Postgres does not enforce uniqueness across NULLs, so a compound-key upsert
-  // is not reliably idempotent for GLOBAL rows — a manual find-or-create is.
-  console.log('🚩 Seeding default feature flags + backup configuration...')
-  let settingsSeeded = 0
-
-  // Three INERT placeholder feature flags (global scope, workspaceId null). These
-  // are NOT live gates — the ADR-0013/0014/0015 deferrals stay on the static env
-  // gate (FEATURE_COMMUNITY / FEATURE_DOCS_MANAGEMENT / FEATURE_DISCORD). These rows
-  // exist only as a FUTURE migration target so a later ADR can move the deferrals
-  // onto the DB-backed flag evaluator without a data-create step.
-  const placeholderFlags: Array<{ key: string; name: string; description: string; category: 'FEATURE' }> = [
-    {
-      key: 'community-subsystem',
-      name: 'Community Subsystem',
-      description: 'INERT placeholder (ADR-0016). The Community deferral (ADR-0013) stays on the static FEATURE_COMMUNITY env gate; this flag is a future migration target only, not a live gate.',
-      category: 'FEATURE',
-    },
-    {
-      key: 'documentation-management',
-      name: 'Documentation Management',
-      description: 'INERT placeholder (ADR-0016). The Documentation deferral (ADR-0014) stays on the static FEATURE_DOCS_MANAGEMENT env gate; this flag is a future migration target only, not a live gate.',
-      category: 'FEATURE',
-    },
-    {
-      key: 'discord-integration',
-      name: 'Discord Integration',
-      description: 'INERT placeholder (ADR-0016). The Discord deferral (ADR-0015) stays on the static FEATURE_DISCORD env gate; this flag is a future migration target only, not a live gate.',
-      category: 'FEATURE',
-    },
-  ]
-
-  for (const flag of placeholderFlags) {
-    const existing = await prisma.featureFlag.findFirst({
-      where: { workspaceId: null, key: flag.key },
-    })
-    if (!existing) {
-      await prisma.featureFlag.create({
-        data: {
-          workspaceId: null,
-          key: flag.key,
-          name: flag.name,
-          description: flag.description,
-          category: flag.category,
-          isActive: false,
-          rolloutPercent: 0,
-          createdBy: demoUser.id,
-          lastUpdatedBy: demoUser.id,
-        },
-      })
-      settingsSeeded++
-    }
-  }
-
-  // Default GLOBAL backup configuration — inactive until an admin enables it, so
-  // seeding never silently starts writing dumps. Nightly at 02:00 when activated.
-  const existingBackupConfig = await prisma.backupConfiguration.findFirst({
-    where: { workspaceId: null, name: 'Default database backup' },
-  })
-  if (!existingBackupConfig) {
-    await prisma.backupConfiguration.create({
-      data: {
-        workspaceId: null,
-        name: 'Default database backup',
-        backupType: 'DATABASE_ONLY',
-        schedule: '0 2 * * *',
-        isActive: false,
-        retention: 30,
-        storageLocation: 'LOCAL',
-        storageConfig: {},
-        createdBy: demoUser.id,
-        lastUpdatedBy: demoUser.id,
-      },
-    })
-    settingsSeeded++
-  }
-
-  // NOTE: a baseline system EmailTemplate is intentionally SKIPPED here (ADR-0016
-  // Phase 3, optional). The EmailTemplate model carries several required
-  // enum/JSON fields (category/type/status + variables) whose correct seeding is
-  // non-trivial; a real template belongs to the email-templates admin surface,
-  // not to a placeholder seed row.
-  console.log(`✅ Seeded ${settingsSeeded} default settings rows (flags + backup config)`)
+  // NOTE (ADR-0025): the inline ADR-0016 settings/feature-flag/backup-config
+  // block was removed — those global defaults now live in seedMinimal() via
+  // settings-defaults-seeder (Track B), which already ran at the top of this tier.
 
   // ============================================================================
   // BILLING SUBSCRIPTIONS (ADR-0019 Track A) — idempotent
@@ -918,11 +886,11 @@ async function main() {
   }
   console.log(`✅ Seeded ${subscriptionsSeeded} subscription rows (demo-workspace = BUSINESS/ACTIVE, others = PRO/TRIALING)`)
 
-  console.log('🎉 Comprehensive database seeding completed!')
+  console.log('🎉 Comprehensive demo database seeding completed!')
   console.log(`
 📊 Final Statistics:
 - Users: ${users.length}
-- Workspaces: ${workspaces.length}  
+- Workspaces: ${workspaces.length}
 - Team Members: ${teamMemberCount}
 - Social Accounts: ${socialAccounts.length}
 - Posts: ${posts.length} (with ${variantCount} variants)
@@ -939,16 +907,70 @@ async function main() {
 `)
 }
 
-function extractHashtags(text: string): string[] {
-  const hashtags = text.match(/#[\w]+/g) || []
-  return hashtags.map(tag => tag.slice(1))
+// ============================================================================
+// TIER: test (ADR-0025 D3 / ADR-0021) — deterministic CI fixtures.
+// ============================================================================
+// Runs seedMinimal() first, then delegates to the deterministic e2e fixture
+// seeder (fixed ids/credentials, small volumes) in ./seed-e2e.
+export async function seedTest(prisma: PrismaClient): Promise<void> {
+  console.log('🧪 [test] Running minimal tier, then deterministic e2e fixtures...')
+  await seedMinimal(prisma)
+  await seedE2E(prisma)
+  console.log('✅ [test] Deterministic fixtures seeded')
 }
 
-main()
-  .catch((e) => {
-    console.error('❌ Seeding failed:', e)
-    process.exit(1)
-  })
-  .finally(async () => {
+// ============================================================================
+// Dispatcher (ADR-0025 D3): parse the tier, run it, exit loud on failure.
+// ============================================================================
+async function main() {
+  const argv = process.argv.slice(2)
+  const tierArg = argv.find((a) => a.startsWith('--tier='))?.split('=')[1]
+  const tier = (tierArg || process.env.SEED_TIER || 'minimal').trim()
+  const wipe = argv.includes('--wipe')
+
+  const prisma = new PrismaClient()
+  console.log(`\n🌱 SociallyHub seed — tier: ${tier}${wipe ? ' (--wipe)' : ''}\n`)
+  try {
+    switch (tier) {
+      case 'minimal':
+        await seedMinimal(prisma)
+        break
+      case 'demo':
+        await seedDemo(prisma, { wipe })
+        break
+      case 'test':
+        await seedTest(prisma)
+        break
+      default:
+        throw new Error(`Unknown seed tier "${tier}" (expected: minimal | demo | test)`)
+    }
+    console.log(`\n✅ Seed complete — tier: ${tier}\n`)
     await prisma.$disconnect()
-  })
+    process.exit(0)
+  } catch (e) {
+    console.error(`❌ Seeding failed (tier: ${tier}):`, e)
+    await prisma.$disconnect().catch(() => {})
+    process.exit(1)
+  }
+}
+
+// Run only when executed directly (`tsx prisma/seed.ts` or `node dist/seed.js`),
+// never on import (the exported tiers are consumed by e2e/global-setup and CI).
+if (require.main === module) {
+  // tsx does NOT auto-load .env.local; load it minimally when DATABASE_URL is
+  // absent so the documented bare command Just Works (mirrors prisma/seed-e2e.ts).
+  if (!process.env.DATABASE_URL) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require('fs') as typeof import('fs')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require('path') as typeof import('path')
+    const envPath = path.join(__dirname, '..', '.env.local')
+    if (fs.existsSync(envPath)) {
+      for (const line of fs.readFileSync(envPath, 'utf-8').split('\n')) {
+        const m = line.match(/^([A-Z0-9_]+)=["']?([^"'\n]*)["']?\s*$/)
+        if (m && !process.env[m[1]]) process.env[m[1]] = m[2]
+      }
+    }
+  }
+  main()
+}

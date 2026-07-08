@@ -63,10 +63,13 @@ if [ "$TABLE_COUNT" = "0" ] || [ -z "$TABLE_COUNT" ]; then
     echo "📊 Database is empty - applying migrations..."
     npx prisma migrate deploy
 
-    echo "🌱 Seeding database with demo data..."
-    npm run db:seed || {
+    # ADR-0025: seed the DEMO tier for a populated local showcase. This container
+    # already carries DEMO_MODE=true + SEED_TIER=demo via docker-compose.yml; the
+    # inline prefix makes the tier selection explicit and self-documenting.
+    echo "🌱 Seeding database with demo data (demo tier)..."
+    SEED_TIER=demo DEMO_MODE=true npm run db:seed || {
         echo "⚠️  Seeding failed, but continuing anyway..."
-        echo "   You can run 'npm run db:seed' manually later"
+        echo "   You can run 'SEED_TIER=demo DEMO_MODE=true npm run db:seed' manually later"
     }
 else
     echo "✅ Database schema exists (found $TABLE_COUNT tables)"

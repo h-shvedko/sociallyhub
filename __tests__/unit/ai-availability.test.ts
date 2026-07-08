@@ -10,13 +10,17 @@
  *   - src/lib/ai/route-guard.ts   → guardAIAvailability(), withAIMeta(),
  *                                   mapAIError()
  *
- * ENV-ISOLATION PATTERN (important): src/lib/config/demo.ts computes
- * `demoConfig.enabled` at MODULE LOAD, so isDemoMode() is frozen the moment
- * the module is first required. Every test therefore (1) mutates process.env
- * FIRST and (2) loads the modules under test via jest.isolateModules() so a
- * fresh registry re-evaluates all module-level state. All contract modules
- * are loaded inside the SAME isolateModules callback so `instanceof` checks
+ * ENV-ISOLATION PATTERN (important): the AI layer caches module-level state at
+ * import time — e.g. src/lib/ai/config.ts memoizes the OpenAI client singleton
+ * keyed off OPENAI_API_KEY. Every test therefore (1) mutates process.env FIRST
+ * and (2) loads the modules under test via jest.isolateModules() so a fresh
+ * registry re-evaluates all module-level state. All contract modules are loaded
+ * inside the SAME isolateModules callback so `instanceof` checks
  * (mapAIError ↔ AIUnavailableError) see one class identity.
+ *
+ * Demo gating is now the single DEMO_MODE flag (isDemoMode() ===
+ * process.env.DEMO_MODE === 'true') — the previous NODE_ENV heuristic and the
+ * demo-backdoor env var it relied on have both been removed (ADR-0025).
  */
 import { describe, it, expect, beforeEach, afterAll } from '@jest/globals'
 
@@ -32,12 +36,12 @@ function deleteEnv(key: string) {
   delete (process.env as Record<string, string | undefined>)[key]
 }
 
-/** Known baseline: no key, no demo flag, NODE_ENV as given (default 'test'). */
+/** Known baseline: no key, demo off (DEMO_MODE unset), NODE_ENV as given. */
 function resetAIEnv(nodeEnv: string = 'test') {
   deleteEnv('OPENAI_API_KEY')
   deleteEnv('OPENAI_MODEL')
   deleteEnv('OPENAI_VISION_MODEL')
-  deleteEnv('ENABLE_DEMO')
+  deleteEnv('DEMO_MODE')
   setEnv('NODE_ENV', nodeEnv)
 }
 
@@ -96,15 +100,15 @@ describe('getAIAvailability()', () => {
 
   it('treats the placeholder "your-openai-api-key-here" as NO key (provider none outside demo)', () => {
     setEnv('OPENAI_API_KEY', 'your-openai-api-key-here')
-    // NODE_ENV=test, no ENABLE_DEMO → not demo mode
+    // no DEMO_MODE → not demo mode
     const { availability } = loadAI()
     const result = availability.getAIAvailability()
     expect(result.available).toBe(false)
     expect(result.provider).toBe('none')
   })
 
-  it('returns mock provider when no key and ENABLE_DEMO="true"', () => {
-    setEnv('ENABLE_DEMO', 'true')
+  it('returns mock provider when no key and DEMO_MODE="true"', () => {
+    setEnv('DEMO_MODE', 'true')
     const { availability } = loadAI()
     const result = availability.getAIAvailability()
     expect(result.available).toBe(true)
@@ -112,15 +116,17 @@ describe('getAIAvailability()', () => {
     expect(result.reason).toBeTruthy() // "demo mode — simulated output"
   })
 
-  it('returns mock provider when no key and NODE_ENV=development (demo default)', () => {
-    resetAIEnv('development')
+  it('returns mock provider when no key and DEMO_MODE="true", regardless of NODE_ENV', () => {
+    // NODE_ENV no longer influences demo gating (ADR-0025) — only DEMO_MODE does.
+    setEnv('NODE_ENV', 'production')
+    setEnv('DEMO_MODE', 'true')
     const { availability } = loadAI()
     const result = availability.getAIAvailability()
     expect(result.available).toBe(true)
     expect(result.provider).toBe('mock')
   })
 
-  it('returns { available:false, provider:"none" } with an honest reason when no key, NODE_ENV=test, no ENABLE_DEMO', () => {
+  it('returns { available:false, provider:"none" } with an honest reason when no key and no DEMO_MODE', () => {
     const { availability } = loadAI()
     const result = availability.getAIAvailability()
     expect(result.available).toBe(false)
@@ -191,7 +197,7 @@ describe('route-guard', () => {
   })
 
   it('guardAIAvailability() returns null when the provider is mock (demo)', () => {
-    setEnv('ENABLE_DEMO', 'true')
+    setEnv('DEMO_MODE', 'true')
     const { routeGuard } = loadAI()
     expect(routeGuard.guardAIAvailability()).toBeNull()
   })
@@ -218,7 +224,7 @@ describe('route-guard', () => {
   })
 
   it('withAIMeta() stamps aiProvider:"mock" + simulated:true in demo mode without a key', () => {
-    setEnv('ENABLE_DEMO', 'true')
+    setEnv('DEMO_MODE', 'true')
     const { routeGuard } = loadAI()
     const stamped = routeGuard.withAIMeta({ success: true })
     expect(stamped.aiProvider).toBe('mock')

@@ -58,11 +58,11 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 //
 // Module-scope singletons in the AI layer (aiService is constructed at import
-// time and registers its providers based on process.env; src/lib/config/demo
-// freezes isDemoMode() at module load) CACHE availability state. To test a
-// different env state we must (1) mutate process.env FIRST, then (2) require
-// the route inside jest.isolateModules() so a fresh registry re-evaluates
-// everything.
+// time and registers its providers based on process.env — including whether
+// isDemoMode()/DEMO_MODE selects the MockAIProvider) CACHE availability state.
+// To test a different env state we must (1) mutate process.env FIRST, then
+// (2) require the route inside jest.isolateModules() so a fresh registry
+// re-evaluates everything.
 //
 // EXTRA TRAP: inside isolateModules the jest.mock('next-auth') factory
 // produces a FRESH mock instance for that registry — the outer mockSession()
@@ -132,8 +132,7 @@ describe('GET /api/ai/status', () => {
     // .env.local has a real key → 'openai'; a keyless CI → 'none'/'mock').
     const key = process.env.OPENAI_API_KEY
     const hasKey = Boolean(key) && key !== 'your-openai-api-key-here'
-    const demo =
-      process.env.NODE_ENV === 'development' || process.env.ENABLE_DEMO === 'true'
+    const demo = process.env.DEMO_MODE === 'true'
     const expectedProvider = hasKey ? 'openai' : demo ? 'mock' : 'none'
 
     expect(body.provider).toBe(expectedProvider)
@@ -157,9 +156,8 @@ describe('POST /api/ai/tone/analyze availability gating', () => {
   it('returns 503 AI_UNAVAILABLE when no key and demo mode is off', async () => {
     const restore = overrideAIEnv({
       OPENAI_API_KEY: undefined,
-      ENABLE_DEMO: undefined,
-      // NODE_ENV is already 'test' under jest — NOT 'development', so
-      // isDemoMode() is false and the provider resolves to 'none'.
+      DEMO_MODE: undefined,
+      // DEMO_MODE unset → isDemoMode() is false and the provider resolves to 'none'.
     })
     try {
       const post = loadToneAnalyzeIsolated(ws.user)
@@ -177,7 +175,7 @@ describe('POST /api/ai/tone/analyze availability gating', () => {
   it('returns 200 with aiProvider:"mock" + simulated:true in demo mode without a key', async () => {
     const restore = overrideAIEnv({
       OPENAI_API_KEY: undefined,
-      ENABLE_DEMO: 'true',
+      DEMO_MODE: 'true',
     })
     try {
       const post = loadToneAnalyzeIsolated(ws.user)

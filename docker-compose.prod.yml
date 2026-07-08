@@ -95,6 +95,10 @@ services:
   # the standalone output does not trace devDependencies and `npx` would try
   # to download the CLI at deploy time). Runs `prisma migrate deploy`, exits;
   # app and worker wait for it to complete successfully.
+  #
+  # Seeding is NOT done here (ADR-0025 D5): the app entrypoint seeds after this
+  # one-shot completes (see the `app` service's SEED_TIER env + docker/entrypoint.sh),
+  # keeping seeding in exactly one place. This service stays migrate-deploy only.
   # --------------------------------------------------------------------------
   migrate:
     image: ghcr.io/h-shvedko/sociallyhub:${APP_IMAGE_TAG:?set APP_IMAGE_TAG (e.g. the git SHA CI pushed) in .env}
@@ -170,6 +174,22 @@ services:
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
       - WORKER_EXPECTED=${WORKER_EXPECTED:-true}
+      # Seeding (ADR-0025 D5). The app entrypoint runs
+      #   node dist/seed.js --tier="${SEED_TIER:-minimal}"
+      # after the one-shot `migrate` service completes. The `minimal` tier is
+      # prod-safe + idempotent (settings defaults, feature flags, one platform
+      # admin). DEMO_MODE is deliberately UNSET so the `demo` tier cannot run
+      # here (the demo seeder hard-aborts without DEMO_MODE=true). The worker
+      # bypasses this entrypoint (its command is `node dist/worker.js`), so the
+      # seed runs exactly once, in the app container only.
+      #   PLATFORM_ADMIN_EMAILS grants User.isPlatformAdmin to real operators
+      #     (ADR-0004/0012). Empty ⇒ the seeder prints a LOUD warning pointing at
+      #     scripts/grant-platform-admin.ts instead of bricking boot.
+      #   ADMIN_INITIAL_PASSWORD sets a created admin's password; empty ⇒ one is
+      #     generated and printed ONCE at seed time (ADR-0025 D4).
+      - SEED_TIER=${SEED_TIER:-minimal}
+      - PLATFORM_ADMIN_EMAILS=${PLATFORM_ADMIN_EMAILS:-}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

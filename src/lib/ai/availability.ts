@@ -7,9 +7,9 @@
 //
 // Three-state behavior:
 // - OPENAI_API_KEY set (and not the .env.example placeholder) → real OpenAI.
-// - No key, but demo mode (NODE_ENV=development or ENABLE_DEMO='true')
+// - No key, but demo mode (DEMO_MODE='true', the single flag — ADR-0025 D1)
 //   → mock provider with clearly-labeled simulated output.
-// - Otherwise (production without a key, NODE_ENV=test) → unavailable;
+// - Otherwise (no key and demo off) → unavailable;
 //   routes return an honest 503 instead of fabricated results.
 
 import { isDemoMode } from '@/lib/config/demo'

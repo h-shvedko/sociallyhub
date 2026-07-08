@@ -1,7 +1,8 @@
 #!/bin/sh
 # ============================================================================
-# Production entrypoint (ADR-0022): wait-for-deps + assert ENCRYPTION_KEY +
-# exec node server.js. Nothing else.
+# Production entrypoint (ADR-0022 + ADR-0025): wait-for-deps + assert
+# ENCRYPTION_KEY + seed (node dist/seed.js, app container only) + exec node
+# server.js.
 #
 # What MOVED OUT of here, and where it went:
 #   - `npx prisma migrate deploy`  → the explicit one-shot `migrate` service in
@@ -14,8 +15,16 @@
 #     stage). The generated client is baked into the image; regenerating at
 #     runtime is impossible (no prisma CLI dev tooling) and pointless (the
 #     schema cannot change inside a built image).
-#   - SEED_DATABASE / `npx prisma db seed` → removed. tsx (the seed runner) is
-#     not in the production image; seeding policy is ADR-0025.
+#   - SEED_DATABASE / `npx prisma db seed` → REPLACED (ADR-0025 D5). tsx is not
+#     in the production image, so seeding now runs the esbuild-bundled
+#     `node dist/seed.js` (Dockerfile.prod), tier-selected by SEED_TIER
+#     (default: minimal — prod-safe + idempotent). See the seed block below.
+#
+# WHO seeds: ONLY this entrypoint, i.e. ONLY the `app` container. The `worker`
+# service overrides the image CMD with `node dist/worker.js`, so it never runs
+# this script and never seeds — no double-run. Migrations are already applied
+# by the one-shot `migrate` service the app depends_on
+# (service_completed_successfully), so the schema exists by the time we seed.
 #
 # `nc` is busybox nc, present in the node:20-alpine base — no extra package.
 # ============================================================================
@@ -55,6 +64,21 @@ until nc -z "${REDIS_HOST:-localhost}" "${REDIS_PORT:-6379}"; do
     sleep 2
 done
 echo "✅ Redis is up!"
+
+# Seed the database (ADR-0025 D5) — runs AFTER the one-shot `migrate` service
+# has applied migrations (compose depends_on: migrate service_completed_successfully),
+# so the schema is present. The `minimal` tier (default) is prod-safe and
+# idempotent (find-or-create / upsert by natural key), so re-running it on every
+# app restart is a no-op. Seeding FAILS LOUD: `set -e` (top of file) turns any
+# non-zero exit into a boot failure — there is intentionally NO `|| echo` mask
+# (the old failure-swallowing behavior is what ADR-0025 D5 removes).
+#
+# DEMO_MODE is intentionally NOT set in docker-compose.prod.yml, so even if
+# SEED_TIER were mis-set to `demo` the demo seeder hard-aborts (it requires
+# DEMO_MODE=true) — prod cannot fabricate showcase data.
+echo "🌱 Seeding database (tier=${SEED_TIER:-minimal})..."
+node dist/seed.js --tier="${SEED_TIER:-minimal}"
+echo "✅ Seed complete."
 
 echo "🎉 Starting Next.js application..."
 exec node server.js

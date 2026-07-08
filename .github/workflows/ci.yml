@@ -187,14 +187,50 @@ jobs:
           npx prisma migrate deploy
           npx prisma generate
 
-      # Seed smoke test: the seed must run to completion against freshly
-      # deployed migrations and produce a real dataset. The row-count check is
-      # a genuine assertion (it catches seed/schema divergence), not theater.
+      # Minimal-tier smoke (ADR-0025): the prod-safe `minimal` seed must run to
+      # completion against a freshly-migrated (clean) database and bootstrap the
+      # RBAC floor ADR-0004/0012 enforcement needs — at least one platform admin.
+      # Runs FIRST, on the clean DB, so it exercises minimal in isolation; the
+      # demo smoke below then layers the showcase on top. PLATFORM_ADMIN_EMAILS
+      # forces the admin-user-seeder to create + grant an admin (its
+      # at-least-one-admin assertion then holds).
+      - name: Minimal seed smoke (clean state — settings defaults + platform admin)
+        run: |
+          npx tsx prisma/seed.ts --tier=minimal
+          node -e "
+            const { PrismaClient } = require('@prisma/client');
+            const prisma = new PrismaClient();
+            (async () => {
+              try {
+                const admins = await prisma.user.count({ where: { isPlatformAdmin: true } });
+                console.log('Platform admins after minimal seed: ' + admins);
+                if (admins < 1) {
+                  throw new Error('minimal seed produced no platform admin (isPlatformAdmin count = ' + admins + ')');
+                }
+                console.log('Minimal seed smoke passed');
+              } catch (error) {
+                console.error('Minimal seed smoke failed:', error.message);
+                process.exit(1);
+              } finally {
+                await prisma.\$disconnect();
+              }
+            })();
+          "
+        env:
+          NODE_ENV: test
+          PLATFORM_ADMIN_EMAILS: ci-admin@example.com
+
+      # Seed smoke test: the DEMO tier must run to completion against the
+      # freshly-migrated database and produce the full showcase dataset. The
+      # row-count check is a genuine assertion (it catches seed/schema
+      # divergence), not theater. Demo requires DEMO_MODE=true and a demo-user
+      # password (ADR-0025 D3/D4); ci-demo-pass is a throwaway CI value (not a
+      # committed source literal — the demo-secrets gate scans prisma/src/scripts).
       # (The old "performance test" probe was removed: its 5s threshold only
       # ever warned, so it gated nothing.)
       - name: Seed smoke test (real row counts)
         run: |
-          npm run db:seed
+          SEED_TIER=demo DEMO_MODE=true DEMO_USER_PASSWORD=ci-demo-pass npm run db:seed
           node -e "
             const { PrismaClient } = require('@prisma/client');
             const prisma = new PrismaClient();
@@ -339,6 +375,12 @@ jobs:
         # ADR-0023: fail the build if a Math.random() metric returns to src/app/api
         # outside the documented allowlist. Fast, deterministic, no deps.
         run: bash scripts/check-no-fabricated-metrics.sh
+
+      - name: No committed demo secrets (gate)
+        # ADR-0025 D4: fail the build if a committed 'password123' / 'demo123456'
+        # string literal reappears under prisma/ src/ scripts/. Fast, deterministic,
+        # no deps.
+        run: bash scripts/check-no-committed-demo-secrets.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

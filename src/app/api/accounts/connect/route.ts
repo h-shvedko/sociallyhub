@@ -5,6 +5,7 @@ import { handleApiError } from '@/lib/api/respond'
 import { prisma } from '@/lib/prisma'
 import { socialMediaManager } from '@/services/social-providers'
 import { signAccountState } from '@/lib/security/oauth-state'
+import { encryptToken } from '@/lib/encryption'
 import { isDemoMode } from '@/lib/config/demo'
 import { assertWithinLimit, LimitExceededError, limitExceededResponse } from '@/lib/billing/entitlements'
 
@@ -170,6 +171,10 @@ async function createDemoConnection(provider: string, workspaceId: string, userI
         handle: `${accountData.handle}-${randomId}`,
         accountType: 'BUSINESS',
         status: 'ACTIVE',
+        // Required non-null field (schema). A demo account never performs a
+        // real API call, so store an inert placeholder — encrypted at rest for
+        // ADR-0006 format consistency with real OAuth-issued tokens.
+        accessToken: encryptToken('demo-no-real-token'),
         scopes: getDefaultScopes(provider),
         metadata: {
           demoAccount: true,

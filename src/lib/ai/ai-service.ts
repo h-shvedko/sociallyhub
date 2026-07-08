@@ -55,7 +55,7 @@ export class AIService {
       return
     }
 
-    // Mock ONLY in demo mode (NODE_ENV=development or ENABLE_DEMO='true');
+    // Mock ONLY in demo mode (DEMO_MODE='true', the single flag — ADR-0025 D1);
     // its output is labeled simulated by withAIMeta(). Otherwise register
     // NOTHING — getProvider() throws AIUnavailableError and routes 503.
     if (isDemoMode()) {
