@@ -25,6 +25,12 @@ services:
       - "3099:3099"
     environment:
       - NODE_ENV=production
+      # ADR-0025: this CI compose has NO `migrate` one-shot service (unlike prod);
+      # the runner applies migrations + seeds fixtures from the host AFTER
+      # `docker compose up -d`. So the app must NOT boot-seed (it would race ahead
+      # of the migrations → "relation public.users does not exist"). Prod leaves
+      # SEED_ON_BOOT unset → the entrypoint seeds minimal on boot as designed.
+      - SEED_ON_BOOT=false
       - DATABASE_URL=postgresql://sociallyhub:password@postgres:5432/sociallyhub_test
       - REDIS_URL=redis://redis:6379
       - DATABASE_HOST=postgres

@@ -76,9 +76,20 @@ echo "✅ Redis is up!"
 # DEMO_MODE is intentionally NOT set in docker-compose.prod.yml, so even if
 # SEED_TIER were mis-set to `demo` the demo seeder hard-aborts (it requires
 # DEMO_MODE=true) — prod cannot fabricate showcase data.
-echo "🌱 Seeding database (tier=${SEED_TIER:-minimal})..."
-node dist/seed.js --tier="${SEED_TIER:-minimal}"
-echo "✅ Seed complete."
+#
+# SEED_ON_BOOT=false opts a deployment OUT of boot-seeding. It exists for the
+# CI e2e compose (docker-compose.ci.yml), which has NO `migrate` one-shot
+# service — the CI runner applies migrations + seeds fixtures from the host
+# AFTER `docker compose up -d`, so a boot-seed here would race ahead of the
+# migrations and hit "relation \"public.users\" does not exist". Prod leaves it
+# unset (defaults to true).
+if [ "${SEED_ON_BOOT:-true}" = "false" ]; then
+  echo "⏭️  SEED_ON_BOOT=false — skipping boot-seed (migrations/seed handled externally)."
+else
+  echo "🌱 Seeding database (tier=${SEED_TIER:-minimal})..."
+  node dist/seed.js --tier="${SEED_TIER:-minimal}"
+  echo "✅ Seed complete."
+fi
 
 echo "🎉 Starting Next.js application..."
 exec node server.js
