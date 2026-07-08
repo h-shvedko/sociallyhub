@@ -1,8 +1,79 @@
 # ADR-0025: Seeding Strategy and Explicit Demo Mode
 
 - Date: 2026-07-02
-- Status: Proposed
+- Status: **Implemented (2026-07-08)** — Option 3. The demo-generator atomization is pragmatic (see note).
 - Deciders: Hennadii Shvedko (owner), Claude (architect)
+
+## Implementation note (2026-07-08)
+
+Option 3 shipped via a 5-track workflow + wire-check + test tracks, then independent
+verification. Parts had already landed incrementally — ADR-0018 demo-gated the mock AI
+provider and deleted `sk-fake-key-for-demo`; ADR-0009 gave `/api/accounts/connect` +
+`/api/accounts/platforms` their `isDemoMode()` gates and the honest `PLATFORM_NOT_CONFIGURED`
+(503) non-demo path; ADR-0021 built `prisma/seed-e2e.ts` + `e2e/fixtures.ts` (the de-facto
+test tier) and a working `e2e/global-setup.ts`; ADR-0024 deleted `prisma/seed.js`. This ADR
+delivered the rest.
+
+**D1 — one flag, one helper:** `src/lib/config/demo.ts` rewritten to `isDemoMode() =
+process.env.DEMO_MODE === 'true'` — the `NODE_ENV === 'development'` heuristic and the
+`ENABLE_DEMO` production backdoor are both **gone** (unit-proven: neither enables demo).
+Because the flag is server-only (not `NEXT_PUBLIC_*`), the `'use client'` signin and setup
+pages were split into a server `page.tsx` (reads `getPublicDemoConfig()`) + a client child —
+a real server→client handoff with no drifting mirror variable. `docker-compose.yml` (dev)
+sets `DEMO_MODE=true`; prod compose deliberately does not.
+
+**D2 — enumerated gated behaviors:** `docs/demo-mode.md` is the registry (fake account
+connect, mock AI provider, demo credential hints, demo seed tier), each with its file, its
+`isDemoMode()` gate, and how its output is marked. `src/app/dashboard/setup/page.tsx`'s
+hardcoded `demo@sociallyhub.com / demo123456` block is removed (demo-gated hint or generic
+copy). A CI integration test asserts a credential-less config returns `PLATFORM_NOT_CONFIGURED`
+and creates **no** `metadata.demoAccount` row — and that flipping `DEMO_MODE=true` re-offers
+the demo path (the registry-escape guard, both directions).
+
+**D3 — tiered seeding:** `prisma/seed.ts` is now a dispatcher (`--tier=` / `SEED_TIER`,
+default `minimal`; `--wipe` for the demo reset). `seedMinimal()` (prod-safe, idempotent) runs
+two NEW seeders — `settings-defaults-seeder` (global SystemConfiguration/SecurityConfiguration/
+EmailTemplate + the three DISABLED community/documentation/discord FeatureFlags, attributed to
+a login-disabled `system` user) and `admin-user-seeder` (grants `User.isPlatformAdmin` from
+`PLATFORM_ADMIN_EMAILS`, creates missing accounts with a generated password printed once,
+throws when the allowlist is set but yields no admin, warns when unset). `seedDemo()` hard-aborts
+unless `DEMO_MODE=true`, runs `seedMinimal` first, then the (verbatim, parity-preserved) ~30k
+generator, wiping only under `--wipe`. `seedTest()` runs `seedMinimal` then delegates to the
+existing `seedE2E()`.
+
+**Divergence from the letter of D3:** the demo showcase generator was kept as ONE cohesive
+`seedDemo()` rather than atomized into 7 per-domain files (users/workspaces/posts/…). The
+ADR's tier *goals* — minimal is prod-safe and separate, demo requires `DEMO_MODE` + gated
+wipe, test is deterministic — are fully met; atomizing a proven 30k Math.random generator was
+judged higher-risk (parity) than valuable. The genuinely-new seeders (settings-defaults,
+admin-user) ARE separate files per the pattern.
+
+**D4 — credential hygiene:** no committed constant passwords — the `password123` (mock users →
+per-user random, never printed) and `demo123456` (demo user → `DEMO_USER_PASSWORD` or
+generated-and-printed-once) literals are gone from source, enforced by a **blocking CI grep
+guard** (`scripts/check-no-committed-demo-secrets.sh`). `scripts/reset-admin-password.ts` is
+the recovery path.
+
+**D5 — prod-image seeding:** `Dockerfile.prod` esbuild-bundles `prisma/seed.ts → dist/seed.js`
+(no `tsx` in the runtime image); `docker/entrypoint.sh` runs `node dist/seed.js
+--tier="${SEED_TIER:-minimal}"` after migrate, fail-loud (no `|| echo` mask). CI's row-count
+smoke now runs the demo tier explicitly, plus a new minimal-tier smoke asserting a platform
+admin exists.
+
+**Bug found in verification:** `createDemoConnection()` omitted the required
+`SocialAccount.accessToken`, so every `DEMO_MODE=true` `/api/accounts/connect` 500'd — dead
+until this ADR's gate re-exposed it. Fixed (encrypted placeholder token per ADR-0006).
+
+**Verification:** 27 new Jest tests (flag matrix proving both backdoors gone, both minimal
+seeders, the registry-escape gate) → full suite 23 suites / 297 green; `next build` green;
+all three tiers run (minimal/test exit 0, demo aborts when off, demo `--wipe` regenerated the
+showcase); the **esbuild seed bundle runs standalone** (`node dist/seed.js --tier=minimal/test`
+exit 0 — the prod-image path); e2e `g9-demo-mode` green (signin hint, demo connect offered,
+demo login) + live-container proof.
+
+**Deferred (by design):** login-time forced-password-change enforcement (the seeded admin is
+flagged via a printed banner + reset script, not a schema field); atomizing the demo generator
+into per-domain files; a curated demo snapshot DB (Option 4, rejected).
 
 ## Context and Problem Statement
 

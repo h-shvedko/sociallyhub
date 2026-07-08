@@ -65,7 +65,7 @@ Each item is owned by an ADR — read the ADR before starting.
 - ✅ ~~Real monitoring/alerting (replace `Math.random` simulations)~~ — implemented 2026-07-07: prom-client singleton at `/api/metrics` (real accumulating counters + DB gauges, bearer-protected); honest `/api/health` readiness; every fabricated metric (`'99.9%'`, monitoring-dashboard hardcoded bars, platform/clients/campaigns `Math.random`) removed with a **blocking CI grep guard**; Prometheus/Grafana/Loki config `promtool`-validated; worker `:9464`; Sentry/GlitchTip dormant without a DSN. Deferred: real exporters as compose services, OTel tracing, turning Sentry on.
 
 ### Seeding & demo mode — **ADR-0025**
-- Demo-token gating for publish jobs; seed strategy for newer subsystems; retire `prisma/seed.js`
+- ✅ ~~Demo-token gating; seed strategy for newer subsystems; retire `prisma/seed.js`~~ — implemented 2026-07-08: single `DEMO_MODE` flag (NODE_ENV heuristic + ENABLE_DEMO backdoor removed) + `docs/demo-mode.md` registry; tiered dispatcher (minimal/demo/test), prod-safe minimal bootstrap (settings + platform-admin), esbuild-bundled prod-image seeding (fail-loud entrypoint); committed passwords purged + blocking CI guard; `seed.js` already gone (ADR-0024). Deferred: login-time forced-password-change enforcement; atomizing the demo generator into per-domain files.
 
 ### Two-Factor Authentication — **ADR-0026** (stub)
 ### Workspace switching — **ADR-0027** (stub)

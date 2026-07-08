@@ -4,7 +4,7 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 
 **Owner decisions binding this set (2026-07-02):** deployment standardizes on self-hosted Docker (Vercel removed) · repair Support + Admin RBAC now, defer Community / Documentation / Discord behind feature flags · Stripe billing is in scope now.
 
-**Progress: 23 of the 24 decision ADRs implemented** (0002–0024 except 0025 — foundation → security → pipeline → support/admin, the three deferral flag-offs, real admin settings/backups, user settings/personalization, the hygiene sweep that produced the first-ever green `next build`, the CI/CD pipeline + buildable production image, the client portal + tokenized report share links, and real prom-client observability + honest metrics/health). The remaining 1 (0025) is proposed-but-not-built. ADR-0001 is the record-keeping process itself (always in effect); ADR-0026/0027 are follow-up stubs filed from ADR-0017.
+**Progress: ALL 24 decision ADRs implemented** (0002–0025 — foundation → security → pipeline → support/admin, the three deferral flag-offs, real admin settings/backups, user settings/personalization, the hygiene sweep that produced the first-ever green `next build`, the CI/CD pipeline + buildable production image, the client portal + tokenized report share links, real prom-client observability + honest metrics/health, and the single `DEMO_MODE` flag + tiered seeding + prod-safe minimal bootstrap). ADR-0001 is the record-keeping process itself (always in effect); ADR-0026/0027 are follow-up stubs filed from ADR-0017. The remediation set is complete — remaining work is the deferred sub-scopes noted per ADR (live-platform integrations, real PDF exports, exporters/OTel tracing, the 0026/0027 features) and the un-defer backlogs for Community/Documentation/Discord.
 
 ## Index
 
@@ -47,14 +47,14 @@ This folder is the canonical remediation and evolution plan for SociallyHub, pro
 | [0019](ADR-0019-billing-and-subscriptions.md) | Billing & Subscriptions with Stripe | ✅ Implemented (2026-07-07) | Checkout/Portal/webhook/subscription routes + entitlements enforcement at accounts/posts/seats/AI; 14-day no-card PRO trial (proven live); `/dashboard/billing` rebuilt on live data (mock plans/invoices/4242 deleted). Live checkout flows await real Stripe keys. |
 | [0020](ADR-0020-client-portal-and-report-sharing.md) | Client Portal & Shareable Reports | ✅ Phases 0–2 implemented (2026-07-07) | Tokenized snapshot share links (`ReportShareLink`: sha256-at-rest tokens, optional bcrypt password, expiry/revocation, uniform 404, snapshot-only render) + a real CLIENT_VIEWER portal (`/portal`, exhaustive read-only allowlist, JWT `portalOnly` + edge-middleware default-deny, PRO+ invite gating). Phase 3 (post approvals) stays a separate go/no-go. |
 
-### Quality, operations, hygiene — ✅ implemented except seeding
+### Quality, operations, hygiene — ✅ all implemented
 | ADR | Title | Status | Decision in one line |
 |---|---|---|---|
 | [0021](ADR-0021-testing-strategy-and-quality-gates.md) | Testing Strategy & Honest Quality Gates | ✅ Implemented (2026-07-07) | First-ever green suite: 12/12 suites, 158 tests; measured coverage ratchet replaces the 70% fantasy; auth-triple integration net + webhook idempotency tests; golden paths proven in a live browser (17/17 specs incl. axe a11y); CI Jest job flipped to BLOCKING. |
 | [0022](ADR-0022-cicd-and-deployment.md) | CI/CD & Self-Hosted Docker Deployment | ✅ Implemented (2026-07-06) | Verified end-to-end locally: prod image **builds** (595 MB, was impossible), **boots healthy**, and migrates offline via a self-contained pinned prisma CLI. Honest 8-job ci.yml (blocking schema/build/docker-image — the `sonner`-class gate); SSH deploy w/ body-asserting health gate + auto-rollback; k8s/Vercel contradictions deleted. Live VM deploy awaits provisioning (runbook shipped). |
 | [0023](ADR-0023-observability-and-monitoring.md) | Observability: Real Metrics, Logging & Health | ✅ Implemented (2026-07-07) | prom-client singleton registry at `/api/metrics` (real accumulating counters + DB gauges, bearer-protected); honest readiness `/api/health`; every `Math.random()` metric + the `'99.9%'` badge replaced with real sources or removed (CI grep guard, blocking); repaired Prometheus/Grafana/Loki config (`promtool`-validated) + worker `:9464`; guarded Sentry/GlitchTip dormant without a DSN. |
 | [0024](ADR-0024-codebase-hygiene.md) | Codebase Hygiene & Dead Code Removal | ✅ Implemented (2026-07-06) | All verified-dead files/routes/pages deleted (re-verified at execution); missing live-surface deps fixed; **first-ever green `next build`** (241 pages — five deferred docs routes had parse errors, so no prior tree ever compiled); docs consolidated (README 2,722→125); knip baseline landed. |
-| [0025](ADR-0025-seeding-and-demo-mode.md) | Seeding Strategy & Explicit Demo Mode | Proposed | One `DEMO_MODE` flag through one server-only helper with an enumerated registry of demo behaviors; tiered modular seeders (minimal/demo/test), prod-runnable minimal seed, generated credentials. |
+| [0025](ADR-0025-seeding-and-demo-mode.md) | Seeding Strategy & Explicit Demo Mode | ✅ Implemented (2026-07-08) | Single `DEMO_MODE` flag (NODE_ENV heuristic + ENABLE_DEMO backdoor removed) through one server-only helper + `docs/demo-mode.md` registry; tiered dispatcher (minimal/demo/test) with prod-safe minimal bootstrap (settings + platform-admin) + esbuild-bundled prod-image seeding; committed passwords purged (blocking CI guard). Demo generator kept cohesive rather than atomized (pragmatic, see note). |
 
 ### Follow-up ADRs filed from implementation
 | ADR | Title | Status | Decision in one line |
@@ -82,7 +82,7 @@ Steps 1–7 below are **done**. What's left starts at step 8.
 6. ~~**Settings** — ADR-0016 (admin settings + real backups), ADR-0017 (user settings/personalization).~~ ✅ Done.
 7. ~~**Hygiene + honest pipeline** — ADR-0024 (dead-code sweep → first-ever green `next build`), then ADR-0022 (CI/CD + buildable prod image built on it).~~ ✅ Done.
 8. ~~**Test ratchets** — ADR-0021.~~ ✅ Done (Jest AND e2e-smoke gates both blocking and proven green in CI; lint/typecheck ratchets remain future raises).
-9. ~~**Growth** — ADR-0019 (billing/Stripe), ADR-0018 (AI availability + UI mounting), ADR-0020 (client portal + share links).~~ ✅ Done; next: ADR-0025 (seeding/demo mode).
+9. ~~**Growth** — ADR-0019 (billing/Stripe), ADR-0018 (AI availability + UI mounting), ADR-0020 (client portal + share links), ADR-0025 (seeding/demo mode).~~ ✅ Done — the full remediation set (0002–0025) is implemented.
 10. ~~**Observability** — ADR-0023: real prom-client metrics, honest health, repaired monitoring stack.~~ ✅ Done (exporters as real compose services + OTel tracing remain future layers).
 11. **Follow-ups** — ADR-0026 (2FA), ADR-0027 (workspace switching), each filed from ADR-0017.
 
