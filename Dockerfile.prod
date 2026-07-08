@@ -49,14 +49,16 @@ RUN npm run build:worker
 
 # Bundle the seed dispatcher (ADR-0025 D5) → dist/seed.js so the runtime image
 # can seed WITHOUT tsx (a devDependency absent from the prod image). Mirrors the
-# worker bundle: one esbuild pass, ALL node_modules kept external
-# (--packages=external) and resolved at runtime from the standalone-traced
-# node_modules — @prisma/client (+ generated .prisma) and bcryptjs are already
-# present (prisma is used by nearly every route; bcryptjs by credentials auth).
-# The tier dispatcher's per-domain seeders (src/lib/seeders/*) and
-# prisma/seed-e2e.ts are RELATIVE imports, so they are bundled in; only npm
-# packages stay external.
-RUN npx esbuild prisma/seed.ts --bundle --platform=node --target=node20 --packages=external --outfile=dist/seed.js
+# WORKER bundle's EXACT external set — NOT `--packages=external`. In a Next.js
+# `output: 'standalone'` image only the APP's traced deps land in
+# node_modules; a seed bundled with everything external then fails at runtime
+# with `Cannot find module 'bcryptjs'` (the seed's dep set ≠ the app's traced
+# set — this exact failure blocked the ADR-0025 e2e gate). So bundle every pure-JS
+# dep IN (bcryptjs, the relative seeders, prisma/seed-e2e → e2e/fixtures) and
+# externalize ONLY what cannot be bundled and IS in the standalone trace:
+# @prisma/client (+ generated .prisma), plus sharp/bcrypt native mirrors of the
+# worker set for safety.
+RUN npx esbuild prisma/seed.ts --bundle --platform=node --target=node20 --outfile=dist/seed.js --format=cjs --tsconfig=tsconfig.json --external:@prisma/client --external:.prisma/client --external:sharp --external:bcrypt
 
 # Self-contained Prisma CLI for the offline `migrate deploy` one-shot
 # (ADR-0022): copying node_modules/prisma alone is NOT enough — the v6 CLI
