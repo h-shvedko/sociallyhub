@@ -8,7 +8,13 @@ yarn-error.log*
 .nyc_output
 coverage
 __tests__
-e2e
+# e2e specs/auth are not needed in the image, BUT the prod seed bundle
+# (ADR-0025 D5: esbuild prisma/seed.ts) transitively imports e2e/fixtures.ts
+# via the `test` tier (prisma/seed-e2e.ts). Keep just that one file in the
+# build context so the bundle stays self-contained; everything else in e2e/
+# (specs, .auth, results) stays excluded.
+e2e/*
+!e2e/fixtures.ts
 test-results
 playwright-report
 
